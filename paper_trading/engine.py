@@ -127,6 +127,7 @@ class AssetEngine:
         self._trained = False
         self.position = None
         self.trade_log = []
+        self.current_price = None
 
     def _build_features(self, df, ref, macro):
         labeled = apply_triple_barrier(df, pt_sl=[2, 2], vertical_barrier=20)
@@ -190,6 +191,15 @@ class AssetEngine:
         self.current_value += pnl
         self.position = None
 
+    def refresh_price(self):
+        try:
+            df = yf.download(self.ticker, period='5d', auto_adjust=True, progress=False)
+            if not df.empty:
+                df = flatten(df)
+                self.current_price = float(df['close'].iloc[-1])
+        except Exception:
+            pass
+
     def train(self, force=False):
         if os.path.exists(self.model_path) and not force:
             with open(self.model_path, 'rb') as f:
@@ -232,6 +242,7 @@ class AssetEngine:
 
         df = fetch_live(self.ticker)
         self.price_data = df
+        self.current_price = float(df['close'].iloc[-1])
         ref = fetch_ref('SPY')
         macro = load_macro()
         features_df = self._build_features(df, ref, macro)
@@ -398,7 +409,7 @@ class AssetEngine:
                 'sl': round(self.position['sl'], 4),
                 'tp': round(self.position['tp'], 4),
                 'current_vol': round(self.position['vol'], 6),
-                'unrealized_pnl': round(self._position_pnl(float(self.signal_data['close'].iloc[-1])), 2) if self.signal_data is not None else 0.0,
+                'unrealized_pnl': round(self._position_pnl(self.current_price), 2) if self.position and self.current_price is not None else 0.0,
             }
 
         return {
@@ -412,6 +423,7 @@ class AssetEngine:
             'n_signals': len(self.prob_history),
             'signal_distribution': sc,
             'mean_confidence': round(float(mean_conf), 2),
+            'current_price': round(self.current_price, 4) if self.current_price else None,
             'last_signal_date': str(self.last_signal_date.date()) if self.last_signal_date else None,
             'monthly_pf': round(float(monthly_pf), 2) if monthly_pf else None,
             'position': pos_info,
@@ -493,9 +505,12 @@ class PaperTradingEngine:
     def get_state(self):
         ad = {}
         for name, asset in self.assets.items():
+            asset.refresh_price()
             metrics = asset.get_metrics()
             halt = asset.check_halt_conditions()
-            signal = asset.prob_history[-1] if asset.prob_history else None
+            signal = dict(asset.prob_history[-1]) if asset.prob_history else None
+            if signal and metrics.get('current_price'):
+                signal['close_price'] = metrics['current_price']
             ad[name] = {'metrics': metrics, 'halt': halt, 'last_signal': signal}
 
         tv = sum(a.current_value for a in self.assets.values())

@@ -1,12 +1,14 @@
 # QuantForge
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
-![Status](https://img.shields.io/badge/status-research-yellow)
+![Status](https://img.shields.io/badge/status-paper%20trading%20%7C%20research-blue)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 QuantForge is a modular quantitative research framework for regime-conditioned equity and FX strategy research. The current implementation focuses on XLF (financial sector ETF) with a macro+price 4-feature model, following a year-long EURUSD research phase that established the macro-signal architecture.
 
-This is a research system, not a production trading bot. The current stack is designed to answer three questions:
+This is a research system, not a production trading bot. The system includes a live paper trading engine that runs XGBoost models on real-time market data (via yfinance) and serves a browser dashboard for monitoring signals, PnL, and risk metrics.
+
+The current stack is designed to answer three questions:
 
 - Does macro signal (rate differentials, yield curve) transfer from FX to equities?
 - Can a minimal 4-feature model produce stable out-of-sample returns on sector ETFs?
@@ -80,73 +82,162 @@ AVG     +11.08%     +4.22%      +7.65%
 ```text
 QuantForge/
 |-- __init__.py
-|-- main.py
+|-- main.py                          # Entry point placeholder
 |-- requirements.txt
 |-- .gitignore
+|-- monitor_all                      # Shell script: start paper trading monitor
+|
+|-- paper_trading/                   # LIVE PAPER TRADING SYSTEM
+|   |-- engine.py                    # AssetEngine + PaperTradingEngine (XGBoost, signals, PnL, halt)
+|   |-- monitor.py                   # CLI loop: pulls yfinance, runs engine, serves dashboard
+|   |-- serve.py                     # Built-in HTTP dashboard (no Flask dependency)
+|   |-- server.py                    # Flask dashboard alternative
 |
 |-- backtests/
 |   |-- rolling_retrain.py           # Rolling retrain (EURUSD daily/weekly)
-|   |-- rolling_retrain_weekly.py     # Weekly retrain
-|   |-- walk_forward.py               # EURUSD walk-forward
+|   |-- rolling_retrain_weekly.py    # Weekly retrain
+|   |-- walk_forward.py              # EURUSD walk-forward
 |
 |-- configs/
 |   |-- forex.yaml
-|   |-- equities.yaml                 # Placeholder
-|   |-- crypto.yaml                   # Placeholder
+|   |-- equities.yaml                # Placeholder
+|   |-- crypto.yaml                  # Placeholder
 |
 |-- data/
 |   |-- loaders/
 |   |   |-- downloader.py
-|   |   |-- macro_loader.py           # FRED macro factors
-|   |-- raw/                          # yfinance OHLCV parquets
+|   |   |-- macro_loader.py          # FRED macro factors
+|   |-- raw/                         # yfinance OHLCV parquets
 |   |   |-- EURUSD_1d.parquet
 |   |   |-- GBPUSD_1d.parquet
 |   |   |-- SPY_1d.parquet
 |   |-- processed/
-|       |-- macro_factors.parquet
-|       |-- macro_features.parquet
-|       |-- *features*.parquet        # EURUSD weekly/daily features
-|       |-- *label*.parquet
+|   |   |-- macro_factors.parquet
+|   |   |-- macro_features.parquet
+|   |   |-- *features*.parquet       # EURUSD weekly/daily features
+|   |   |-- *label*.parquet
+|   |-- live/
+|       |-- state.json               # Engine state served to dashboard
 |
-|-- diagnostics/                      # EURUSD diagnostics
+|-- diagnostics/                     # EURUSD diagnostics
 |   |-- threshold_sweep.py
 |   |-- regime_ablation.py
 |   |-- phase3_validation.py
 |   |-- model_validity_timeline.py
-|   |-- ...                           # 10+ additional diagnostics
+|   |-- ...                          # 10+ additional diagnostics
 |
-|-- equity/                           # Equity track (active)
+|-- equity/                          # Equity track (active)
 |   |-- __init__.py
-|   |-- diagnostic_xlf_macro.py       # Macro-only isolation test
-|   |-- walk_forward_xlf.py           # XLF walk-forward with bootstrap
-|   |-- walk_forward_qqq.py           # QQQ walk-forward
+|   |-- diagnostic_xlf_macro.py      # Macro-only isolation test
+|   |-- walk_forward_xlf.py          # XLF walk-forward with bootstrap
+|   |-- walk_forward_qqq.py          # QQQ walk-forward
 |
 |-- features/
 |   |-- base_features.py
 |   |-- regime_features.py
 |   |-- structural_features.py
 |   |-- interaction_features.py
-|   |-- ...                           # Placeholders
+|   |-- ...                          # Placeholders
 |
 |-- labels/
-|   |-- triple_barrier.py             # Triple barrier labeling
+|   |-- triple_barrier.py            # Triple barrier labeling
 |
 |-- models/
-|   |-- hybrid_ensemble.py            # HybridRegimeEnsemble (XGBoost)
-|   |-- macro_expert_head.py          # Macro-protected expert head
+|   |-- hybrid_ensemble.py           # HybridRegimeEnsemble (XGBoost)
+|   |-- macro_expert_head.py         # Macro-protected expert head
 |   |-- regime/regime_classifier.py
 |   |-- ensemble/model_router.py
 |
 |-- signals/
-|   |-- signal_generator.py
+|   |-- signal_generator.py          # RegimeAwareSignalGenerator
+|   |-- simple_threshold.py          # Threshold-based signal
+|   |-- thresholding.py              # Stub
+|   |-- signal_filters.py            # Stub
 |
 |-- monitoring/
-|   |-- validity_state_machine.py
-|   |-- drift_detection.py
+|   |-- validity_state_machine.py    # Capital allocation state machine
+|   |-- drift_detection.py           # Stub
+|   |-- mlflow_logger.py             # Stub
+|   |-- live_dashboard.py            # Stub
 |
 |-- risk/
-|   |-- position_sizing.py
+|   |-- position_sizing.py           # Position sizing from signals
+|   |-- stop_engine.py               # Stub
+|   |-- exposure_limits.py           # Stub
+|   |-- drawdown_controls.py         # Stub
+|
+|-- execution/                       # Stub — broker integration planned
+|   |-- broker_interface.py
+|   |-- order_manager.py
+|   |-- portfolio_sync.py
+|
+|-- portfolio/                       # Stub — allocation strategies planned
+|   |-- risk_parity.py
+|   |-- hrp_allocator.py
+|   |-- correlation_clusters.py
+|
+|-- equity/
 |-- tests/
+```
+
+---
+
+## Paper Trading System
+
+### Live Monitor
+
+The paper trading engine generates real-time signals for XLF and BTC-USD using XGBoost models trained on macro + momentum features, pulled fresh from yfinance every 30 minutes.
+
+```bash
+# Start the monitor (trains models on first run, then refreshes every 30 min)
+.monitor_all
+
+# Or manually:
+python -m paper_trading.monitor
+```
+
+This starts an HTTP dashboard at `http://127.0.0.1:5000` showing:
+
+- **Portfolio summary**: total value, return, days running
+- **Asset cards**: signal direction (BUY/SELL/FLAT), confidence, entry price, SL/TP, current value, return, drawdown
+- **Metrics panel**: win rate, profit factor, signal distribution, trade count
+- **Halt status**: drawdown and monthly-PF circuit breakers
+- **Execution tickets**: recent trade log with direction and PnL
+
+### Architecture
+
+```text
+yfinance (XLF, BTC-USD, SPY)
+  -> FRED macro factors (rate_diff, 2y_yield_delta_63)
+  -> Feature engineering (mom_63, vs_spy_63)
+  -> XGBoost multiclass (300 trees, depth 2)
+  -> Signal generation (BUY/SELL/FLAT @ threshold=0.45)
+  -> PaperTradingEngine.run_once()
+     -> PnL calculation
+     -> Halt-condition check (drawdown, monthly PF)
+     -> State serialization to data/live/state.json
+  -> Browser dashboard (auto-refresh every 30s)
+```
+
+### Supported Assets
+
+| Asset | Features | Allocation |
+|-------|----------|------------|
+| XLF   | rate_diff, 2y_yield_delta_63, xlf_mom_63, xlf_vs_spy_63 | 60% |
+| BTC   | rate_diff, 2y_yield_delta_63, btc_mom_63, btc_vs_spy_63 | 40% |
+
+### Dashboard (Standalone)
+
+To serve the dashboard without running the engine (reads existing state.json):
+
+```bash
+python -m paper_trading.serve
+```
+
+### Flask Dashboard (Alternative)
+
+```bash
+python -m paper_trading.server
 ```
 
 ---
@@ -325,10 +416,11 @@ Current bottlenecks:
 
 - 2022 structural loss (-6.25%) from bull-market training distribution
 - QQQ adds correlated 2022 failure and reduces combined average
-- No live trading track record
+- No real-broker integration (Alpaca/IBKR stubs)
 - XLE, XLI, and other sector ETFs not yet tested
 - No portfolio-level risk management beyond single-asset sizing
 - EURUSD diagnostics not maintained in parallel
+- Execution layer (order management, broker sync) is stubbed
 
 Near-term research direction:
 
@@ -336,6 +428,7 @@ Near-term research direction:
 - Test XLF model on XLE (energy, DXY-driven) for potential portfolio diversification
 - Monitor live walk-forward alignment with backtest distribution
 - Add slippage and spread cost tracking from live data
+- Wire execution layer to broker API (Alpaca)
 
 ---
 

@@ -7,3 +7,6 @@ data/processed/*
 mlruns/
 logs/
 .env
+paper_trading/models/
+*.pkl
+data/live/

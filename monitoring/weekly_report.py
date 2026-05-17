@@ -1,6 +1,7 @@
 import json, os, sys
 import pandas as pd
 import numpy as np
+import yfinance as yf
 from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -8,6 +9,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.path.join(BASE, 'data', 'live', 'state.json')
 HISTORY_PATH = os.path.join(BASE, 'data', 'live', 'history.parquet')
 LOG_PATH = os.path.join(BASE, 'data', 'live', 'weekly_log.csv')
+TRADE_LOG_PATH = os.path.join(BASE, 'data', 'live', 'paper_trade_log.md')
 
 # Backtest baselines for signal distribution comparison
 BACKTEST_BASELINES = {
@@ -15,6 +17,115 @@ BACKTEST_BASELINES = {
     'BTC': {'buy_pct': 40, 'sell_pct': 30, 'flat_pct': 30, 'mean_conf': 0.55},
     'NZDJPY': {'buy_pct': 45, 'sell_pct': 25, 'flat_pct': 30, 'mean_conf': 0.55},
 }
+
+# Vol regime baselines (training period 2015-2022, EWM span=100)
+TRAIN_VOLS = {
+    'XLF': 0.0134,
+    'BTC': 0.0377,
+    'NZDJPY': 0.0070,
+}
+
+TICKERS = {
+    'XLF': 'XLF',
+    'BTC': 'BTC-USD',
+    'NZDJPY': 'NZDJPY=X',
+}
+
+VOL_RATIO_THRESHOLDS = {
+    'healthy':  (0.80, 1.20),
+    'warning':  (0.70, 1.30),
+    'critical': (0.50, 1.50),
+}
+
+
+def compute_live_ewm_vol(ticker, span=100):
+    df = yf.download(ticker, period='3mo', auto_adjust=True, progress=False)
+    if df.empty:
+        return None
+    close = df['Close'] if 'Close' in df.columns else df['close']
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    log_ret = np.log(close).diff()
+    vol = log_ret.ewm(span=span).std()
+    vals = vol.dropna()
+    return float(vals.iloc[-1]) if not vals.empty else None
+
+
+def check_vol_regime():
+    print(f'\n--- Vol Regime Check ---')
+    all_healthy = True
+    for name, ticker in TICKERS.items():
+        train_vol = TRAIN_VOLS.get(name)
+        live_vol = compute_live_ewm_vol(ticker)
+        if live_vol is None or train_vol is None:
+            print(f'  {name:8s}: unable to compute vol')
+            continue
+        ratio = live_vol / train_vol
+
+        if ratio < VOL_RATIO_THRESHOLDS['critical'][0] or ratio > VOL_RATIO_THRESHOLDS['critical'][1]:
+            status = 'CRITICAL'
+            all_healthy = False
+        elif ratio < VOL_RATIO_THRESHOLDS['warning'][0] or ratio > VOL_RATIO_THRESHOLDS['warning'][1]:
+            status = 'WARNING'
+            all_healthy = False
+        elif ratio < VOL_RATIO_THRESHOLDS['healthy'][0] or ratio > VOL_RATIO_THRESHOLDS['healthy'][1]:
+            status = 'WARNING'
+        else:
+            status = 'healthy'
+
+        print(f'  {name:8s}: train_vol={train_vol:.4f}  live_vol={live_vol:.4f}  '
+              f'ratio={ratio:.2f}  → {status}'
+              f'{" ⚠" if status != "healthy" else ""}')
+    return all_healthy
+
+
+def log_vol_baseline():
+    entries = []
+    for name, ticker in TICKERS.items():
+        train_vol = TRAIN_VOLS.get(name)
+        live_vol = compute_live_ewm_vol(ticker)
+        if live_vol is None:
+            continue
+        ratio = live_vol / train_vol
+        entries.append((name, train_vol, live_vol, ratio))
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    md = (
+        f'# Paper Trade Log\n\n'
+        f'## {today} — Vol Regime Baseline\n\n'
+        f'Initial vol regime readings at paper trade start. '
+        f'Training period: 2015-2022, EWM span=100.\n\n'
+        f'| Asset | Train Vol | Live Vol | Ratio | Status |\n'
+        f'|-------|-----------|----------|-------|--------|\n'
+    )
+    for name, tv, lv, ratio in entries:
+        if ratio < VOL_RATIO_THRESHOLDS['critical'][0] or ratio > VOL_RATIO_THRESHOLDS['critical'][1]:
+            status = 'CRITICAL'
+        elif ratio < VOL_RATIO_THRESHOLDS['warning'][0] or ratio > VOL_RATIO_THRESHOLDS['warning'][1]:
+            status = 'WARNING'
+        else:
+            status = 'healthy'
+        md += f'| {name:6s} | {tv:.4f} | {lv:.4f} | {ratio:.2f} | {status} |\n'
+
+    md += (
+        '\nLive vol is structurally lower than 2015-2022 training period. '
+        'Walk-forward already captured some of this — 2022-2024 windows\n'
+        'showed lower vol than early training years. Effect on performance '
+        'to be measured over 6-month paper trade period.\n'
+        'Action: retrain with vol-adjusted barriers in January 2027.\n'
+    )
+
+    # Append to log
+    if os.path.exists(TRADE_LOG_PATH):
+        existing = open(TRADE_LOG_PATH).read()
+        if today not in existing:
+            with open(TRADE_LOG_PATH, 'a') as f:
+                f.write('\n\n' + md)
+    else:
+        os.makedirs(os.path.dirname(TRADE_LOG_PATH), exist_ok=True)
+        with open(TRADE_LOG_PATH, 'w') as f:
+            f.write(md)
+    print(f'\nVol baseline logged to {TRADE_LOG_PATH}')
 
 
 def run():
@@ -80,6 +191,10 @@ def run():
         pct_to_halt = (dd - limit) / abs(limit) * 100 if limit < 0 else 0
         print(f'  {name:8s}: DD={dd:.2%} limit={limit:.0%} → {pct_to_halt:.0f}% of halt distance')
 
+    # Vol regime check
+    check_vol_regime()
+    log_vol_baseline()
+
     # Weekly PnL
     if len(hist) > 5:
         print(f'\n--- Weekly PnL ---')
@@ -107,6 +222,9 @@ def run():
         sig_dist = metrics.get('signal_distribution', {})
         log_entry[f'{name}_buy_pct'] = sig_dist.get('BUY', 0)
         log_entry[f'{name}_sell_pct'] = sig_dist.get('SELL', 0)
+        live_vol = compute_live_ewm_vol(TICKERS[name])
+        if live_vol is not None:
+            log_entry[f'{name}_vol_ratio'] = round(live_vol / TRAIN_VOLS[name], 2)
     log_df = pd.DataFrame([log_entry])
     if os.path.exists(LOG_PATH):
         existing = pd.read_csv(LOG_PATH)

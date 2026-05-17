@@ -97,7 +97,8 @@ body{background:var(--bg-primary);color:var(--text-primary);font-family:Inter,-a
 .asset-metric-value{color:var(--text-secondary);font-weight:500;font-variant-numeric:tabular-nums}
 .asset-conf-bar{height:4px;border-radius:2px;margin-top:8px;background:var(--bg-primary);overflow:hidden}
 .asset-conf-fill{height:100%;border-radius:2px;transition:width 0.5s ease}
-.asset-more{font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:nowrap}
+.asset-more{font-size:11px;color:var(--text-muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.asset-more+.asset-more{border-top:none;margin-top:0}
 
 .table-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
 table{width:100%;border-collapse:collapse}
@@ -271,7 +272,8 @@ function render(state){
       ac+='<div class="asset-more">';
       if(entry)ac+='Entry $'+fmtPrice(entry);
       if(stop)ac+=' &middot; SL $'+fmtPrice(stop);
-      if(tp)ac+=' &middot; TP $'+fmtPrice(tp);
+      ac+='</div><div class="asset-more">';
+      if(tp)ac+='TP $'+fmtPrice(tp);
       if(upnl!=null)ac+=' &middot; P&L <span style="color:'+(upnl>=0?'var(--green)':'var(--red)')+'">'+fmt(upnl,2)+'%</span>';
       ac+='</div>';
     }

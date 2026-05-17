@@ -2,6 +2,7 @@ import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'live', 'state.json')
+TRADE_JOURNAL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'live', 'trade_journal.parquet')
 DEFAULT_PORT = 5000
 
 HTML = '''<!DOCTYPE html>
@@ -150,6 +151,14 @@ tr:hover td{background:var(--surface-card-hover)}
 @media(max-width:1100px){.portfolio-row,.grid-4{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:750px){.grid-2{grid-template-columns:1fr}.portfolio-row,.grid-4{grid-template-columns:1fr 1fr}.header{flex-direction:column;gap:10px;align-items:flex-start}.header-right{width:100%;justify-content:flex-start}}
 @media(max-width:480px){.portfolio-row,.grid-4{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}body{padding:14px}}
+.new-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;background:var(--accent-glow);color:var(--accent);border:1px solid var(--accent-border);margin-left:6px;animation:new-pulse 1.5s ease-in-out infinite}
+@keyframes new-pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.asset-last-trade{font-size:10px;color:var(--text-muted);margin-top:5px;padding-top:5px;border-top:1px solid var(--border);line-height:1.4}
+.result-tp{color:var(--green);font-weight:600}
+.result-sl{color:var(--red);font-weight:600}
+.result-exit{color:var(--amber);font-weight:600}
+.result-open{color:var(--text-muted);font-weight:500}
+.trade-empty{text-align:center;padding:20px;color:var(--text-muted);font-size:12px}
 </style>
 </head>
 <body>
@@ -205,6 +214,16 @@ tr:hover td{background:var(--surface-card-hover)}
   <div class="grid-3" id="metricsGrid"></div>
 
   <div class="section">
+    <div class="section-title">Trade Feed</div>
+    <span class="section-badge" id="tradeFeedCount">Recent</span>
+  </div>
+  <div class="table-wrap">
+  <table><thead><tr>
+    <th>Time</th><th>Asset</th><th>Direction</th><th>Entry</th><th>Exit</th><th>P&L%</th><th>Bars</th><th>Result</th>
+  </tr></thead><tbody id="tradeFeedBody"><tr><td colspan="8" class="trade-empty">No trades closed yet</td></tr></tbody></table>
+  </div>
+
+  <div class="section">
     <div class="section-title">Halt Conditions</div>
     <span class="section-badge">Safety</span>
   </div>
@@ -221,6 +240,50 @@ tr:hover td{background:var(--surface-card-hover)}
 <script>
 const STATE_PATH = '/state.json';
 let stateData = null;
+var tradeData = [];
+var prevPositions = {};
+var newBadgeTimers = {};
+
+function getLastTrade(name){
+  for(var i=0;i<tradeData.length;i++){if(tradeData[i].asset===name)return tradeData[i]}
+  return null;
+}
+
+function resultInfo(reason){
+  var r=(reason||'').toLowerCase();
+  if(r==='tp')return{cls:'result-tp',text:'TP'};
+  if(r==='sl')return{cls:'result-sl',text:'SL'};
+  return{cls:'result-exit',text:'Exit'};
+}
+
+function renderTradeFeed(){
+  var tbody=document.getElementById('tradeFeedBody');
+  if(!tradeData||tradeData.length===0){
+    tbody.innerHTML='<tr><td colspan="8" class="trade-empty">No trades closed yet</td></tr>';
+    document.getElementById('tradeFeedCount').textContent='0 trades';
+    return;
+  }
+  document.getElementById('tradeFeedCount').textContent=tradeData.length+' recent';
+  var html='';
+  for(var i=0;i<tradeData.length;i++){
+    var t=tradeData[i],ri=resultInfo(t.reason);
+    var ret=t['return']!=null?t['return']:0,retPct=(ret*100).toFixed(2);
+    var side=(t.side||'').toUpperCase(),sideClass=side==='LONG'?'cell-buy':side==='SHORT'?'cell-sell':'';
+    var bars='\u2014';
+    if(t.entry_date&&t.exit_date){var d1=new Date(t.entry_date),d2=new Date(t.exit_date);var diff=Math.max(1,Math.round((d2-d1)/(864e5)));bars=diff+'d'}
+    html+='<tr><td class="cell-mono">'+(t.exit_date||'\u2014')+'</td>';
+    html+='<td><strong>'+(t.asset||'\u2014')+'</strong></td>';
+    html+='<td class="cell-signal '+sideClass+'">'+side+'</td>';
+    html+='<td>$'+fmtPrice(t.entry)+'</td><td>$'+fmtPrice(t.exit)+'</td>';
+    html+='<td class="'+(ret>=0?'cell-up':'cell-down')+'">'+(ret>=0?'+':'')+retPct+'%</td>';
+    html+='<td>'+bars+'</td><td class="'+ri.cls+'">'+ri.text+'</td></tr>';
+  }
+  tbody.innerHTML=html;
+}
+
+async function fetchTrades(){
+  try{var r=await fetch('/trades.json?t='+Date.now());if(r.ok){tradeData=await r.json();renderTradeFeed()}}catch(e){}
+}
 
 function fmt(n,d){if(n==null||n===Infinity||isNaN(n))return'\u2014';return Number(n).toFixed(d||2)}
 function fmtPrice(price){if(price==null||price===Infinity||isNaN(price))return'\u2014';var s=String(price),dec=s.indexOf('.'),natural=dec===-1?0:s.length-dec-1;return Number(price).toFixed(Math.max(2,Math.min(natural,6)))}
@@ -271,12 +334,19 @@ function render(state){
     var val=m.current_value||0,ret=m.total_return||0,dd=m.drawdown||0;
     var confColor=conf>=60?'var(--green)':conf>=45?'var(--amber)':'var(--red)';
     var price=s?s.close_price:null;
-    ac+='<div class="asset-card signal-'+cls+'"><div class="asset-header"><span class="asset-name">'+name+'</span>'+(price!=null?'<span class="asset-price">$'+fmtPrice(price)+'</span>':'')+'<span class="asset-signal">'+sig+'</span></div>';
+    var prevPos=prevPositions[name],isNewEntry=pos&&pos.entry&&(!prevPos||prevPos.entry!==pos.entry);
+    if(isNewEntry){newBadgeTimers[name]=60}
+    if(!isNewEntry&&newBadgeTimers[name]>0){newBadgeTimers[name]--}
+    prevPositions[name]=pos?{entry:pos.entry}:null;
+    var newBadge=newBadgeTimers[name]>0?'<span class="new-badge">New</span>':'';
+    ac+='<div class="asset-card signal-'+cls+'"><div class="asset-header"><span class="asset-name">'+name+newBadge+'</span>'+(price!=null?'<span class="asset-price">$'+fmtPrice(price)+'</span>':'')+'<span class="asset-signal">'+sig+'</span></div>';
     ac+='<div class="asset-metrics"><div class="asset-metric"><span class="asset-metric-label">Confidence</span><span class="asset-metric-value" style="color:'+confColor+'">'+fmt(conf,1)+'%</span></div>';
     ac+='<div class="asset-metric"><span class="asset-metric-label">Value</span><span class="asset-metric-value">$'+fmt(val,2)+'</span></div>';
     ac+='<div class="asset-metric"><span class="asset-metric-label">Return</span><span class="asset-metric-value '+(ret>=0?'change-up':'change-down')+'">'+fmt(ret)+'%</span></div>';
     ac+='<div class="asset-metric"><span class="asset-metric-label">Drawdown</span><span class="asset-metric-value '+(dd>-3?'':dd>-5?'cell-warn':'change-down')+'">'+fmt(dd)+'%</span></div></div>';
     ac+='<div class="asset-conf-bar"><div class="asset-conf-fill" style="width:'+conf+'%;background:'+confColor+'"></div></div>';
+    var lt=getLastTrade(name);
+    if(lt){var lri=resultInfo(lt.reason),lret=lt['return']!=null?(lt['return']*100).toFixed(2):'0.00',lside=(lt.side||'').toUpperCase();ac+='<div class="asset-last-trade">Last: '+lside+' <span class="'+lri.cls+'">'+(lt['return']>=0?'+':'')+lret+'% ('+lri.text+')</span></div>'}
     if(entry||stop||tp||upnl!=null){
       ac+='<div class="asset-more">';
       if(entry)ac+='Entry $'+fmtPrice(entry);
@@ -373,6 +443,7 @@ async function fetchState(){
     document.getElementById('loadingState').style.display='none';
     document.getElementById('dashboardContent').style.display='block';
     render(state);
+    fetchTrades();
   }catch(e){
     document.getElementById('loadingState').style.display='block';
     document.getElementById('dashboardContent').style.display='none';
@@ -432,6 +503,33 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                                       'deployment_cleared': True},
                         'assets': {}, 'halt_conditions': {'drawdown': -0.08, 'monthly_pf': 0.7, 'signal_drought': 30, 'prob_drift': 0.15},
                     }, indent=2).encode('utf-8'))
+            elif path == '/trades.json':
+                trades = []
+                try:
+                    import pandas as pd
+                    if os.path.exists(TRADE_JOURNAL_PATH):
+                        df = pd.read_parquet(TRADE_JOURNAL_PATH)
+                        if len(df) > 0:
+                            df = df.sort_values('exit_date', ascending=False).head(10)
+                            trades = json.loads(df.to_json(orient='records', default_handler=str))
+                except Exception:
+                    pass
+                if not trades:
+                    try:
+                        with open(STATE_PATH, 'r') as f:
+                            sd = json.load(f)
+                        for aname, adata in sd.get('assets', {}).items():
+                            for t in adata.get('metrics', {}).get('trade_log', []):
+                                trades.append(t)
+                        trades = sorted(trades, key=lambda x: x.get('exit_date', ''), reverse=True)[:10]
+                    except Exception:
+                        pass
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(trades, default=str).encode('utf-8'))
             else:
                 self.send_response(404)
                 self.end_headers()

@@ -37,9 +37,35 @@ Tuesday close positions → Friday 3:30pm release → +3 calendar days
 ```
 `align_cot_to_daily()` shifts the COT index release date by 3 days, then forward-fills to the daily price index. Verified no look-ahead bias.
 
-### Key Implementation Detail
+### Key Implementation Detail: learning_rate = 0.30
 
-COT features require `learning_rate=0.3` (vs `0.02` for XLF/BTC). COT data is weekly, so each observation carries more signal density. The higher learning rate lets the model weight it appropriately.
+COT features require `learning_rate=0.30` (vs `0.02` for XLF/BTC). This is a structural difference, not a tuning artefact:
+
+```
+# Why COT needs higher learning rate than price-based models
+#
+# Price features (XLF, BTC): daily bars, high autocorrelation,
+# signal is weak per-bar → slow learning rate prevents overfitting noise
+#
+# COT features: weekly observations, each carries ~5 days of
+# accumulated positioning change → higher information density per bar
+# → faster learning rate appropriate, less risk of overfitting noise
+#
+# Rule of thumb: learning_rate scales roughly with signal density
+# Daily price:  0.01-0.03
+# Weekly macro: 0.05-0.10
+# Weekly COT:   0.20-0.35  ← confirmed at 0.30 for EURUSD
+```
+
+EURUSD model config diverging from XLF/BTC standard:
+```python
+EURUSD_MODEL_CONFIG = {
+    'learning_rate':    0.30,   # COT signal density justifies this
+    'max_depth':        2,      # keep shallow — same as other assets
+    'n_estimators':     300,
+    'min_child_weight': 10,     # still regularize — weekly data is sparse
+}
+```
 
 ## Isolation Test Results
 
@@ -59,12 +85,48 @@ Max confidence: 0.9955 (PASS > 0.70 threshold)
 
 **COT signal confirmed. Proceed to walk-forward validation.**
 
-## Deployment Path
+## Walk-Forward Results
 
-1. Run full walk-forward (5yr expanding window, 1yr test, 1yr step)
-2. Clear deployment gate: PF > 1.10, bootstrap p < 0.10
-3. Run signal correlation check vs XLF, BTC, NZDJPY (target < 0.30 pairwise)
-4. Allocate in paper trading portfolio if correlation gate clears
+Weekly walk-forward (5-year expanding window, 1-year test, P > 0.50 signal threshold):
+
+| Window | Trades | PF | Expectancy | Bootstrap p | Gate |
+|--------|--------|----|------------|-------------|------|
+| 2022 | 42 | 0.69 | -0.0007 | 1.00 | FAIL |
+| 2023 | 35 | 0.47 | -0.0029 | 1.00 | FAIL |
+| 2024 | 35 | 1.30 | +0.0018 | 0.25 | FAIL |
+| 2025 | 44 | 0.35 | -0.0021 | 1.00 | FAIL |
+
+**Isolation test result (directional correctness): PASS**
+**Walk-forward result (tradable PnL at PF > 1.10): FAIL**
+
+### Diagnosis
+
+COT provides correct directional bias in aggregate (PASS on isolation gate)
+but does not produce PF > 1.10 as a standalone entry signal. This is
+structurally expected:
+
+1. **3-day release lag**: Tuesday positions seen Friday — stale by 3-5 days
+2. **Weekly observations**: ~52 data points/year, insufficient for signal timing
+3. **COT is a macro overlay, not an entry signal**: COT describes the
+   positioning environment, not the day-to-day entry timing
+
+### Recommended Path
+
+Feed COT features into the **HybridRegimeEnsemble's macro expert head**
+alongside existing price-derived features. The regime ensemble architecture
+(MacroExpertHead with 0.45 fixed weight) is designed for this exact use case:
+- COT features → macro environment context (positioning extreme, trend in flows)
+- Price features → entry timing (momentum, volatility, mean reversion)
+
+The MacroExpertHead prevents price features from drowning the COT signal
+(confirmed issue in prior work — price features drown macro unless protected).
+
+### Signal Correlation Check (if deployed via ensemble)
+
+Before allocation if COT-informed EURUSD enters paper trading:
+- EURUSD vs XLF: target < 0.30 (different drivers)
+- EURUSD vs BTC: target < 0.30 (different drivers)
+- EURUSD vs NZDJPY: target < 0.40 (both FX — may share carry exposure)
 
 ## Files Created/Modified
 

@@ -27,6 +27,80 @@ Raw OHLCV (XLF, SPY)
   -> Bootstrap-verified expectancy
 ```
 
+```mermaid
+flowchart TD
+    subgraph DataLayer["Data Layer"]
+        YF[yfinance]
+        FRED[FRED API]
+        DL[Data Loader]
+        TB[Triple Barrier<br/>Labeling]
+
+        YF --> DL
+        FRED --> DL
+        YF --> TB
+        DL --> FE
+    end
+
+    subgraph Features["Feature Engineering"]
+        FE[Feature Builder]
+        F1[rate_diff]
+        F2[2y_yield_delta_63]
+        F3[mom_63]
+        F4[vs_spy_63]
+
+        FE --> F1
+        FE --> F2
+        FE --> F3
+        FE --> F4
+    end
+
+    subgraph ModelLayer["Model Layer"]
+        XGB[XGBoost Multiclass<br/>300 trees · depth 2 · lr 0.02]
+        TB --> XGB
+        F1 --> XGB
+        F2 --> XGB
+        F3 --> XGB
+        F4 --> XGB
+    end
+
+    subgraph SignalGen["Signal Generation"]
+        PROBS[P(LONG) / P(SHORT) / P(NEUTRAL)]
+        THRESH{Threshold > 0.45}
+        SIG[BUY / SELL / FLAT]
+
+        XGB --> PROBS
+        PROBS --> THRESH
+        THRESH -->|P(LONG)| SIG
+        THRESH -->|P(SHORT)| SIG
+        THRESH -->|Neither| SIG
+    end
+
+    subgraph Engine["Paper Trading Engine"]
+        PM[Position Manager<br/>Vol SL/TP]
+        PNL[PnL Tracker]
+        HT[Halt Checker]
+        ST[State Serializer]
+
+        SIG --> PM
+        PM --> PNL
+        PNL --> HT
+        HT --> ST
+    end
+
+    subgraph Storage["Storage"]
+        FS[state.json<br/>data/live/]
+    end
+
+    subgraph Dashboard["Analytics & Reporting"]
+        SRV[HTTP Server :5000]
+        DG[Dashboard Generator<br/>Dark-themed UI]
+    end
+
+    ST --> FS
+    FS --> SRV
+    SRV --> DG
+```
+
 The current design is intentionally minimal — the EURUSD phase proved that complexity amplifies noise faster than signal:
 
 - **Macro features describe the environment, not the price response.** `yield_slope` and `real_yield_10y` were removed after diagnostic showed they dominated the model with environment-level bias that didn't translate to tradeable direction.
@@ -206,17 +280,33 @@ This starts an HTTP dashboard at `http://127.0.0.1:5000` showing:
 
 ### Architecture
 
-```text
-yfinance (XLF, BTC-USD, SPY)
-  -> FRED macro factors (rate_diff, 2y_yield_delta_63)
-  -> Feature engineering (mom_63, vs_spy_63)
-  -> XGBoost multiclass (300 trees, depth 2)
-  -> Signal generation (BUY/SELL/FLAT @ threshold=0.45)
-  -> PaperTradingEngine.run_once()
-     -> PnL calculation
-     -> Halt-condition check (drawdown, monthly PF)
-     -> State serialization to data/live/state.json
-  -> Browser dashboard (auto-refresh every 30s)
+```mermaid
+sequenceDiagram
+    participant YF as yfinance
+    participant FRED as FRED
+    participant FE as Feature Builder
+    participant XGB as XGBoost
+    participant ENG as Engine
+    participant FS as state.json
+    participant UI as Dashboard
+
+    Note over YF,UI: Every 30 minutes (REFRESH_INTERVAL)
+
+    YF->>FE: OHLCV (XLF, BTC-USD, SPY)
+    FRED->>FE: rate_diff, 2y_yield_delta_63
+    FE->>FE: mom_63, vs_spy_63
+    FE->>XGB: Feature vector [4,]
+    XGB-->>ENG: Probabilities [P_L, P_N, P_S]
+    ENG->>ENG: Classify (threshold=0.45)
+    alt Signal = BUY or SELL
+        ENG->>ENG: Open / close position
+        ENG->>ENG: Check SL / TP
+    end
+    ENG->>ENG: Calculate PnL
+    ENG->>ENG: Check halt conditions
+    ENG->>FS: Serialise state
+    FS->>UI: GET /state.json
+    Note over UI: Auto-refresh every 30s
 ```
 
 ### Supported Assets

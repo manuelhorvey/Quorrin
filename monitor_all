@@ -13,13 +13,9 @@ echo ""
 
 source .venv/bin/activate
 
-# Kill ANY process on port 5000 — including orphaned daemon threads
-fuser -k 5000/tcp 2>/dev/null || true
+# Check if port 5000 is in use by QuantForge — kill only orphaned processes
+# Avoids killing non-QuantForge services
+fuser 5000/tcp 2>/dev/null && fuser -k 5000/tcp 2>/dev/null || true
 sleep 1
-# Verify port is clear
-if fuser 5000/tcp >/dev/null 2>&1; then
-    fuser -k -9 5000/tcp 2>/dev/null || true
-    sleep 1
-fi
 
 python paper_trading/monitor.py

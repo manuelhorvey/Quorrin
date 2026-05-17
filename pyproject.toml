@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "quantforge"
+version = "0.1.0"
+description = "Modular quantitative research framework for regime-conditioned equity and FX strategy research"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "MktOwl"}]
+keywords = ["quantitative-finance", "trading", "machine-learning", "xgboost"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Financial",
+]
+
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "yfinance>=0.2",
+    "scikit-learn>=1.2",
+    "xgboost>=1.7",
+    "lightgbm>=4.0",
+    "catboost>=1.2",
+    "matplotlib>=3.7",
+    "plotly>=5.14",
+    "ta>=0.10",
+    "pyarrow>=10",
+    "mlflow>=2.3",
+    "optuna>=3.2",
+    "scipy>=1.10",
+    "statsmodels>=0.14",
+    "jupyterlab>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["tests"]

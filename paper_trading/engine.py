@@ -1,26 +1,47 @@
+import logging
 import pandas as pd
 import numpy as np
 import xgboost as xgb
 import yfinance as yf
-import pickle, os, json, math
+import pickle, os, json, math, yaml
 from datetime import datetime
 from labels.triple_barrier import apply_triple_barrier
+
+logger = logging.getLogger("quantforge.engine")
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 STATE_PATH = os.path.join(BASE, 'data', 'live', 'state.json')
+CONFIG_PATH = os.path.join(BASE, 'configs', 'paper_trading.yaml')
+
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
 
+
+def _load_config():
+    path = CONFIG_PATH
+    if os.path.exists(path):
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+        logger.info("Loaded config from %s", path)
+        return cfg
+    logger.warning("Config file %s not found; using defaults", path)
+    return {}
+
+
+_cfg = _load_config()
+
 CONFIG = {
-    'capital': 100_000,
-    'position_size': 0.95,
-    'rebalance': 'daily',
-    'retrain_freq': 'annual',
-    'retrain_window': 5,
+    'capital': _cfg.get('capital', 100_000),
+    'position_size': _cfg.get('position_size', 0.95),
+    'rebalance': _cfg.get('rebalance', 'daily'),
+    'retrain_freq': _cfg.get('retrain_freq', 'annual'),
+    'retrain_window': _cfg.get('retrain_window', 5),
 }
 
-HALT = {'drawdown': -0.08, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}
+HALT = dict(_cfg.get('halt', {
+    'drawdown': -0.08, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15,
+}))
 
 XLF_FEATURES = ['rate_diff', '2y_yield_delta_63', 'xlf_mom_63', 'xlf_vs_spy_63']
 EURUSD_FEATURES = ['rate_diff', '2y_yield_delta_63', 'eurusd_mom_63', 'eurusd_vs_dxy_63']
@@ -171,12 +192,12 @@ class AssetEngine:
                 self._trained = True
             return
 
-        print(f'  {self.name}: downloading history...', end=' ')
+        logger.info('%s: downloading history...', self.name)
         df = fetch_history(self.ticker)
         ref = fetch_ref('SPY')
         macro = load_macro()
         features = self._build_features(df, ref, macro)
-        print(f'{len(features)} rows')
+        logger.info('%s: %d feature rows', self.name, len(features))
 
         end_date = features.index[-1]
         start_date = end_date - pd.DateOffset(years=CONFIG['retrain_window'])
@@ -407,12 +428,28 @@ class AssetEngine:
                 'drought_ok': True}
 
 
-PAPER_PORTFOLIO = {
-    'XLF': {'ticker': 'XLF', 'features': XLF_FEATURES, 'alloc': 0.60,
-            'halt': HALT, 'config': {}},
-    'BTC': {'ticker': 'BTC-USD', 'features': BTC_FEATURES, 'alloc': 0.40,
-            'halt': {'drawdown': -0.15, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}, 'config': {}},
-}
+def _build_paper_portfolio():
+    assets = _cfg.get('assets', {})
+    if assets:
+        pf = {}
+        for name, spec in assets.items():
+            ticker = spec.get('ticker', f'{name}')
+            features = spec.get('features', [])
+            alloc = spec.get('allocation', 0)
+            halt = dict(spec.get('halt', HALT))
+            config = spec.get('config', {})
+            pf[name] = {'ticker': ticker, 'features': features, 'alloc': alloc,
+                        'halt': halt, 'config': config}
+        return pf
+    return {
+        'XLF': {'ticker': 'XLF', 'features': XLF_FEATURES, 'alloc': 0.60,
+                'halt': HALT, 'config': {}},
+        'BTC': {'ticker': 'BTC-USD', 'features': BTC_FEATURES, 'alloc': 0.40,
+                'halt': {'drawdown': -0.15, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}, 'config': {}},
+    }
+
+
+PAPER_PORTFOLIO = _build_paper_portfolio()
 
 
 class PaperTradingEngine:
@@ -428,12 +465,11 @@ class PaperTradingEngine:
 
     def initialize(self):
         for name, asset in self.assets.items():
-            print(f'  {name}:', end=' ')
             try:
                 asset.train(force=True)
-                print('done')
+                logger.info('%s: training done', name)
             except Exception as e:
-                print(f'FAILED - {e}')
+                logger.error('%s: training FAILED - %s', name, e)
 
     def run_once(self):
         results = {}

@@ -254,12 +254,12 @@ class ValidityStateMachine:
         results = []
         self.reset()  # Reset state for new timeline
         
-        for idx, row in validity_df.iterrows():
+        for pos, (idx, row) in enumerate(validity_df.iterrows()):
             timestamp = row[timestamp_col] if timestamp_col in row else idx
             raw_validity = row[validity_col]
             
             # Get recent validity for persistence check
-            recent_validity = validity_df[validity_col].iloc[:idx+1]
+            recent_validity = validity_df[validity_col].iloc[:pos+1]
             
             result = self.transition(raw_validity, timestamp, recent_validity)
             results.append(result)

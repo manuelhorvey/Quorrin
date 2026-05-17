@@ -8,7 +8,7 @@ ADRs document key architectural and design decisions, including context, options
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| — | — | — |
+| [ADR-011](ADR-011-january-2027-known-issues.md) | Known Issues — January 2027 Retrain | Accepted |
 
 ## Template
 

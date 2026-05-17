@@ -474,10 +474,18 @@ class AssetEngine:
             reasons.append(f'DD {metrics["drawdown"]:.1f}% <= {hc["drawdown"]*100:.0f}%')
         if metrics['monthly_pf'] is not None and metrics['monthly_pf'] < hc['monthly_pf']:
             reasons.append(f'PF {metrics["monthly_pf"]:.2f} < {hc["monthly_pf"]:.2f}')
+        # Signal drought: halt if no signal generated within threshold days
+        drought_ok = True
+        drought_days = hc.get('signal_drought', 30)
+        if self.last_signal_date is not None:
+            days_since = (datetime.now().date() - pd.Timestamp(self.last_signal_date).date()).days
+            if days_since > drought_days:
+                reasons.append(f'Signal drought: {days_since}d > {drought_days}d')
+                drought_ok = False
         return {'halted': len(reasons) > 0, 'reasons': reasons,
                 'drawdown_ok': dd > hc['drawdown'],
                 'monthly_pf_ok': metrics['monthly_pf'] is None or metrics['monthly_pf'] >= hc['monthly_pf'],
-                'drought_ok': True}
+                'drought_ok': drought_ok}
 
 
 def _build_paper_portfolio():
@@ -494,9 +502,9 @@ def _build_paper_portfolio():
                         'halt': halt, 'config': config}
         return pf
     return {
-        'XLF': {'ticker': 'XLF', 'features': XLF_FEATURES, 'alloc': 0.40,
+        'XLF': {'ticker': 'XLF', 'features': XLF_FEATURES, 'alloc': 0.35,
                 'halt': HALT, 'config': {}},
-        'BTC': {'ticker': 'BTC-USD', 'features': BTC_FEATURES, 'alloc': 0.35,
+        'BTC': {'ticker': 'BTC-USD', 'features': BTC_FEATURES, 'alloc': 0.30,
                 'halt': {'drawdown': -0.15, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}, 'config': {'vol_scalar': True}},
         'NZDJPY': {'ticker': 'NZDJPY=X', 'features': NZDJPY_FEATURES, 'alloc': 0.20,
                    'halt': {'drawdown': -0.06, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}, 'config': {}},
@@ -506,6 +514,8 @@ def _build_paper_portfolio():
 
 
 PAPER_PORTFOLIO = _build_paper_portfolio()
+_total_alloc = sum(v['alloc'] for v in PAPER_PORTFOLIO.values())
+assert abs(_total_alloc - 1.0) < 0.01, f"Portfolio allocations sum to {_total_alloc}, must be 1.0"
 
 
 class PaperTradingEngine:

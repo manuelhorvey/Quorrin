@@ -60,6 +60,8 @@ class TestConfig:
         assert "XLF" in PAPER_PORTFOLIO
         assert "BTC" in PAPER_PORTFOLIO
         assert "NZDJPY" in PAPER_PORTFOLIO
-        assert PAPER_PORTFOLIO["XLF"]["alloc"] == 0.40
-        assert PAPER_PORTFOLIO["BTC"]["alloc"] == 0.35
-        assert PAPER_PORTFOLIO["NZDJPY"]["alloc"] == 0.25
+        assert "USDCAD" in PAPER_PORTFOLIO
+        assert PAPER_PORTFOLIO["XLF"]["alloc"] == 0.35
+        assert PAPER_PORTFOLIO["BTC"]["alloc"] == 0.30
+        assert PAPER_PORTFOLIO["NZDJPY"]["alloc"] == 0.20
+        assert PAPER_PORTFOLIO["USDCAD"]["alloc"] == 0.15

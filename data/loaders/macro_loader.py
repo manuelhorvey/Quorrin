@@ -78,17 +78,6 @@ def load_macro_features(price_index: pd.DatetimeIndex = None,
 
     return derived
 
-MACRO_FEATURES = [
-    'rate_diff',
-    'rate_diff_delta_3m',
-    'real_yield_10y',
-    'yield_slope',
-    'dxy_mom_21',
-    'dxy_mom_63',
-    'fed_funds_delta_3m',
-]
-
-
 def correlation_sanity_check(macro: pd.DataFrame,
                              eurusd_returns: pd.Series,
                              start: str = '2022',

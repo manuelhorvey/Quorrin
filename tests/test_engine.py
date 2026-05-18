@@ -2,7 +2,7 @@ import pytest
 from paper_trading.engine import (
     flatten, norm_index, CONFIG, HALT,
     XLF_FEATURES, BTC_FEATURES, PAPER_PORTFOLIO,
-    AssetEngine,
+    AssetEngine, _SKIP_JOURNAL,
 )
 
 
@@ -77,7 +77,8 @@ class TestConfig:
 class TestUpdatePnl:
     @pytest.fixture
     def engine(self):
-        return AssetEngine("BTC", "BTC", BTC_FEATURES, PAPER_PORTFOLIO["BTC"]["alloc"])
+        return AssetEngine("BTC", "BTC", BTC_FEATURES, PAPER_PORTFOLIO["BTC"]["alloc"],
+                           journal_path=_SKIP_JOURNAL)
 
     @pytest.fixture
     def signal_data(self):

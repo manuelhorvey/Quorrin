@@ -13,6 +13,8 @@ ET = pytz.timezone('US/Eastern')
 
 logger = logging.getLogger("quantforge.engine")
 
+_SKIP_JOURNAL = object()
+
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 STATE_PATH = os.path.join(BASE, 'data', 'live', 'state.json')
@@ -134,7 +136,7 @@ def fetch_ref(ticker):
 
 
 class AssetEngine:
-    def __init__(self, ticker, name, features, allocation, halt_config=None, config=None, expected_prob_conf=0.45):
+    def __init__(self, ticker, name, features, allocation, halt_config=None, config=None, expected_prob_conf=0.45, journal_path=None):
         self.ticker = ticker
         self.name = name
         self.features = features
@@ -156,6 +158,10 @@ class AssetEngine:
         self.position = None
         self.trade_log = []
         self.current_price = None
+        if journal_path is _SKIP_JOURNAL:
+            self.journal_path = None
+        else:
+            self.journal_path = journal_path or TRADE_JOURNAL_PATH
 
     def _build_features(self, df, ref, macro):
         if self.name == 'CADJPY' or self.name == 'GC':
@@ -503,11 +509,13 @@ class AssetEngine:
         }
 
     def _save_trade_journal(self, trade):
+        if self.journal_path is None:
+            return
         df = pd.DataFrame([trade])
-        if os.path.exists(TRADE_JOURNAL_PATH):
-            existing = pd.read_parquet(TRADE_JOURNAL_PATH)
+        if os.path.exists(self.journal_path):
+            existing = pd.read_parquet(self.journal_path)
             df = pd.concat([existing, df], ignore_index=True)
-        df.to_parquet(TRADE_JOURNAL_PATH)
+        df.to_parquet(self.journal_path)
 
     def _log_confidence_buckets(self):
         bucket = {'asset': self.name, 'date': str(datetime.now(tz=ET).date())}

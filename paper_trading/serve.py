@@ -297,13 +297,15 @@ function getSession(){
   var fxOpen=t>=0&&t<1440;
   var sessions=[];
   if(day===6){
-    sessions.push({name:'XLF','open':false});sessions.push({name:'NZDJPY','open':false});sessions.push({name:'USDCAD','open':false});sessions.push({name:'BTC','open':true});
+    sessions.push({name:'XLF','open':false});sessions.push({name:'NZDJPY','open':false});sessions.push({name:'USDCAD','open':false});sessions.push({name:'CADJPY','open':false});sessions.push({name:'GC','open':false});sessions.push({name:'BTC','open':true});
   }else if(day===0){
-    sessions.push({name:'XLF','open':false});sessions.push({name:'NZDJPY','open':t>=1020});sessions.push({name:'USDCAD','open':t>=1020});sessions.push({name:'BTC','open':true});
+    sessions.push({name:'XLF','open':false});sessions.push({name:'NZDJPY','open':t>=1020});sessions.push({name:'USDCAD','open':t>=1020});sessions.push({name:'CADJPY','open':t>=1020});sessions.push({name:'GC','open':t>=1020});sessions.push({name:'BTC','open':true});
   }else{
     sessions.push({name:'XLF','open':t>=570&&t<960});
     sessions.push({name:'NZDJPY','open':fxOpen});
     sessions.push({name:'USDCAD','open':fxOpen});
+    sessions.push({name:'CADJPY','open':fxOpen});
+    sessions.push({name:'GC','open':fxOpen});
     sessions.push({name:'BTC','open':true});
   }
   return sessions;

@@ -62,16 +62,21 @@ class TestConfig:
         assert "BTC" in PAPER_PORTFOLIO
         assert "NZDJPY" in PAPER_PORTFOLIO
         assert "USDCAD" in PAPER_PORTFOLIO
-        assert PAPER_PORTFOLIO["XLF"]["alloc"] == 0.35
-        assert PAPER_PORTFOLIO["BTC"]["alloc"] == 0.30
-        assert PAPER_PORTFOLIO["NZDJPY"]["alloc"] == 0.20
-        assert PAPER_PORTFOLIO["USDCAD"]["alloc"] == 0.15
+        assert "CADJPY" in PAPER_PORTFOLIO
+        assert "GC" in PAPER_PORTFOLIO
+        assert PAPER_PORTFOLIO["XLF"]["alloc"] == 0.22
+        assert PAPER_PORTFOLIO["BTC"]["alloc"] == 0.20
+        assert PAPER_PORTFOLIO["NZDJPY"]["alloc"] == 0.15
+        assert PAPER_PORTFOLIO["CADJPY"]["alloc"] == 0.13
+        assert PAPER_PORTFOLIO["USDCAD"]["alloc"] == 0.10
+        assert PAPER_PORTFOLIO["GC"]["alloc"] == 0.20
+        assert abs(sum(v['alloc'] for v in PAPER_PORTFOLIO.values()) - 1.0) < 0.01
 
 
 class TestUpdatePnl:
     @pytest.fixture
     def engine(self):
-        return AssetEngine("XLF", "XLF", XLF_FEATURES, 0.35)
+        return AssetEngine("XLF", "XLF", XLF_FEATURES, PAPER_PORTFOLIO["XLF"]["alloc"])
 
     @pytest.fixture
     def signal_data(self):

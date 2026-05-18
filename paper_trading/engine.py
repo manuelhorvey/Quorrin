@@ -18,6 +18,8 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 STATE_PATH = os.path.join(BASE, 'data', 'live', 'state.json')
 TRADE_JOURNAL_PATH = os.path.join(BASE, 'data', 'live', 'trade_journal.parquet')
 CONFIDENCE_BUCKET_PATH = os.path.join(BASE, 'data', 'live', 'confidence_buckets.parquet')
+EQUITY_HISTORY_PATH = os.path.join(BASE, 'data', 'live', 'equity_history.json')
+LOG_PATH = os.path.join(BASE, 'data', 'live', 'engine.log')
 CONFIG_PATH = os.path.join(BASE, 'configs', 'paper_trading.yaml')
 
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -665,4 +667,50 @@ class PaperTradingEngine:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:
             json.dump(self._sanitize(state), f, indent=2, default=str)
+
+        self._append_equity_history(state)
         return state
+
+    def _append_equity_history(self, state):
+        p = state.get('portfolio', {})
+        total_value = p.get('total_value', 0)
+        total_return = p.get('total_return', 0)
+        gross = sum(
+            a.get('metrics', {}).get('current_value', 0) or 0
+            for a in state.get('assets', {}).values()
+        )
+        net_side = sum(
+            (a.get('metrics', {}).get('position') or {}).get('side') == 'long'
+            for a in state.get('assets', {}).values()
+        )
+        net = (net_side / len(state.get('assets', {}))) * 2 - 1 if state.get('assets') else 0
+        dd_vals = [
+            a.get('metrics', {}).get('drawdown', 0) or 0
+            for a in state.get('assets', {}).values()
+        ]
+        drawdown = min(dd_vals) if dd_vals else 0
+
+        record = {
+            'timestamp': datetime.now(tz=ET).isoformat(),
+            'portfolio_value': total_value,
+            'portfolio_return': total_return,
+            'drawdown': drawdown,
+            'gross_exposure': round(gross / total_value, 4) if total_value else 0,
+            'net_exposure': round(net, 4),
+            'assets': {
+                name: (a.get('metrics', {}).get('current_value') or 0)
+                for name, a in state.get('assets', {}).items()
+            },
+        }
+        os.makedirs(os.path.dirname(EQUITY_HISTORY_PATH), exist_ok=True)
+        history = []
+        if os.path.exists(EQUITY_HISTORY_PATH):
+            try:
+                with open(EQUITY_HISTORY_PATH, 'r') as f:
+                    history = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                history = []
+        history.append(record)
+        history = history[-2000:]
+        with open(EQUITY_HISTORY_PATH, 'w') as f:
+            json.dump(history, f, indent=2, default=str)

@@ -6,9 +6,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from quantforge import setup_logging
-logger = setup_logging(logging.INFO)
-
-from paper_trading.engine import PaperTradingEngine
+from paper_trading.engine import PaperTradingEngine, LOG_PATH
+os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+logger = setup_logging(logging.INFO, log_file=LOG_PATH)
 from paper_trading.serve import serve
 import threading, time, json, pickle, signal as sigmod
 

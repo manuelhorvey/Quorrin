@@ -6,6 +6,8 @@ TRADE_JOURNAL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'd
 DEFAULT_PORT = 5000
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), 'frontend')
+EQUITY_HISTORY_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'live', 'equity_history.json')
+LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'live', 'engine.log')
 
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -97,6 +99,39 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(json.dumps(trades, default=str).encode('utf-8'))
+            elif path == '/equity_history.json':
+                try:
+                    with open(EQUITY_HISTORY_PATH, 'r') as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(data.encode('utf-8'))
+                except FileNotFoundError:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(b'[]')
+            elif path == '/logs':
+                try:
+                    with open(LOG_PATH, 'r') as f:
+                        lines = f.readlines()
+                    tail = ''.join(lines[-200:])
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(tail.encode('utf-8'))
+                except FileNotFoundError:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(b'[no log file yet]')
             else:
                 self.send_response(404)
                 self.end_headers()

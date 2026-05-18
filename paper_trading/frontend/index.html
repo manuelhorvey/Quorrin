@@ -21,6 +21,7 @@
       <span class="status-text" id="statusText">Initializing...</span>
     </div>
     <span class="header-time"><span id="currentDate">&mdash;</span> <span id="currentTime">&mdash;</span></span>
+    <span class="pill" id="updateAgePill" style="background:var(--green-dim);color:var(--green);border-color:var(--green-border)">Updated --s ago</span>
     <span class="pill" id="daysBadge">0 days</span>
     <span class="pill" id="sessionBadge" style="background:var(--amber-dim);color:var(--amber);border-color:var(--amber-border)">Session: --</span>
   </div>
@@ -35,6 +36,14 @@
 <div id="dashboardContent" style="display:none;">
 
   <div class="portfolio-row" id="portfolioRow"></div>
+
+  <div class="section">
+    <div class="section-title">Equity Curve</div>
+    <span class="section-badge" id="equityCount">0 points</span>
+  </div>
+  <div class="equity-wrap">
+    <canvas id="equityCanvas" width="1400" height="160"></canvas>
+  </div>
 
   <div class="section">
     <div class="section-title">Assets</div>
@@ -73,6 +82,14 @@
     <span class="section-badge">Safety</span>
   </div>
   <div class="grid-4" id="haltGrid"></div>
+
+  <div class="log-section">
+    <div class="log-header" onclick="toggleLogs()">
+      <span>Engine Logs <span class="section-badge" id="logLineCount">0 lines</span></span>
+      <span id="logToggle">&#9654;</span>
+    </div>
+    <pre id="logContent" class="log-content" style="display:none;"></pre>
+  </div>
 
   <div class="footer">
     <div class="footer-text" id="footerText">Loading...</div>

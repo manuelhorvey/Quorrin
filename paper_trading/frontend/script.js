@@ -3,6 +3,10 @@ let stateData = null;
 var tradeData = [];
 var prevPositions = {};
 var newBadgeTimers = {};
+var equityHistory = [];
+var lastUpdateTime = null;
+var logsVisible = false;
+var logFetchFailCount = 0;
 
 function getLastTrade(name){
   for(var i=0;i<tradeData.length;i++){if(tradeData[i].asset===name)return tradeData[i]}
@@ -107,6 +111,7 @@ function render(state){
     ac+='<div class="asset-metric"><span class="asset-metric-label">Drawdown</span><span class="asset-metric-value '+(dd>-3?'':dd>-5?'cell-warn':'change-down')+'">'+fmt(dd)+'%</span></div></div>';
     ac+='<div class="asset-conf-bar"><div class="asset-conf-fill" style="width:'+conf+'%;background:'+confColor+'"></div></div>';
     var lt=getLastTrade(name);
+    ac+='<canvas class="asset-spark" width="180" height="24" data-asset="'+name+'"></canvas>';
     if(lt){var lri=resultInfo(lt.reason),lret=lt['return']!=null?(lt['return']*100).toFixed(2):'0.00',lside=(lt.side||'').toUpperCase();ac+='<div class="asset-last-trade">Last: '+lside+' <span class="'+lri.cls+'">'+(lt['return']>=0?'+':'')+lret+'% ('+lri.text+')</span></div>'}
     if(entry||stop||tp||upnl!=null){
       ac+='<div class="asset-more">';
@@ -216,10 +221,138 @@ async function fetchState(){
   }
 }
 
+function drawSparkline(canvas, values, color){
+  if(!canvas||!values||values.length<2)return;
+  var ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+  var mn=Infinity,mx=-Infinity;
+  for(var i=0;i<values.length;i++){
+    var v=values[i];
+    if(v!=null&&!isNaN(v)&&v!==Infinity&&v!==-Infinity){
+      if(v<mn)mn=v;if(v>mx)mx=v;
+    }
+  }
+  if(mn===Infinity||mx===mn){ctx.clearRect(0,0,w,h);return}
+  var pad=2,drawW=w-pad*2,drawH=h-pad*2;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle=color;
+  ctx.lineWidth=1.5;
+  ctx.lineJoin='round';
+  ctx.lineCap='round';
+  ctx.beginPath();
+  for(var i=0;i<values.length;i++){
+    var v=values[i];
+    if(v==null||isNaN(v)||v===Infinity||v===-Infinity)continue;
+    var x=pad+(i/(values.length-1))*drawW;
+    var y=pad+(1-(v-mn)/(mx-mn))*drawH;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+
+function renderEquityCurve(){
+  if(!equityHistory||equityHistory.length<2)return;
+  var canvas=document.getElementById('equityCanvas');
+  if(!canvas)return;
+  document.getElementById('equityCount').textContent=equityHistory.length+' points';
+  var values=equityHistory.map(function(e){return e.portfolio_value});
+  drawSparkline(canvas,values,'var(--accent)');
+}
+
+function renderAssetSparklines(){
+  if(!equityHistory||equityHistory.length<2)return;
+  var canvases=document.querySelectorAll('.asset-spark');
+  for(var ci=0;ci<canvases.length;ci++){
+    var cv=canvases[ci],name=cv.getAttribute('data-asset');
+    if(!name)continue;
+    var values=[];
+    for(var i=0;i<equityHistory.length;i++){
+      var av=equityHistory[i].assets?equityHistory[i].assets[name]:null;
+      if(av!=null&&!isNaN(av))values.push(av);
+    }
+    if(values.length>=2){
+      drawSparkline(cv,values,'var(--text-muted)');
+    }
+  }
+}
+
+async function fetchEquityHistory(){
+  try{
+    var r=await fetch('/equity_history.json?t='+Date.now());
+    if(!r.ok)return;
+    var data=await r.json();
+    if(Array.isArray(data)&&data.length>0){
+      equityHistory=data;
+      renderEquityCurve();
+      renderAssetSparklines();
+    }
+  }catch(e){}
+}
+
+function updateAgeDisplay(){
+  if(!lastUpdateTime){document.getElementById('updateAgePill').textContent='Updated --s ago';return}
+  var elapsed=Math.floor((Date.now()-lastUpdateTime)/1000);
+  var pill=document.getElementById('updateAgePill');
+  if(elapsed<30){
+    pill.textContent='Updated '+elapsed+'s ago';
+    pill.style.cssText='background:var(--green-dim);color:var(--green);border-color:var(--green-border)';
+  }else if(elapsed<90){
+    pill.textContent='Updated '+elapsed+'s ago';
+    pill.style.cssText='background:var(--amber-dim);color:var(--amber);border-color:var(--amber-border)';
+  }else{
+    pill.textContent='Updated '+elapsed+'s ago';
+    pill.style.cssText='background:var(--red-dim);color:var(--red);border-color:var(--red-border)';
+  }
+}
+
+function toggleLogs(){
+  var content=document.getElementById('logContent');
+  var toggle=document.getElementById('logToggle');
+  logsVisible=!logsVisible;
+  content.style.display=logsVisible?'block':'none';
+  toggle.textContent=logsVisible?'\u25BC':'\u25B6';
+  if(logsVisible)fetchLogs();
+}
+
+async function fetchLogs(){
+  try{
+    var r=await fetch('/logs?t='+Date.now());
+    if(!r.ok)return;
+    var text=await r.text();
+    document.getElementById('logContent').textContent=text;
+    var lines=text.split('\n').length;
+    document.getElementById('logLineCount').textContent=lines+' lines';
+    logFetchFailCount=0;
+  }catch(e){
+    logFetchFailCount++;
+    if(logFetchFailCount>3){
+      document.getElementById('logContent').textContent='[log unavailable after '+logFetchFailCount+' retries]';
+    }
+  }
+}
+
+// Patch render to also store lastUpdateTime and trigger equity/log fetch
+var _origRender=render;
+render=function(state){
+  _origRender(state);
+  var p=state.portfolio||{};
+  if(p.last_update){
+    var ts=new Date(p.last_update.replace(' ','T'));
+    if(!isNaN(ts.getTime()))lastUpdateTime=ts.getTime();
+  }
+};
+
+var _origFetchState=fetchState;
+fetchState=async function(){
+  await _origFetchState();
+  fetchEquityHistory();
+};
+
 setTimeout(fetchState,1000);
 setInterval(fetchState,30000);
 setInterval(function(){
   var n=new Date();
   document.getElementById('currentDate').textContent=fd(n);
   document.getElementById('currentTime').textContent=ft(n);
+  updateAgeDisplay();
 },1000);
+setInterval(fetchLogs,15000);

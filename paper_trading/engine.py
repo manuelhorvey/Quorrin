@@ -51,6 +51,7 @@ NZDJPY_FEATURES = ['vix_ma21', 'vix_delta_5', 'us_jp_10y_spread', 'nzdjpy_mom_21
 USDCAD_FEATURES = ['rate_diff', 'dxy_mom_21', 'vix_ma21', 'usdcad_mom_21']
 CADJPY_FEATURES = ['ca_jp_spread_mom_5', 'ca_jp_spread_mom_21', 'cadjpy_mom_21', 'vix_ma21']
 GC_FEATURES = ['real_yield_delta_63', 'breakeven_delta_63', 'dxy_mom_63', 'gc_mom_63']
+EURAUD_FEATURES = ['rate_diff', 'dxy_mom_21', 'vix_ma21', 'euraud_mom_21']
 
 
 def load_macro():
@@ -170,6 +171,9 @@ class AssetEngine:
             elif self.name == 'USDCAD':
                 a['dxy_mom_21'] = a['dxy'].pct_change(21)
                 a['usdcad_mom_21'] = df['close'].pct_change(21)
+            elif self.name == 'EURAUD':
+                a['dxy_mom_21'] = a['dxy'].pct_change(21)
+                a['euraud_mom_21'] = df['close'].pct_change(21)
 
             a['label'] = (labeled.loc[a.index, 'label'] + 1).astype(int)
         return a.dropna(subset=self.features + ['label'])
@@ -539,8 +543,6 @@ def _build_paper_portfolio():
                         'halt': halt, 'config': config}
         return pf
     return {
-        'XLF': {'ticker': 'XLF', 'features': XLF_FEATURES, 'alloc': 0.22,
-                'halt': HALT, 'config': {}},
         'BTC': {'ticker': 'BTC-USD', 'features': BTC_FEATURES, 'alloc': 0.20,
                 'halt': {'drawdown': -0.15, 'monthly_pf': 0.70, 'signal_drought': 30, 'prob_drift': 0.15}, 'config': {'vol_scalar': True}},
         'NZDJPY': {'ticker': 'NZDJPY=X', 'features': NZDJPY_FEATURES, 'alloc': 0.15,
@@ -551,6 +553,8 @@ def _build_paper_portfolio():
                    'halt': HALT, 'config': {}},
         'GC': {'ticker': 'GC=F', 'features': GC_FEATURES, 'alloc': 0.20,
                'halt': HALT, 'config': {}},
+        'EURAUD': {'ticker': 'EURAUD=X', 'features': EURAUD_FEATURES, 'alloc': 0.22,
+                   'halt': HALT, 'config': {}},
     }
 
 

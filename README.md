@@ -3,11 +3,11 @@
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Status](https://img.shields.io/badge/status-active%20paper%20trading%20%7C%20research-blue)
-![Assets](https://img.shields.io/badge/assets-6-brightgreen)
+![Assets](https://img.shields.io/badge/paper--trade%20assets-6-brightgreen)
 ![WalkForward](https://img.shields.io/badge/walk--forward-30%20assets%20validated-success)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**QuantForge** is a modular quantitative research framework focused on **macro-conditioned trading systems** across equities, FX, and crypto. It features a live 24/7 paper-trading engine with a real-time web dashboard and robust walk-forward validation infrastructure.
+**QuantForge** is a modular quantitative research framework focused on **macro-conditioned trading systems** across equities, FX, metals, and crypto. It features a live 24/7 paper-trading engine with a web dashboard and robust walk-forward validation infrastructure.
 
 **This is a research and paper-trading system — not a production trading bot.**
 
@@ -77,15 +77,24 @@ See [ADR-015](docs/adr/ADR-015-asset-specific-label-horizons.md) for fwd60 metho
 
 ## Advanced Architecture
 
+### Research (Ensemble)
+
 | Module                    | Description |
 |--------------------------|-----------|
-| Module | Description |
-|--------|-------------|
+| HybridRegimeEnsemble | Global XGBoost backbone (depth=2, 100 trees) with regime-specific expert heads (TREND/RANGE/VOLATILE) and protected macro head (0.45 blend) |
 | MacroExpertHead | Asset-specific XGBoost (depth=2) with protected weight 0.45 — prevents price features drowning macro signal |
-| RegimeClassifier | TREND/RANGE/VOLATILE/NEUTRAL — operates as risk/participation controller, not alpha source |
+| RegimeClassifier | TREND/RANGE/VOLATILE/NEUTRAL — operates as risk/participation controller |
 | DriverAtlas | Asset-to-feature-cluster routing: carry_fx, yield_equity, momentum_crypto, positioning |
 | ValidityStateMachine | GREEN/YELLOW/RED capital allocation with PSI-gated hysteresis |
 | WalkForwardEngine | 5yr rolling train, 1yr OOS test, bootstrap p<0.05 deployment gate |
+
+### Paper Trading (Deployed)
+
+| Component                 | Description |
+|---------------------------|-----------|
+| AssetEngine | Per-asset XGBoost (depth=2, 300 trees, lr=0.02), 4 macro features, tb20 or fwd60 label routing |
+| PaperTradingEngine | Orchestrates 6 assets, volatility-scaled sizing, halt conditions, P&L tracking |
+| Flask Dashboard | Real-time web UI with portfolio summary, signal cards, execution log, performance metrics |
 
 ---
 
@@ -140,39 +149,52 @@ flowchart TD
 ```text
 QuantForge/
 ├── paper_trading/       # Live engine + Flask dashboard
-│   └── models/          # Serialised model pickles
+│   ├── serve.py         # Flask web server
+│   ├── engine.py        # Paper trading engine
+│   ├── monitor.py       # Entry point (data → signal → trade loop)
+│   ├── frontend/        # Dashboard UI (index.html, script.js, style.css)
+│   └── models/          # 37 serialised XGBoost model pickles
+├── scripts/             # Training & validation runners
+│   ├── walk_forward_all.py
+│   ├── train_all_assets.py
+│   ├── gc_walk_forward.py
+│   └── ...
 ├── equity/              # Walk-forward research scripts
-├── backtests/           # Core validation & metrics engine
-├── models/              # Ensemble, regime, expert heads
+├── backtests/           # Walk-forward engine, metrics, simulations
+├── models/              # Research models
 │   ├── regime/          # Regime classifier
 │   ├── ensemble/        # Model router
 │   ├── mean_reversion/  # RSI + Bollinger for RANGE
 │   ├── trend/           # Trend-following models
-│   └── volatility/      # Volatility models
-├── features/            # Feature engineering pipeline
+│   ├── volatility/      # Volatility models
+│   ├── macro_expert_head.py
+│   └── hybrid_ensemble.py
+├── features/            # Feature engineering pipeline (base, pair, regime, COT, interaction, structural, trend, volatility)
 ├── labels/              # Triple-barrier & meta-labeling
-├── signals/             # Signal filtering & thresholding
-├── risk/                # Position sizing, exposure, drawdown
-├── monitoring/          # Validity state machine, drift, MLflow
+├── signals/             # Signal filtering, thresholding, generation
+├── risk/                # Position sizing, drawdown controls, exposure limits
+├── monitoring/          # Validity state machine, drift detection, dashboard backend, MLflow, weekly reports
 ├── data/
-│   ├── loaders/         # Downloaders and macro loaders
+│   ├── loaders/         # yfinance, FRED, COT downloaders
 │   ├── raw/             # Raw OHLCV parquet files
-│   ├── processed/       # Feature-engineered datasets
-│   └── live/            # Runtime engine state
-├── diagnostics/         # Model audits, sweeps, SHAP analysis
-├── portfolio/           # HRP, risk parity (in progress)
-├── execution/           # Broker stubs (Alpaca/IBKR)
-├── configs/             # YAML configs per asset class
-├── tests/               # Pytest test suite
-├── docs/                # Project documentation
-├── adr/                 # Architecture Decision Records
-├── notebooks/           # Jupyter notebooks
+│   ├── processed/       # Feature-engineered datasets & walk-forward results
+│   ├── live/            # Runtime engine state, equity history, logs
+│   └── weekly_pipeline.py
+├── diagnostics/         # Model audits, sweeps, SHAP analysis, isolation tests
+├── portfolio/           # HRP allocator, risk parity, correlation clusters
+├── execution/           # Broker interface, order manager, portfolio sync
+├── configs/             # YAML configs (paper trading, forex) + driver atlas
+├── tests/               # Pytest test suite (7 test files)
+├── docs/                # Project documentation, runbook, system overview
+│   └── adr/             # Architecture Decision Records (ADR-000 through ADR-016)
+├── adr/                 # Additional ADRs (ADR-011 known issues)
+├── notebooks/           # (placeholder — no notebooks yet)
 ├── .github/
-│   └── workflows/       # CI pipeline
+│   └── workflows/       # CI pipeline (py_compile lint + pytest)
 ├── quantforge/          # Package root (version, logging)
 ├── main.py              # Minimal entry point
 ├── monitor_all          # Launch script (paper trading)
-├── Makefile             # Dev targets
+├── Makefile             # Dev targets (install, test, lint, run, clean)
 ├── pyproject.toml       # Project metadata & deps
 └── requirements.txt     # Pinned dependencies
 ```
@@ -186,7 +208,8 @@ Project documentation and architecture decisions live alongside the code:
 | Path | Description |
 |------|-------------|
 | [`docs/`](docs/) | Project documentation — guides, references, deep-dives |
-| [`adr/`](adr/) | Architecture Decision Records — key design decisions and their rationale |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records — key design decisions and their rationale (ADR-000 through ADR-016) |
+| [`adr/`](adr/) | Supplementary ADRs — known issues and deferred decisions |
 
 ADR entries follow the standard [Michael Nygard template](https://github.com/joelparkerhenderson/architecture-decision-record) and are numbered sequentially.
 
@@ -201,6 +224,7 @@ cd QuantForge
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install pytest pytest-cov   # dev dependencies
 
 export PYTHONPATH=$PYTHONPATH:.
 ```
@@ -210,8 +234,14 @@ export PYTHONPATH=$PYTHONPATH:.
 ## Quick Start
 
 ```bash
-# Run 30-asset walk-forward research
+# Train models for all 30 assets
+python scripts/train_all_assets.py
+
+# Run walk-forward validation
 python scripts/walk_forward_all.py
+
+# Run tests
+make test
 
 # Start live paper trading + dashboard
 ./monitor_all
@@ -223,11 +253,11 @@ python scripts/walk_forward_all.py
 
 ### Near Term (H2 2026)
 
-- Broker integration (Alpaca / Interactive Brokers)
+- Live broker integration (Alpaca / Interactive Brokers) — interface stubs exist
 - Realistic slippage & spread modeling
-- HRP / risk-parity portfolio allocator
-- Enhanced drift detection & auto-retraining triggers
-- AUDJPY re-evaluation post-November
+- Enhance drift detection & auto-retraining triggers
+- Deploy `HybridRegimeEnsemble` to paper trading (or decide to keep simple XGBoost)
+- AUDJPY re-evaluation post-November — model trained, deferred pending correlation analysis
 
 ### Medium Term
 
@@ -240,7 +270,7 @@ python scripts/walk_forward_all.py
 
 ## Research backlog
 
-Assets pending validation: AUDJPY (deferred post-November — r=0.87 with NZDJPY), ETH-USD (momentum_crypto cluster), XLU/XLRE (yield_equity cluster).
+Assets pending validation: ETH-USD (momentum_crypto cluster), XLU/XLRE (yield_equity cluster). AUDJPY (model trained, deferred post-November — r=0.87 with NZDJPY).
 
 Blocked pending data acquisition: EURUSD, GBPUSD (need CFTC COT weekly positioning data).
 
@@ -250,9 +280,10 @@ Blocked pending data acquisition: EURUSD, GBPUSD (need CFTC COT weekly positioni
 
 - Paper trading only (no real capital at risk)
 - Weekend data staleness for equities/FX
-- No live execution or order management yet
+- No live broker execution — interface stubs exist (Alpaca/IBKR) but untested
 - EURUSD and GBPUSD blocked — requires COT positioning data
 - Model validity depends on PSI distribution stability
+- Paper trading uses simple 4-feature XGBoost per asset; research ensemble (`HybridRegimeEnsemble`) not yet deployed
 
 ---
 

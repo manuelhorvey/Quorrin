@@ -93,8 +93,14 @@ See [ADR-015](docs/adr/ADR-015-asset-specific-label-horizons.md) for fwd60 metho
 
 | Component                 | Description |
 |---------------------------|-----------|
+| StateStore | Versioned persistence boundary — EngineSnapshot, corrupt-file recovery, file locking, cache management |
+| TradeDecision | Pure model intent dataclass — signal, confidence, provenance, no execution side-effects |
+| PositionIntent / PositionManager | Extracted position lifecycle — open, close, SL/TP check, PnL accounting, deterministic replay |
+| ValidityStateMachine | Per-asset GREEN/YELLOW/RED state with hysteresis, inertia smoothing, regime persistence lock |
+| ExecutionState | Portfolio-level ACTIVE/PAUSED/HALTED — derived from halt conditions and validity exposure |
 | AssetEngine | Per-asset XGBoost (depth=2, 300 trees, lr=0.02), 4 macro features, tb20 or fwd60 label routing |
 | PaperTradingEngine | Orchestrates 6 assets, volatility-scaled sizing, halt conditions, P&L tracking |
+| PaperBroker(BrokerInterface) | Simulated broker — yfinance fills at market price, configurable slippage/fees |
 | Dashboard (stdlib http.server) | Real-time web UI with portfolio summary, signal cards, session-scoped log, performance metrics |
 
 ---
@@ -152,6 +158,9 @@ QuantForge/
 ├── paper_trading/       # Live engine + stdlib HTTP dashboard
 │   ├── serve.py         # stdlib HTTP server
 │   ├── engine.py        # Paper trading engine
+│   ├── state_store.py   # Versioned persistence boundary (EngineSnapshot, cache, journal)
+│   ├── decision.py      # TradeDecision / PositionIntent pure dataclasses
+│   ├── position_manager.py  # Position lifecycle (open, close, SL/TP, PnL)
 │   ├── monitor.py       # Entry point (data → signal → trade loop)
 │   ├── frontend/        # Dashboard UI (index.html, script.js, style.css)
 │   └── models/          # 6 serialised XGBoost model pickles
@@ -173,7 +182,7 @@ QuantForge/
 │   └── hybrid_ensemble.py
 ├── features/            # Feature engineering pipeline (base, pair, regime, COT, interaction, structural, trend, volatility)
 ├── labels/              # Triple-barrier & meta-labeling
-├── signals/             # Signal filtering, thresholding, generation
+├── signals/             # Signal filtering, thresholding, generation, paper signal adapter
 ├── risk/                # Position sizing, drawdown controls, exposure limits
 ├── monitoring/          # Validity state machine, drift detection, dashboard backend, MLflow, weekly reports
 ├── data/
@@ -184,9 +193,9 @@ QuantForge/
 │   └── weekly_pipeline.py
 ├── diagnostics/         # Model audits, sweeps, SHAP analysis, isolation tests
 ├── portfolio/           # HRP allocator, risk parity, correlation clusters
-├── execution/           # Broker interface, order manager, portfolio sync
+├── execution/           # Broker interface, order manager, portfolio sync, PaperBroker (simulated broker)
 ├── configs/             # YAML configs (paper trading, forex) + driver atlas
-├── tests/               # Pytest test suite (7 test files)
+├── tests/               # Pytest test suite (13 test files, 148 tests)
 ├── docs/                # Project documentation, runbook, system overview
 │   └── adr/             # Architecture Decision Records (ADR-000 through ADR-017)
 ├── adr/                 # Additional ADRs (ADR-011 known issues)
@@ -255,7 +264,7 @@ make test
 
 ### Near Term (H2 2026)
 
-- Live broker integration (Alpaca / Interactive Brokers) — interface stubs exist
+- Live broker integration (Alpaca / Interactive Brokers) — PaperBroker(BrokerInterface) contract exists
 - Realistic slippage & spread modeling
 - Enhance drift detection & auto-retraining triggers
 - Deploy `HybridRegimeEnsemble` to paper trading (or decide to keep simple XGBoost)
@@ -282,7 +291,7 @@ Blocked pending data acquisition: EURUSD, GBPUSD (need CFTC COT weekly positioni
 
 - Paper trading only (no real capital at risk)
 - Weekend data staleness for equities/FX
-- No live broker execution — interface stubs exist (Alpaca/IBKR) but untested
+- No live broker execution — PaperBroker(BrokerInterface) provides the contract; Alpaca/IBKR stubs exist
 - EURUSD and GBPUSD blocked — requires COT positioning data
 - Model validity depends on PSI distribution stability
 - Paper trading uses simple 4-feature XGBoost per asset; research ensemble (`HybridRegimeEnsemble`) not yet deployed

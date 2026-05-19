@@ -336,7 +336,48 @@ async function fetchLogs(){
   }
 }
 
-// Patch render to also store lastUpdateTime and trigger equity/log fetch
+async function fetchAndRenderHealth(){
+  try{
+    var r=await fetch('/health.json?t='+Date.now());
+    if(!r.ok)return;
+    var data=await r.json();
+    var assets=data.assets||{},sys=data.system_health||{};
+    var hhtml='';
+    for(var name in assets){
+      var h=assets[name],score=h.health_score||0,label=h.health_label||'UNKNOWN',color=h.health_color||'grey';
+      var pct=(score*100).toFixed(0);
+      var bgColor=color==='green'?'var(--green)':color==='amber'?'var(--amber)':'var(--red)';
+      var bgDim=color==='green'?'var(--green-dim)':color==='amber'?'var(--amber-dim)':'var(--red-dim)';
+      var borderColor=color==='green'?'var(--green-border)':color==='amber'?'var(--amber-border)':'var(--red-border)';
+      hhtml+='<div class="health-card" style="background:'+bgDim+';border-color:'+borderColor+'">';
+      hhtml+='<div class="health-name">'+name+'</div>';
+      hhtml+='<div class="health-value" style="color:'+bgColor+'">'+pct+'%</div>';
+      hhtml+='<div class="health-bar"><div class="health-bar-fill" style="width:'+pct+'%;background:'+bgColor+'"></div></div>';
+      hhtml+='<div class="health-label" style="color:'+bgColor+'">'+label+'</div>';
+      var comps=h.components||{};
+      hhtml+='<div class="health-comps">';
+      for(var k in comps){
+        var cv=(comps[k]*100).toFixed(0);
+        var cc=cv>=70?'var(--green)':cv>=45?'var(--amber)':'var(--red)';
+        hhtml+='<span class="health-comp" style="color:'+cc+'">'+k.substring(0,4)+' '+cv+'%</span>';
+      }
+      hhtml+='</div></div>';
+    }
+    document.getElementById('healthGrid').innerHTML=hhtml;
+    if(sys.n_assets){
+      document.getElementById('healthSystem').innerHTML=
+        '<span class="system-health-pill">System: '+(sys.mean_health_score*100).toFixed(0)+'% &middot; '+
+        sys.n_healthy+' healthy &middot; '+sys.n_degraded+' degraded &middot; '+sys.n_critical+' critical</span>';
+    }
+  }catch(e){}
+}
+
+var _origFetch=window.fetchState;
+fetchState=async function(){
+  await _origFetch();
+  fetchEquityHistory();
+  fetchAndRenderHealth();
+};
 var _origRender=render;
 render=function(state){
   _origRender(state);

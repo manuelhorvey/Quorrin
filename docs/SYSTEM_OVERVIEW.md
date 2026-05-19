@@ -6,55 +6,63 @@ High-level architecture, component responsibilities, and data flow for the Quant
 
 ## Architecture Diagram
 
-```
-Raw Data Layer                  Feature Layer                Model Layer
-┌──────────────┐    ┌─────────────────────────┐    ┌─────────────────────┐
-│ yfinance     │    │ base_features.py         │    │ HybridRegimeEnsemble│
-│ OHLCV daily  │───▶│ regime_features.py       │───▶│ ├─ Global backbone  │
-│ FRED macro   │    │ structural_features.py   │    │ ├─ Regime experts   │
-│ (rate_diff,  │    │ interaction_features.py  │    │ └─ Macro expert     │
-│  yield_curve)│    │ macro features (separate)│    │   (protected 0.45)  │
-└──────────────┘    └─────────────────────────┘    └─────────┬───────────┘
-                                                             │
-                      Signal Layer                 Regime Layer │
-              ┌────────────────────────┐    ┌──────────────────┐│
-              │ RegimeAwareSignalGen   │◀───│ RegimeClassifier ││
-              │ ├─ Threshold 0.45      │    │ KER+ADX+vol     ││
-              │ └─ Confidence = max(P) │    │ TREND/RANGE/    ││
-              └───────────┬────────────┘    │ VOLATILE/NEUTRAL││
-                          │                 └──────────────────┘│
-                          │                                      │
-              ┌───────────▼──────────────────────────────────────┘
-              │
-              ▼
-    ┌─────────────────────────────────────────────────────────┐
-    │                 Validity State Machine                   │
-    │  GREEN (1.0) ←→ YELLOW (0.5) ←→ RED (0.0)              │
-    │  Hysteresis + temporal smoothing + regime lock          │
-    └─────────────────────────┬───────────────────────────────┘
-              │
-               ▼
-     ┌─────────────────────────────────────────────────────────┐
-     │              Paper Trading Engine                        │
-     │  6x AssetEngine (6 assets, 5 driver clusters)            │
-  │  ├─ BTC tb20    GC=F fwd60   EURAUD tb20                │
-  │  ├─ NZDJPY tb20 CADJPY tb20  USDCAD tb20                │
-     │  ├─ Live inference every 30 min                          │
-     │  ├─ Vol-scaled position sizing                          │
-     │  ├─ SL/TP management                                    │
-     │  └─ PnL tracking (state.json)                           │
-     └─────────────────────────┬───────────────────────────────┘
-                              │
-                              ▼
-    ┌─────────────────────────────────────────────────────────┐
-    │              Web Dashboard (port 5000)                   │
-    │  Flask/SocketIO + HTML/CSS/JS                            │
-    │  ├─ Portfolio summary                                   │
-    │  ├─ Per-asset signal cards                              │
-    │  ├─ Live execution log                                  │
-    │  ├─ Performance metrics                                 │
-    │  └─ Validity & regime monitors                          │
-    └─────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Data_Layer [Raw Data Layer]
+        A1[yfinance: OHLCV daily]
+        A2[FRED: macro rate_diff, yield_curve]
+        A1 & A2 --> B[Data Integration]
+    end
+
+    subgraph Feature_Layer [Feature Layer]
+        B --> C[base_features.py]
+        B --> D[regime_features.py]
+        B --> E[structural_features.py]
+        B --> F[interaction_features.py]
+        B --> G[macro features]
+    end
+
+    subgraph Model_Layer [Model Layer]
+        C & D & E & F & G --> H[HybridRegimeEnsemble]
+        H --> H1[Global backbone]
+        H --> H2[Regime experts]
+        H --> H3[Macro expert]
+    end
+
+    subgraph Regime_Layer [Regime Layer]
+        D --> I[RegimeClassifier]
+        I --> I1[KER + ADX + vol]
+        I1 --> I2{TREND/RANGE/VOLATILE/NEUTRAL}
+    end
+
+    subgraph Signal_Layer [Signal Layer]
+        H --> J[RegimeAwareSignalGen]
+        I2 --> J
+        J --> J1[Threshold 0.45]
+        J --> J2[Confidence = max P]
+    end
+
+    subgraph Monitoring_Layer [Monitoring Layer]
+        J1 & J2 --> K[Validity State Machine]
+        K --> K1[GREEN 1.0 / YELLOW 0.5 / RED 0.0]
+        K --> K2[Hysteresis + temporal smoothing]
+    end
+
+    subgraph Execution_Layer [Paper Trading Engine]
+        K1 --> L[AssetEngine x6]
+        L --> L1[BTC, GC=F, EURAUD, NZDJPY, CADJPY, USDCAD]
+        L1 --> L2[Live inference every 30 min]
+        L2 --> L3[Vol-scaled sizing + SL/TP]
+        L3 --> L4[PnL tracking: state.json]
+    end
+
+    subgraph UI_Layer [Web Dashboard]
+        L4 --> M[Flask/SocketIO Dashboard]
+        M --> M1[Portfolio summary]
+        M --> M2[Per-asset signal cards]
+        M --> M3[Live execution log]
+        M --> M4[Validity & regime monitors]
+    end
 ```
 
 ---
@@ -168,36 +176,29 @@ YAML configs define per-asset parameters:
 
 ### Research Pipeline
 
-```
-OHLCV (daily) ──▶ weekly_pipeline.py ──▶ Feature engineering ──▶ Labeling
-     │                                                              │
-     └─── Macro data (FRED) ───▶ Align to price index              │
-                                                                   ▼
-                                                   Walk-forward validation
-                                                         │
-                                                    Bootstrap gate
-                                                         │
-                                                    Model serialization
-                                                         │
-                                                    Paper trading ready
+```mermaid
+graph TD
+    R1[OHLCV daily] --> R2[weekly_pipeline.py]
+    R3[Macro FRED] --> R2
+    R2 --> R4[Feature engineering]
+    R4 --> R5[Labeling]
+    R5 --> R6[Walk-forward validation]
+    R6 --> R7[Bootstrap gate]
+    R7 --> R8[Model serialization]
+    R8 --> R9[Paper trading ready]
 ```
 
 ### Paper Trading Pipeline
 
-```
-yfinance data (every 30 min) ──▶ Feature computation (live)
-                                      │
-                                 Load model pickle
-                                      │
-                                 Inference (XGBoost predict_proba)
-                                      │
-                                 Signal + Confidence (> 0.45?)
-                                      │
-                                 Validity state machine check
-                                      │
-                                 Position management (entry/SL/TP)
-                                      │
-                                 Update state.json ──▶ Dashboard
+```mermaid
+graph TD
+    T1[yfinance 30 min] --> T2[Feature computation live]
+    T3[Load model pickle] --> T4[Inference XGBoost]
+    T2 & T4 --> T5[Signal + Confidence > 0.45?]
+    T5 --> T6[Validity state machine check]
+    T6 --> T7[Position management entry/SL/TP]
+    T7 --> T8[Update state.json]
+    T8 --> T9[Dashboard]
 ```
 
 ---

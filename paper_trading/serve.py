@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paper_trading.state_store import StateStore
 from paper_trading.risk_governance import get_latest as _get_risk_latest
+from paper_trading.health_score import get_latest as _get_health_latest, compute_all as _compute_health_all
 
 _STORE = StateStore(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_PORT = 5000
@@ -162,6 +163,28 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     self.send_response(200)
                 else:
                     data = json.dumps({'error': f'No shadow action for {asset}', 'asset': asset})
+                    self.send_response(404)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(data.encode('utf-8'))
+            elif path == '/health.json':
+                data = json.dumps(_compute_health_all(), indent=2, default=str)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(data.encode('utf-8'))
+            elif path.startswith('/health/') and path.endswith('.json'):
+                asset = path[len('/health/'):-len('.json')]
+                signal = _get_health_latest(asset)
+                if signal is not None:
+                    data = json.dumps(signal, indent=2, default=str)
+                    self.send_response(200)
+                else:
+                    data = json.dumps({'error': f'No health score for {asset}', 'asset': asset})
                     self.send_response(404)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')

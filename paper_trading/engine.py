@@ -17,6 +17,7 @@ from enum import Enum
 from paper_trading.tracer import trace_decision, shadow_compare_signal, shadow_compare_sizing, shadow_compare_pnl, trace_diagnostic_report
 from paper_trading import diagnostics as diag
 from paper_trading.shadow_memory import store_event as _shadow_store
+from paper_trading.risk_governance import evaluate as _risk_evaluate
 from paper_trading import wrappers as _w
 from shared.registry import StrategyRegistry
 
@@ -176,6 +177,7 @@ class AssetEngine:
         self._sizing_strategy = self._reg.get_sizing(self.name)
         self._pnl_strategy = self._reg.get_pnl(self.name)
         self._feature_pipeline = self._reg.get_features(self.name)
+        self._risk_signal = None
         self._research_mode = _cfg.get("research_mode", False)
         if state_store is not None:
             self.state_store = state_store
@@ -368,6 +370,7 @@ class AssetEngine:
             )
             trace_diagnostic_report(_report)
             _shadow_store(self.name, _report)
+            self._risk_signal = _risk_evaluate(self.name)
         except Exception:
             pass
 
@@ -843,6 +846,11 @@ class PaperTradingEngine:
                 'start_time': self.start_date.isoformat(),
             },
             halt_conditions=state.get('halt_conditions'),
+            risk_signals={
+                name: asset._risk_signal
+                for name, asset in self.assets.items()
+                if asset._risk_signal is not None
+            } or None,
         )
         for name, asset in self.assets.items():
             if asset.pos_mgr.has_position():

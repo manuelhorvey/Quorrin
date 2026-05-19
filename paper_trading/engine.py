@@ -705,6 +705,7 @@ class PaperTradingEngine:
                 'days_running': dr,
                 'runtime_hours': round(runtime_hours, 1),
                 'start_date': self.start_date.strftime('%Y-%m-%d'),
+                'start_datetime': self.start_date.isoformat(),
                 'last_update': self.last_update.strftime('%Y-%m-%d %H:%M:%S') if self.last_update else None,
                 'capital': CONFIG['capital'],
                 'allocations': {n: a.allocation for n, a in self.assets.items()},

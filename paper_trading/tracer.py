@@ -55,6 +55,10 @@ def trace_decision(
     })
 
 
+def trace_diagnostic_report(report: dict) -> None:
+    _append({"event": "shadow_diagnostic", **report})
+
+
 def shadow_compare_signal(
     asset: str,
     proba_produced: list,

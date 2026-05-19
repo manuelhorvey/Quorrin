@@ -14,7 +14,8 @@ from paper_trading.decision import TradeDecision, PositionIntent
 from paper_trading.position_manager import PositionManager
 from monitoring.validity_state_machine import ValidityStateMachine as _ValidityStateMachine, ValidityState as _ValidityState
 from enum import Enum
-from paper_trading.tracer import trace_decision, shadow_compare_signal, shadow_compare_sizing, shadow_compare_pnl
+from paper_trading.tracer import trace_decision, shadow_compare_signal, shadow_compare_sizing, shadow_compare_pnl, trace_diagnostic_report
+from paper_trading import diagnostics as diag
 from paper_trading import wrappers as _w
 from shared.registry import StrategyRegistry
 
@@ -343,6 +344,30 @@ class AssetEngine:
             original_size=float(pos_size),
         )
 
+        try:
+            _proba_list = [float(proba[-1, 0]), float(proba[-1, 1]), float(proba[-1, 2])]
+            _sig_div = diag.analyze_signal_divergence(
+                _proba_list, threshold,
+                decision.signal, decision.confidence,
+                _shadow_stype, _shadow_conf_pct,
+            )
+            _mod_div = diag.analyze_model_distribution(self.name, _proba_list)
+            _feat_drivers = diag.analyze_feature_impact(
+                self.model, X.iloc[[-1]], self.features, proba[-1:],
+            )
+            _regime = diag.analyze_regime_context(df["close"])
+            trace_diagnostic_report(diag.build_shadow_report(
+                asset=self.name,
+                timestamp=str(latest.name.date()),
+                signal_match=_sig_div["match"],
+                signal_divergence=_sig_div,
+                model_divergence=_mod_div,
+                feature_drivers=_feat_drivers,
+                regime_context=_regime,
+            ))
+        except Exception:
+            pass
+
         _reg.validate_strategies(self.name, {
             "_model": self._model_iface,
             "_signal": self._signal_strategy,
@@ -447,6 +472,22 @@ class AssetEngine:
             self.pos_mgr.position_size, pos_size,
         )
         shadow_compare_pnl(asset=self.name, wrapper_pnl=_shadow_pnl, original_pnl=pnl)
+        try:
+            _pnl_decomp = diag.analyze_pnl_decomposition(
+                self.pos_mgr.current_value, direction, ret,
+                self.pos_mgr.position_size, pos_size, pnl,
+            )
+            _regime = diag.analyze_regime_context(close)
+            trace_diagnostic_report(diag.build_shadow_report(
+                asset=self.name,
+                timestamp=last_bar,
+                signal_match=True,
+                pnl_match=_pnl_decomp["match"],
+                regime_context=_regime,
+                pnl_decomposition=_pnl_decomp,
+            ))
+        except Exception:
+            pass
         self.pos_mgr.apply_pnl(pnl)
         self.current_value = self.pos_mgr.current_value
         self.peak_value = self.pos_mgr.peak_value

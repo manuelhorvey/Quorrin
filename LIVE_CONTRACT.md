@@ -1,0 +1,240 @@
+# LIVE SYSTEM CONTRACT — IMMUTABLE SOURCE OF TRUTH
+
+This file defines the exact behavior of the production trading system.
+Any deviation from this contract is a trading bug.
+Changes require full regression validation.
+
+---
+
+## 1. MODEL CONTRACT
+
+**Type:** `xgboost.XGBClassifier`
+**Signature:** `model.predict_proba(X: pd.DataFrame) -> np.ndarray`
+**Output shape:** `(N, 3)` — columns: `[short_prob, neutral_prob, long_prob]`
+**Constructor:**
+```
+n_estimators=300, max_depth=2, learning_rate=0.02,
+objective='multi:softprob', num_class=3,
+random_state=42, n_jobs=1, tree_method='hist', verbosity=0
+```
+**Serialization:** `pickle.dump` / `pickle.load` to `paper_trading/models/{name}_model.pkl`
+
+---
+
+## 2. SIGNAL THRESHOLD CONTRACT
+
+**Threshold value:** `0.45` (float)
+**Mapping (engine.py:290-294, 310):**
+
+| Condition | `signal` value | String label | Class label |
+|---|---|---|---|
+| `proba[:,2] > 0.45` (long, last check) | `2` | `BUY` | 2 |
+| `proba[:,0] > 0.45` (short, first check) | `0` | `SELL` | 0 |
+| Both > 0.45 | `2` (long wins — overwrites) | `BUY` | 2 |
+| Neither > 0.45 | `0` (default) | `FLAT` | 1 |
+
+**Confidence:** `confidence = max(proba[:,2], proba[:,0])`
+**Confidence output:** `round(confidence * 100, 2)` (percent, 0-100 scale)
+
+---
+
+## 3. FEATURE CONTRACT (PER ASSET)
+
+| Asset | Ticker | Features | Label type | Label params |
+|---|---|---|---|---|
+| BTC | BTC-USD | `rate_diff, 2y_yield_delta_63, btc_mom_63, btc_vs_spy_63` | tb20 | pt_sl=[2,2], vbar=20 |
+| GC | GC=F | `real_yield_delta_63, breakeven_delta_63, dxy_mom_63, gc_mom_63` | fwd60 | window=60, threshold=0.02 |
+| CADJPY | CADJPY=X | `ca_jp_spread_mom_5, ca_jp_spread_mom_21, vix_ma21, cadjpy_mom_21` | fwd60 | window=60, threshold=0.02 |
+| NZDJPY | NZDJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, nzdjpy_mom_21` | tb20 | pt_sl=[2,2], vbar=20 |
+| USDCAD | USDCAD=X | `rate_diff, dxy_mom_21, vix_ma21, usdcad_mom_21` | tb20 | pt_sl=[2,2], vbar=20 |
+| EURAUD | EURAUD=X | `rate_diff, dxy_mom_21, vix_ma21, euraud_mom_21` | tb20 | pt_sl=[2,2], vbar=20 |
+
+**tb20 label:** `apply_triple_barrier(df, pt_sl=[2,2], vertical_barrier=20)` → `{-1,0,1}` → `+1` → `{0,1,2}`
+**fwd60 label:** `ret = close.pct_change(60).shift(-60)` → `2 if ret>0.02, 0 if ret<-0.02, 1 else`
+
+---
+
+## 4. POSITION SIZING CONTRACT
+
+**Default:** `pos_size = 1.0` (all assets except BTC)
+**BTC only:** `pos_size = _vol_scalar(df)` where:
+```
+rets = close.pct_change().dropna()
+if len(rets) < 30: return 1.0
+rv = rets.iloc[-30:].std() * sqrt(252)
+if isnan(rv) or isinf(rv): return 1.0
+scalar = 0.30 / (rv + 1e-9)
+pos_size = min(scalar, 1.0)
+```
+
+**Position sizing multiplier:** `CONFIG['position_size'] = 0.95`
+Applied in: `PositionManager.close()` → `pnl = current_value * ret * 0.95`
+Applied in: `PositionManager.compute_daily_pnl()` → `current_value * direction * ret * 0.95 * pos_size`
+
+---
+
+## 5. SL/TP CONTRACT
+
+**Volatility:** `returns = log(close / close.shift(1)); vol = ewm(span=100).std(); floor = 0.01`
+**Multiplier:** `2.0`
+**Formulas:**
+```
+long:  sl = entry * (1 - vol * 2),  tp = entry * (1 + vol * 2)
+short: sl = entry * (1 + vol * 2),  tp = entry * (1 - vol * 2)
+```
+
+---
+
+## 6. PnL CONTRACT
+
+**Close trade:**
+```
+ret = (exit/entry - 1) if long else (entry/exit - 1)
+pnl = current_value * ret * 0.95
+current_value += pnl
+```
+
+**Daily mark-to-market (no open position):**
+```
+direction = 1 if signal==2 else -1 if signal==0 else 0
+ret = today_close / prev_close - 1
+pnl = current_value * direction * ret * 0.95 * pos_size
+```
+
+**SL/TP check (position held):**
+```
+long:  price <= sl → ("sl", sl);  price >= tp → ("tp", tp)
+short: price >= sl → ("sl", sl);  price <= tp → ("tp", tp)
+```
+
+---
+
+## 7. PORTFOLIO ALLOCATION CONTRACT
+
+| Asset | Allocation |
+|---|---|
+| BTC | 0.20 |
+| NZDJPY | 0.15 |
+| CADJPY | 0.13 |
+| USDCAD | 0.10 |
+| GC | 0.20 |
+| EURAUD | 0.22 |
+
+**Capital:** $100,000
+**Per-asset initial:** `$100,000 * allocation`
+**Sum constraint:** `sum(allocations) == 1.0` (enforced by assertion)
+
+---
+
+## 8. HALT CONDITIONS CONTRACT
+
+**Default thresholds:**
+```
+drawdown: -0.08       # halt if drawdown <= -8%
+monthly_pf: 0.70      # halt if monthly profit factor < 0.70
+signal_drought: 30    # halt if no signal in 30 days
+prob_drift: 0.15      # halt if |mean_conf - 0.45| > 0.15
+```
+
+**Per-asset override:** BTC drawdown = -0.15, NZDJPY drawdown = -0.06
+
+**Validity scoring:**
+```
+score = 0.80
+score -= 0.25 if drawdown_not_ok
+score -= 0.20 if monthly_pf_not_ok
+score -= 0.15 if drought_not_ok
+score -= 0.15 if drift_not_ok
+score = clip(0.0, 1.0, score)
+→ ValidityStateMachine.transition(score)
+```
+
+**ValidityStateMachine parameters:**
+```
+green_entry: 0.70, green_exit: 0.60
+yellow_entry: 0.45, yellow_exit: 0.40
+red_entry: 0.40, red_exit: 0.50
+inertia_alpha: 0.7, inertia_beta: 0.3
+regime_lock_periods: 5, regime_lock_window: 10
+exposure: GREEN=1.0, YELLOW=0.5, RED=0.0
+```
+
+**Execution state derived from validity:**
+```
+HALTED if any asset halted
+PAUSED if average_validity_exposure < 0.5
+ACTIVE otherwise
+```
+
+---
+
+## 9. MACRO DERIVED FEATURES CONTRACT
+
+Derived from `data/processed/macro_factors.parquet`:
+```
+rate_diff = fed_funds - ecb_rate
+2y_yield_delta_63 = us_2y.diff(63)
+dxy_mom_63 = dxy.pct_change(63)
+dxy_mom_21 = dxy.pct_change(21)
+vix_ma21 = vix.rolling(21).mean()
+vix_delta_5 = vix.diff(5)
+us_jp_10y_spread = us_10y - jp_10y
+ca_jp_10y_spread = ca_10y - jp_10y
+ca_jp_spread_mom_21 = ca_jp_10y_spread.diff(21)
+ca_jp_spread_mom_5 = ca_jp_10y_spread.diff(5)
+real_yield_delta_63 = real_yield_10y.diff(63)
+breakeven_delta_63 = breakeven_10y.diff(63)
+```
+Warmup: first 90 days dropped after derivation.
+
+---
+
+## 10. ALLOWED IMPORTS
+
+Live system (`paper_trading/`) may only import:
+```
+standard library: os, sys, json, pickle, math, copy, time, threading,
+                  signal, logging, dataclasses, http.server, socketserver,
+                  abc, enum, fcntl
+third-party: pandas, numpy, xgboost, yfinance, yaml, pytz
+intra-project:
+  features.builder, features.contract, features.registry
+  labels.triple_barrier
+  monitoring.validity_state_machine
+  paper_trading.* (own package)
+  quantforge (setup_logging)
+```
+
+**FORBIDDEN at runtime:** execution.*, portfolio.*, risk.*, signals.*,
+models.*, diagnostics.*, equity.*, backtests.*, scripts.*,
+data.weekly_pipeline, data.loaders.*, features.{base,regime,structural,
+interaction,cot,pair_specific,mean_reversion,trend,volatility,cross_asset},
+archive.*, configs.driver_atlas
+
+---
+
+## 11. DATA SOURCES CONTRACT
+
+| Data | Source | Path | Format |
+|---|---|---|---|
+| Asset prices | yfinance | live fetch | OHLCV DataFrame |
+| Macro factors | `data/processed/macro_factors.parquet` | `compute_macro_derived()` | Parquet → derived columns |
+| SPY reference | yfinance | `fetch_ref('SPY')` | OHLCV DataFrame |
+| Cached models | disk | `paper_trading/models/{name}_model.pkl` | pickle |
+| Engine state | disk | `data/live/state.json` | JSON |
+| Trade journal | disk | `data/live/trade_journal.parquet` | Parquet |
+| Equity curve | disk | `data/live/equity_history.json` | JSON |
+
+---
+
+## 12. REFRESH CONTRACT
+
+**Interval:** 1800 seconds (30 minutes)
+**On each refresh:** run_once() → save_state()
+**On startup:** Load cached models or train, run_once(), save_state(), start HTTP server
+**HTTP server:** port 5000, daemon thread, endpoints:
+  `/` → index.html (static)
+  `/state.json` → EngineSnapshot JSON
+  `/trades.json` → recent trades (Parquet or snapshot)
+  `/equity_history.json` → equity curve
+  `/logs` → tail of engine.log

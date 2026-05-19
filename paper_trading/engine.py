@@ -14,6 +14,8 @@ from paper_trading.decision import TradeDecision, PositionIntent
 from paper_trading.position_manager import PositionManager
 from monitoring.validity_state_machine import ValidityStateMachine as _ValidityStateMachine, ValidityState as _ValidityState
 from enum import Enum
+from paper_trading.tracer import trace_decision, shadow_compare_signal, shadow_compare_sizing
+from paper_trading import wrappers as _w
 
 
 class ExecutionState(Enum):
@@ -324,6 +326,41 @@ class AssetEngine:
         )
 
         self._apply_decision(decision, df)
+
+        trace_decision(
+            asset=self.name,
+            features={k: round(float(v), 6) for k, v in X.iloc[-1].items()},
+            proba=[float(proba[-1, 0]), float(proba[-1, 1]), float(proba[-1, 2])],
+            threshold=threshold,
+            signal=decision.signal,
+            confidence=decision.confidence,
+            pos_size=float(pos_size),
+            close_price=float(latest['close']),
+            current_side=self.pos_mgr.current_side(),
+            halt_flags=self.check_halt_conditions(),
+        )
+
+        _shadow_signal_df = _w.compute_signals(proba, X.index, threshold)
+        _shadow_latest = _shadow_signal_df.iloc[-1]
+        _shadow_stype, _shadow_conf, _shadow_conf_pct = _w.signal_type_and_confidence(
+            int(_shadow_latest["signal"]), float(_shadow_latest["prob_long"]), float(_shadow_latest["prob_short"])
+        )
+        shadow_compare_signal(
+            asset=self.name,
+            proba_produced=[float(proba[-1, 0]), float(proba[-1, 1]), float(proba[-1, 2])],
+            wrapper_signal=_shadow_stype,
+            wrapper_confidence=_shadow_conf_pct,
+            original_signal=decision.signal,
+            original_confidence=decision.confidence,
+        )
+
+        _shadow_size = _w.compute_vol_scalar(df["close"]) if self.config.get("vol_scalar") else 1.0
+        shadow_compare_sizing(
+            asset=self.name,
+            wrapper_size=_shadow_size,
+            original_size=float(pos_size),
+        )
+
         return self._decision_to_dict(decision)
 
     def _apply_decision(self, decision: TradeDecision, df):

@@ -27,6 +27,9 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
+      - name: Check live dependency boundaries
+        run: bash scripts/check_live_deps.sh
+
       - name: Lint with py_compile
         run: |
           python -m py_compile labels/triple_barrier.py
@@ -35,6 +38,8 @@ jobs:
           python -m py_compile paper_trading/engine.py
           python -m py_compile paper_trading/monitor.py
           python -m py_compile paper_trading/serve.py
+          python -m py_compile paper_trading/tracer.py
+          python -m py_compile paper_trading/wrappers.py || true
 
       - name: Run tests
         run: |

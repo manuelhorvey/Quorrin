@@ -5,9 +5,11 @@
 ![Status](https://img.shields.io/badge/status-active%20paper%20trading%20%7C%20research-blue)
 ![Assets](https://img.shields.io/badge/paper--trade%20assets-6-brightgreen)
 ![WalkForward](https://img.shields.io/badge/walk--forward-30%20assets%20validated-success)
+![MAS](https://img.shields.io/badge/model%20acceptance%20score-14--phase%20stack-blueviolet)
+![Status](https://img.shields.io/badge/evaluation%20layers-5%20(signal%20%7C%20forward%20%7C%20stress%20%7C%20evolution%20%7C%20adversarial)-orange)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**QuantForge** is a modular quantitative research framework focused on **macro-conditioned trading systems** across equities, FX, metals, and crypto. It features a live 24/7 paper-trading engine with a web dashboard and robust walk-forward validation infrastructure.
+**QuantForge** is a modular quantitative research framework focused on **macro-conditioned trading systems** across equities, FX, metals, and crypto. It features a live 24/7 paper-trading engine with a web dashboard and a complete model governance stack spanning sandbox evaluation, regime adversarial testing, trajectory tracking, and a formal promotion gate — turning model selection from metric comparison into regime-conditioned behavioral manifold analysis.
 
 **This is a research and paper-trading system — not a production trading bot.**
 
@@ -123,12 +125,24 @@ The feature algebra is governed by a **3-template grammar** that covers 100% of 
 | Tracer | `paper_trading/tracer.py` — structured JSONL event tracing of every decision cycle + shadow comparison (signal, sizing, PnL) |
 | Diagnostics | `paper_trading/diagnostics.py` — root-cause analysis layer: signal divergence classification, model distribution tracking, one-at-a-time feature impact scoring, volatility regime context, PnL decomposition |
 | Shadow Memory | `paper_trading/shadow_memory.py` — persistent longitudinal store partitioned by asset+date (JSONL); immutable baseline with histogram-based model proba, signal mismatch, PnL error, and regime distributions |
-| Drift Scoring | `paper_trading/drift_scoring.py` — 5-dimensional drift engine: model KL divergence, signal mismatch rate, PnL MAE, feature Jaccard stability, regime consistency; `get_shadow_intelligence()` produces per-asset drift report with trend/risk/top sources |
+| Drift Scoring | `paper_trading/drift_scoring.py` — 5-dimensional drift engine: model KL divergence, signal mismatch rate, PnL MAE, feature Jaccard stability, regime consistency; `get_shadow_intelligence()` produces per-asset drift report |
 | Risk Governance | `paper_trading/risk_governance.py` — advisory risk layer: weighted composite score → LOW/MEDIUM/HIGH with risk flags, explanations, and non-binding recommended action |
-| Shadow Actions | `paper_trading/shadow_actions.py` — non-binding execution advisor: consumes drift + risk signals, produces action_type, exposure_adjustment, and recommended_guardrails |
-| Shadow Feedback | `paper_trading/shadow_feedback.py` — persistent behavioral dataset generator: append-only feedback events partitioned by asset+month; derived metrics (agreement_score, instability_index, risk_alignment) |
-| Shadow Analytics | `paper_trading/shadow_analytics.py` — offline aggregation: `build_asset_learning_profile()` (avg_agreement, drift_sensitivity, risk_overreaction_rate) + `compare_assets()` (stability ranking) + `compare_learning_profiles()` + `detect_systemic_patterns()` |
-| Shadow Learning | `paper_trading/shadow_learning.py` — offline knowledge distillation: `compile_shadow_learning()` produces 5-dim learning profile (behavioral_stability, drift_resilience, signal_consistency, risk_sensitivity, action_coherence), latent pattern mining (drift-signal correlation, feature decay detection), regime behavior map, and shadow insights (top instability drivers, execution fragility score) |
+| Shadow Actions | `paper_trading/shadow_actions.py` — non-binding execution advisor: action_type, exposure_adjustment, recommended_guardrails |
+| Shadow Feedback | `paper_trading/shadow_feedback.py` — persistent behavioral dataset generator: append-only feedback events partitioned by asset+month |
+| Shadow Analytics | `paper_trading/shadow_analytics.py` — offline aggregation: learning profiles, stability ranking, systemic pattern detection |
+| Shadow Learning | `paper_trading/shadow_learning.py` — offline knowledge distillation: learning profiles, latent patterns, regime map, insights |
+
+### Model Governance (Sandbox)
+
+| Module | Description |
+|--------|-------------|
+| `backtests/sandbox_retrain.py` | Isolated training pipeline with frozen DataLock audit trail |
+| `backtests/model_comparator.py` | 4-lens evaluation: model AUC/logloss, signal agreement/flip rate, portfolio PnL/drawdown, shadow entropy — all regime-stratified |
+| `backtests/forward_test.py` | Walk-forward hold-out: trains fresh model on pre-cutoff data, computes forward Sharpe/hit rate/stability for baseline + candidate |
+| `backtests/mas.py` | Model Acceptance Score: 6-dim weighted compression (model/signal/portfolio/shadow/forward/stress) with 4 hard gates |
+| `backtests/model_evolution.py` | Temporal trajectory: append-only JSONL, MAS velocity, equilibrium bands, cross-asset convergence |
+| `backtests/model_promotion_engine.py` | 4-condition admission gate (performance/stability/consistency/safety) producing structured LIVE_CANDIDATE/PAPER_ONLY/SHADOW_ONLY/REJECT decisions |
+| `backtests/adversarial_manifold.py` | 9-regime perturbation engine across 4 axes (volatility, correlation, trend, noise); CMSS score + attractor drift + stability class |
 
 ---
 
@@ -182,6 +196,14 @@ flowchart TD
 
 ```text
 QuantForge/
+├── backtests/            # Sandbox model governance stack (Phases 11–14)
+│   ├── sandbox_retrain.py        # Orchestrator: trains isolated models + runs full eval pipeline
+│   ├── model_comparator.py       # 4-lens evaluation engine (model/signal/portfolio/shadow)
+│   ├── forward_test.py           # Walk-forward hold-out (Sharpe, hit rate, drawdown, stability)
+│   ├── mas.py                    # Model Acceptance Score — 6-dim weighted compression + hard gates
+│   ├── model_evolution.py        # Trajectory tracking: velocity, equilibrium bands, convergence
+│   ├── model_promotion_engine.py # 4-condition admission gate with structured failure modes
+│   └── adversarial_manifold.py   # 9-regime perturbation engine + CMSS stability scoring
 ├── paper_trading/       # Live engine + stdlib HTTP dashboard
 │   ├── serve.py         # stdlib HTTP server
 │   ├── engine.py        # Paper trading engine
@@ -216,7 +238,6 @@ QuantForge/
 │   └── ...
 ├── equity/              # Walk-forward research scripts
 ├── archive/             # Retired model source code
-├── backtests/           # Walk-forward engine, metrics, simulations
 ├── models/              # Research models
 │   ├── regime/          # Regime classifier
 │   ├── ensemble/        # Model router
@@ -243,7 +264,7 @@ QuantForge/
 ├── portfolio/           # HRP allocator, risk parity, correlation clusters
 ├── execution/           # Broker interface, order manager, portfolio sync, PaperBroker (simulated broker)
 ├── configs/             # YAML configs (paper trading, forex) + driver atlas
-├── tests/               # Pytest test suite (13 test files, 148 tests, regression-verified via shadow comparisons)
+├── tests/               # Pytest test suite (148 tests, regression-verified via shadow comparisons)
 ├── docs/                # Project documentation, runbook, system overview
 │   └── adr/             # Architecture Decision Records (ADR-000 through ADR-017)
 ├── adr/                 # Additional ADRs (ADR-011 known issues)
@@ -310,7 +331,7 @@ make test
 
 ## Refactoring Phases (Zero-Behavior-Drift)
 
-The paper-trading engine has undergone a structural refactoring across 10 phases, each preserving byte-identical outputs:
+The paper-trading engine has undergone a structural refactoring across 14 phases, each preserving byte-identical outputs:
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -322,26 +343,41 @@ The paper-trading engine has undergone a structural refactoring across 10 phases
 | **6** | Persistent shadow memory (asset+date partitioned JSONL) + 5-dim drift scoring engine + baseline initialization | ✓ |
 | **7** | Risk governance layer: weighted composite risk score, advisory exposure_multiplier, non-binding recommended action, `/risk.json` dashboard endpoints | ✓ |
 | **8** | Shadow action layer: non-binding execution advisor with action_type (NONE/MONITOR/REDUCE/PAUSE), reason_codes, guardrails, `/shadow-actions` endpoints | ✓ |
-| **9** | Shadow feedback loop: persistent behavioral dataset generator with derived metrics (agreement_score, instability_index, risk_alignment); offline analytics toolkit (`build_asset_learning_profile`, `compare_assets`) | ✓ |
-| **10** | Shadow learning compilation: offline knowledge distillation converting feedback into 5-dim learning profiles, latent pattern mining (drift-signal correlation, feature decay), regime behavior map, shadow insights (top instability drivers, execution fragility); `compare_learning_profiles()` + `detect_systemic_patterns()` | ✓ |
+| **9** | Shadow feedback loop: persistent behavioral dataset generator with derived metrics (agreement_score, instability_index, risk_alignment); offline analytics toolkit | ✓ |
+| **10** | Shadow learning compilation: offline knowledge distillation — 5-dim learning profiles, latent pattern mining, regime behavior map, shadow insights | ✓ |
+| **11** | **Sandbox retraining harness**: physically isolated model training + 4-lens evaluation engine (model/signal/portfolio/shadow comparison) with regime-stratified signal agreement and frozen DataLock audit trail | ✓ |
+| **11.5** | **Walk-forward test + M_stress**: out-of-sample hold-out evaluation (Sharpe, hit rate, drawdown, stability); regime stress robustness sub-score calibrated to 0.5 at identity | ✓ |
+| **12** | **Model evolution tracking**: per-asset trajectory JSONL with MAS velocity (Δ/retrain), acceleration, sub-axis drift, equilibrium band estimation, cross-asset convergence tracking | ✓ |
+| **13** | **Model promotion protocol**: 4-condition multivariate admission gate (performance/stability/consistency/safety) producing structured decisions (LIVE_CANDIDATE/PAPER_TRADING_ONLY/SHADOW_ONLY/REJECT) with explicit failure modes | ✓ |
+| **14** | **Cross-manifold adversarial testing**: 9-regime perturbation engine (volatility shock/compression, correlation break/inversion, trend flip/burst, noise inject/spike); CMSS stability score + attractor drift + stability class (ROBUST/MODERATE/BRITTLE) | ✓ |
 
-The system is now **swap-ready but locked**: research models can be activated per-asset via `StrategyRegistry.register_model()` without touching engine code. The shadow layer spans 10 phases from basic tracing through offline knowledge distillation — purely observational, zero execution influence.
+### Pipeline
+
+```
+sandbox retrain
+  → 4-lens comparison (model/signal/portfolio/shadow)
+  → walk-forward test (6mo hold-out)
+  → MAS (6-dim weighted compression: model/signal/portfolio/shadow/forward/stress)
+  → adversarial manifold (9 regime perturbations → CMSS)
+  → trajectory append (velocity + equilibrium bands)
+  → promotion gate (4-condition admission) → structured decision
+```
+
+The live engine is **swap-ready but locked**. The sandbox is a proper **model selection energy landscape**: stable models sit in an equilibrium basin (~80 MAS), genuine structural improvements must climb past 88 with >0.6 stress robustness, and degraded models fall below 70. No single metric can force deployment — MAS is a manifold position, not a pass/fail score.
 
 ## Roadmap
 
-### Near Term (H2 2026)
+### Near Term
 
 - Live broker integration (Alpaca / Interactive Brokers) — PaperBroker(BrokerInterface) contract exists
-- Realistic slippage & spread modeling
-- Deploy `HybridRegimeEnsemble` to paper trading via registry activation (or decide to keep simple XGBoost)
-- Shadow intelligence dashboard integration — surface drift scores, regime context, and top drift sources in web UI
+- Adversarial manifold expansion: bootstrap volatility shocks, permuted regime segments, synthetic spread widening
+- Shadow intelligence dashboard integration — surface drift, CMSS, and MAS trajectory in web UI
 - AUDJPY re-evaluation post-November — model trained, deferred pending correlation analysis
 
 ### Medium Term
 
-- Real-time WebSocket dashboard
-- Multi-timeframe signal fusion
-- Meta-labeling layer
+- Ensemble manifold synthesis — merge accepted models via regime-conditional weighting
+- External regime validation sets — periodic "unknown regime injection" tests to prevent over-calibration
 - EURUSD/GBPUSD with COT data pipeline
 
 ---

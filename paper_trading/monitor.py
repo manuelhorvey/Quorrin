@@ -73,6 +73,11 @@ def main():
         except Exception as e:
             logger.error('Error: %s', e)
 
+    try:
+        engine.save_state()
+        logger.info('State saved on shutdown.')
+    except Exception as e:
+        logger.error('Failed to save state on shutdown: %s', e)
     server_thread.join(timeout=3)
     logger.info('Server stopped.')
 

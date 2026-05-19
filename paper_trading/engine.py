@@ -659,6 +659,7 @@ class PaperTradingEngine:
         self.assets = {}
         self.start_date = datetime.now(tz=ET)
         self.last_update = None
+        saved_positions = {}
         if os.path.exists(STATE_PATH):
             try:
                 with open(STATE_PATH, 'r') as f:
@@ -666,6 +667,7 @@ class PaperTradingEngine:
                 eng_status = saved.get('engine_status', {})
                 if eng_status.get('start_time'):
                     self.start_date = datetime.fromisoformat(eng_status['start_time'])
+                saved_positions = saved.get('open_positions', {})
             except Exception:
                 pass
         for name, spec in PAPER_PORTFOLIO.items():
@@ -673,6 +675,16 @@ class PaperTradingEngine:
                 spec['ticker'], name, spec['features'], spec['alloc'],
                 halt_config=spec['halt'], config=spec['config'],
             )
+        for name, pos_data in saved_positions.items():
+            if name in self.assets:
+                asset = self.assets[name]
+                asset.position = pos_data['position']
+                cv = pos_data.get('current_value')
+                asset.current_value = cv if cv is not None else asset.initial_capital
+                pv = pos_data.get('peak_value')
+                asset.peak_value = pv if pv is not None else asset.current_value
+                asset.trade_log = pos_data.get('trade_log', [])
+                asset.prob_history = pos_data.get('prob_history', [])
 
     def initialize(self):
         for name, asset in self.assets.items():
@@ -771,6 +783,16 @@ class PaperTradingEngine:
             'last_update': self.last_update.strftime('%Y-%m-%d %H:%M:%S') if self.last_update else None,
             'start_time': self.start_date.isoformat(),
         }
+        state['open_positions'] = {}
+        for name, asset in self.assets.items():
+            if asset.position:
+                state['open_positions'][name] = {
+                    'position': asset.position,
+                    'current_value': asset.current_value,
+                    'peak_value': asset.peak_value,
+                    'trade_log': asset.trade_log,
+                    'prob_history': asset.prob_history,
+                }
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp_path = path + '.tmp'
         with open(tmp_path, 'w') as f:

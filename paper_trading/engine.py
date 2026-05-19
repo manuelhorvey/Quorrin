@@ -786,6 +786,6 @@ class PaperTradingEngine:
             except (json.JSONDecodeError, ValueError):
                 history = []
         history.append(record)
-        history = history[-2000:]
+        history = self._sanitize(history[-2000:])
         with open(EQUITY_HISTORY_PATH, 'w') as f:
-            json.dump(history, f, indent=2, default=str)
+            json.dump(history, f, indent=2, allow_nan=False)

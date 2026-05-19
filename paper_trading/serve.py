@@ -1,12 +1,10 @@
 import sys, os, json
+from dataclasses import asdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paper_trading.state_store import StateStore
 
 _STORE = StateStore(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STATE_PATH = _STORE.state_path
-TRADE_JOURNAL_PATH = _STORE.trade_journal_path
-EQUITY_HISTORY_PATH = _STORE.equity_history_path
 DEFAULT_PORT = 5000
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), 'frontend')
@@ -53,49 +51,33 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 content_type = MIME_TYPES.get(ext, 'text/html; charset=utf-8')
                 self.serve_static(filename, content_type)
             elif path == '/state.json':
-                try:
-                    with open(STATE_PATH, 'r') as f:
-                        data = f.read()
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(data.encode('utf-8'))
-                except FileNotFoundError:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
+                snapshot = _STORE.load_snapshot()
+                if snapshot is not None:
+                    data = json.dumps(asdict(snapshot), indent=2, default=str)
+                else:
+                    data = json.dumps({
                         'engine_status': {'initialized': True, 'last_update': None, 'start_time': None},
                         'portfolio': {'total_value': 0, 'total_return': 0, 'days_running': 0,
                                       'start_date': '', 'last_update': None, 'capital': 100000,
                                        'allocations': {'BTC': 0.20, 'NZDJPY': 0.15, 'CADJPY': 0.13, 'USDCAD': 0.10, 'GC': 0.20, 'EURAUD': 0.22},
                                       'deployment_cleared': True},
                         'assets': {}, 'halt_conditions': {'drawdown': -0.08, 'monthly_pf': 0.7, 'signal_drought': 30, 'prob_drift': 0.15},
-                    }, indent=2).encode('utf-8'))
+                    }, indent=2)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(data.encode('utf-8'))
             elif path == '/trades.json':
-                trades = []
-                try:
-                    import pandas as pd
-                    if os.path.exists(TRADE_JOURNAL_PATH):
-                        df = pd.read_parquet(TRADE_JOURNAL_PATH)
-                        if len(df) > 0:
-                            df = df.sort_values('exit_date', ascending=False).head(10)
-                            trades = json.loads(df.to_json(orient='records', default_handler=str))
-                except Exception:
-                    pass
+                trades = _STORE.read_trades(10)
                 if not trades:
-                    try:
-                        with open(STATE_PATH, 'r') as f:
-                            sd = json.load(f)
-                        for aname, adata in sd.get('assets', {}).items():
+                    snapshot = _STORE.load_snapshot()
+                    if snapshot and snapshot.assets:
+                        for aname, adata in snapshot.assets.items():
                             for t in adata.get('metrics', {}).get('trade_log', []):
                                 trades.append(t)
                         trades = sorted(trades, key=lambda x: x.get('exit_date', ''), reverse=True)[:10]
-                    except Exception:
-                        pass
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -103,21 +85,14 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 self.end_headers()
                 self.wfile.write(json.dumps(trades, default=str).encode('utf-8'))
             elif path == '/equity_history.json':
-                try:
-                    with open(EQUITY_HISTORY_PATH, 'r') as f:
-                        data = f.read()
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(data.encode('utf-8'))
-                except FileNotFoundError:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(b'[]')
+                history = _STORE.read_equity_history()
+                data = json.dumps(history, default=str)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(data.encode('utf-8'))
             elif path == '/logs':
                 try:
                     with open(LOG_PATH, 'r') as f:

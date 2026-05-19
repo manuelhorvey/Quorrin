@@ -67,7 +67,7 @@ def _forward_metrics(
             ret = (close_arr[i] / entry - 1) if pos == 2 else (entry / close_arr[i] - 1)
             daily_pnl[i] = ret
             pos = 0
-        if pos == 0 and signals[i] != 1:
+        elif pos == 0 and signals[i] != 1:
             pos = int(signals[i])
             daily_pnl[i] = 0.0
             entry = float(close_arr[i])
@@ -105,7 +105,7 @@ def _regime_trade_returns(signals: np.ndarray, close_arr: np.ndarray) -> tuple[n
             ret = (close_arr[i] / entry - 1) if pos == 2 else (entry / close_arr[i] - 1)
             daily_pnl[i] = ret
             pos = 0
-        if pos == 0 and signals[i] != 1:
+        elif pos == 0 and signals[i] != 1:
             pos = int(signals[i])
             daily_pnl[i] = 0.0
             entry = float(close_arr[i])

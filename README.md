@@ -89,16 +89,29 @@ See [ADR-015](docs/adr/ADR-015-asset-specific-label-horizons.md) for fwd60 metho
 | ValidityStateMachine | GREEN/YELLOW/RED capital allocation with PSI-gated hysteresis |
 | WalkForwardEngine | 5yr rolling train, 1yr OOS test, bootstrap p<0.05 deployment gate |
 
+### FeatureContract System
+
+The feature algebra is governed by a **3-template grammar** that covers 100% of deployed features. This eliminates train/serve skew by enforcing identical computation in both training and live inference:
+
+| Component | Description |
+|-----------|-------------|
+| FeatureContract | Frozen dataclass — ticker, name, label type/params, macro filters, price momentum windows, vs-SPY windows. Runtime validators (`validate_dataframe`, `validate_model`) act as CI safety net |
+| FEATURE_REGISTRY | Canonical dict mapping 6 tickers to their contracts — single source of truth for feature sets, label strategy, and model paths |
+| Builder | `build_features()` — single generic pipeline: compute labels, align macro, compute template features, drop NaN. Called identically by training script and live engine |
+| contract.features | Computed property — derives canonical column names from contract fields, eliminating hardcoded `*_FEATURES` constants and slug-based naming mismatches |
+| model_path() | Returns `{name}_model.pkl` — fixes the old mismatch where training saved `{slug}_model.pkl` but engine expected `{name}_model.pkl` |
+
 ### Paper Trading (Deployed)
 
 | Component                 | Description |
 |---------------------------|-----------|
+| FeatureContract / Registry / Builder | Canonical feature algebra — contract-driven feature computation, validation, and model path resolution |
 | StateStore | Versioned persistence boundary — EngineSnapshot, corrupt-file recovery, file locking, cache management |
 | TradeDecision | Pure model intent dataclass — signal, confidence, provenance, no execution side-effects |
 | PositionIntent / PositionManager | Extracted position lifecycle — open, close, SL/TP check, PnL accounting, deterministic replay |
 | ValidityStateMachine | Per-asset GREEN/YELLOW/RED state with hysteresis, inertia smoothing, regime persistence lock |
 | ExecutionState | Portfolio-level ACTIVE/PAUSED/HALTED — derived from halt conditions and validity exposure |
-| AssetEngine | Per-asset XGBoost (depth=2, 300 trees, lr=0.02), 4 macro features, tb20 or fwd60 label routing |
+| AssetEngine | Per-asset XGBoost (depth=2, 300 trees, lr=0.02), contract-driven feature computation, tb20 or fwd60 label routing |
 | PaperTradingEngine | Orchestrates 6 assets, volatility-scaled sizing, halt conditions, P&L tracking |
 | PaperBroker(BrokerInterface) | Simulated broker — yfinance fills at market price, configurable slippage/fees |
 | Dashboard (stdlib http.server) | Real-time web UI with portfolio summary, signal cards, session-scoped log, performance metrics |
@@ -180,7 +193,10 @@ QuantForge/
 │   ├── volatility/      # Volatility models
 │   ├── macro_expert_head.py
 │   └── hybrid_ensemble.py
-├── features/            # Feature engineering pipeline (base, pair, regime, COT, interaction, structural, trend, volatility)
+├── features/            # FeatureContract system + feature engineering pipeline
+│   ├── contract.py      # FeatureContract dataclass + runtime validators
+│   ├── registry.py      # FEATURE_REGISTRY — canonical contracts for 6 portfolio assets
+│   └── builder.py       # Generic builder — compute_macro_derived, build_features, compute_label, model_path
 ├── labels/              # Triple-barrier & meta-labeling
 ├── signals/             # Signal filtering, thresholding, generation, paper signal adapter
 ├── risk/                # Position sizing, drawdown controls, exposure limits
@@ -245,7 +261,7 @@ export PYTHONPATH=$PYTHONPATH:.
 ## Quick Start
 
 ```bash
-# Train models for all 30 assets
+# Train models for all 6 portfolio assets (contract-driven pipeline)
 python scripts/train_all_assets.py
 
 # Run walk-forward validation

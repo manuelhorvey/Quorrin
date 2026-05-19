@@ -458,6 +458,13 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None):
             from backtests.forward_test import _forward_metrics, _regime_metrics, _classify_vol_regime
             from sklearn.metrics import accuracy_score
             proba = predict_fn(model, X_test)
+            max_probs = proba.max(axis=1)
+            pct_above_045 = float((max_probs > 0.45).mean())
+            pct_above_033 = float((max_probs > 0.33).mean())
+            class_dist = [float((proba.argmax(axis=1) == c).mean()) for c in range(3)]
+            logger.info("  %s %d: max_p=%.3f >0.45=%.1f%% >0.33=%.1f%% dist=[%.2f %.2f %.2f]",
+                        name, ty, float(max_probs.mean()), pct_above_045 * 100, pct_above_033 * 100,
+                        class_dist[0], class_dist[1], class_dist[2])
             fwd = _forward_metrics(proba, close_test)
             yr_regime = _classify_vol_regime(close_test)
             reg = _regime_metrics(proba, close_test, yr_regime)

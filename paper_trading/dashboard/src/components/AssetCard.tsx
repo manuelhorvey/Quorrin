@@ -23,6 +23,9 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
     const pos = m.position
     const signalClass = sig?.signal === 'BUY' ? 'signal-pill-buy' : sig?.signal === 'SELL' ? 'signal-pill-sell' : 'signal-pill-flat'
     const confColor = confidenceColor(sig?.confidence ?? 0)
+    const open = data?.open_positions?.[name]
+    const hist = open?.prob_history ?? []
+    const isNew = hist.length >= 2 && hist[hist.length - 1].signal !== hist[hist.length - 2].signal
     return {
       signal: sig?.signal ?? 'FLAT',
       confidence: sig?.confidence ?? 0,
@@ -37,8 +40,9 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
       pos,
       dist: m.signal_distribution,
       currentValue: m.current_value ?? 0,
+      isNew,
     }
-  }, [asset])
+  }, [asset, data, name])
 
   if (!info) {
     return (
@@ -54,13 +58,11 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-sm text-primary">{name}</span>
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-            info.signal === 'BUY' ? 'bg-emerald-500/10 text-emerald-400' :
-            info.signal === 'SELL' ? 'bg-red-500/10 text-red-400' :
-            'bg-amber-500/10 text-amber-400'
-          }`}>
-            {info.signal}
-          </span>
+          {info.isNew && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 animate-pulse">
+              NEW
+            </span>
+          )}
         </div>
         {info.price != null && (
           <span className="text-xs text-tertiary font-mono">

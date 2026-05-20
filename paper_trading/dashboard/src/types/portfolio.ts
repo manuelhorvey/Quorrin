@@ -1,9 +1,26 @@
+export interface ProbHistoryEntry {
+  date: string
+  prob_long: number
+  prob_short: number
+  signal: 'BUY' | 'SELL' | 'FLAT'
+  confidence: number
+  close_price: number
+}
+
+export interface OpenPositionState {
+  position: Position & { entry_date: string; vol: number }
+  current_value: number
+  peak_value: number
+  trade_log: TradeEntry[]
+  prob_history: ProbHistoryEntry[]
+}
+
 export interface EngineSnapshot {
   schema_version: string
   timestamp: string
   portfolio: Portfolio
   assets: Record<string, AssetState>
-  open_positions?: Record<string, unknown>
+  open_positions?: Record<string, OpenPositionState>
   engine_status: EngineStatus
   halt_conditions: HaltConditions
   risk_signals?: Record<string, unknown>

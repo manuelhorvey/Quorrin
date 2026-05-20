@@ -724,7 +724,7 @@ def _build_paper_portfolio():
 
 PAPER_PORTFOLIO = _build_paper_portfolio()
 _total_alloc = sum(v['alloc'] for v in PAPER_PORTFOLIO.values())
-assert abs(_total_alloc - 1.0) < 0.01, f"Portfolio allocations sum to {_total_alloc}, must be 1.0"
+assert _total_alloc <= 1.01, f"Portfolio allocations sum to {_total_alloc}, must be ≤ 1.0 (remainder is cash buffer)"
 
 
 class PaperTradingEngine:

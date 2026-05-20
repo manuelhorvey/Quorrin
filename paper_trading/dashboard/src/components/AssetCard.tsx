@@ -116,11 +116,15 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
               <span className={`w-1.5 h-1.5 rounded-full ${info.pos.side === 'long' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {info.pos.side.toUpperCase()} @ ${formatAssetPrice(info.pos.entry)}
             </span>
-            {info.pos.unrealized_pnl != null && (
-              <span className={`font-mono ${info.pos.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {info.pos.unrealized_pnl >= 0 ? '+' : ''}{info.pos.unrealized_pnl.toFixed(2)}%
-              </span>
-            )}
+            <span className="flex items-center gap-2 font-mono">
+              {asset?.sl_mult != null && <span className="text-amber-400/70">SL×{asset.sl_mult}</span>}
+              {asset?.tp_mult != null && <span className="text-emerald-400/70">TP×{asset.tp_mult}</span>}
+              {info.pos.unrealized_pnl != null && (
+                <span className={`${info.pos.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {info.pos.unrealized_pnl >= 0 ? '+' : ''}{info.pos.unrealized_pnl.toFixed(2)}%
+                </span>
+              )}
+            </span>
           </div>
           <div className="flex items-center gap-3 text-[10px]">
             {(() => {

@@ -4,7 +4,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "BTC-USD": FeatureContract(
         ticker="BTC-USD", name="BTC",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("rate_diff", "2y_yield_delta_63", "vix_delta_5", "dxy_mom_21", "vix_ma21"),
         price_mom_windows=(10, 21, 63),
         vs_spy_windows=(21, 63),
@@ -20,7 +20,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "CADJPY=X": FeatureContract(
         ticker="CADJPY=X", name="CADJPY",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("vix_ma21", "ca_jp_spread_mom_21", "us_jp_10y_spread", "vix_delta_5", "ca_jp_10y_spread", "dxy_mom_21"),
         price_mom_windows=(10, 21, 63),
         vs_spy_windows=(),
@@ -28,7 +28,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "NZDJPY=X": FeatureContract(
         ticker="NZDJPY=X", name="NZDJPY",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("vix_ma21", "vix_delta_5", "us_jp_10y_spread"),
         price_mom_windows=(21,),
         vs_spy_windows=(),
@@ -36,7 +36,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "USDCAD=X": FeatureContract(
         ticker="USDCAD=X", name="USDCAD",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("rate_diff", "dxy_mom_21", "vix_ma21", "vix_delta_5"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -44,7 +44,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "EURAUD=X": FeatureContract(
         ticker="EURAUD=X", name="EURAUD",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("rate_diff", "dxy_mom_21", "vix_ma21", "vix_delta_5"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -52,7 +52,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "AUDJPY=X": FeatureContract(
         ticker="AUDJPY=X", name="AUDJPY",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("vix_ma21", "vix_delta_5", "us_jp_10y_spread"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -60,7 +60,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "GBPJPY=X": FeatureContract(
         ticker="GBPJPY=X", name="GBPJPY",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("vix_ma21", "vix_delta_5", "us_jp_10y_spread"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -68,7 +68,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "USDJPY=X": FeatureContract(
         ticker="USDJPY=X", name="USDJPY",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("vix_ma21", "vix_delta_5", "us_jp_10y_spread", "dxy_mom_21"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -76,7 +76,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "USDCHF=X": FeatureContract(
         ticker="USDCHF=X", name="USDCHF",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("rate_diff", "dxy_mom_21", "vix_ma21", "vix_delta_5"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
@@ -84,7 +84,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
     "GBPUSD=X": FeatureContract(
         ticker="GBPUSD=X", name="GBPUSD",
         label_type="tb20",
-        label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
+        label_params={"pt_sl": [3, 1], "vertical_barrier": 20},
         macro_filters=("rate_diff", "dxy_mom_21", "vix_ma21", "vix_delta_5"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),

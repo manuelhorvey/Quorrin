@@ -36,10 +36,10 @@ class PositionIntent:
     @classmethod
     def from_price_and_vol(cls, side: str, entry_price: float, entry_date: str, vol: float) -> "PositionIntent":
         if side == "long":
-            sl = entry_price * (1 - vol * 2)
-            tp = entry_price * (1 + vol * 2)
+            sl = entry_price * (1 - vol * 1)
+            tp = entry_price * (1 + vol * 3)
         else:
-            sl = entry_price * (1 + vol * 2)
-            tp = entry_price * (1 - vol * 2)
+            sl = entry_price * (1 + vol * 1)
+            tp = entry_price * (1 - vol * 3)
         return cls(side=side, entry_price=entry_price, entry_date=entry_date,
                    stop_loss=sl, take_profit=tp, vol=vol)

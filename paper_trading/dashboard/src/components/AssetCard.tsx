@@ -112,13 +112,17 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
           <div className="flex items-center gap-3 text-[10px]">
             {(() => {
               const isLong = info.pos!.side === 'long'
-              const cur = info.price ?? info.pos!.entry
+              const entry = info.pos!.entry
+              const cur = info.price ?? entry
               const tpDist = isLong
                 ? ((info.pos!.tp - cur) / cur) * 100
                 : ((cur - info.pos!.tp) / cur) * 100
               const slDist = isLong
                 ? ((cur - info.pos!.sl) / cur) * 100
                 : ((info.pos!.sl - cur) / cur) * 100
+              const reward = Math.abs(info.pos!.tp - entry)
+              const risk = Math.abs(entry - info.pos!.sl)
+              const rr = risk > 0 ? reward / risk : 0
               return (
                 <>
                   {info.pos!.tp != null && info.pos!.tp !== 0 && (
@@ -137,6 +141,13 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
                       <span className="font-mono text-red-400">
                         ↓{slDist.toFixed(2)}%
                       </span>
+                    </span>
+                  )}
+                  {rr > 0 && (
+                    <span className={`ml-auto font-mono font-semibold ${
+                      rr >= 2 ? 'text-emerald-400' : rr >= 1 ? 'text-amber-400' : 'text-red-400'
+                    }`}>
+                      {rr.toFixed(1)}:1
                     </span>
                   )}
                 </>

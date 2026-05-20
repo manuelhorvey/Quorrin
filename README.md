@@ -9,24 +9,24 @@
 
 ## TABLE OF CONTENTS
 
-1. System Overview
-2. System Objective
-3. Getting Started
-4. Live Simulation Portfolio
-5. Data Architecture
-6. Model Architecture
-7. Validation Framework
-8. Execution System (Paper Trading Engine)
-9. Risk & Governance Layer
-10. Model Governance System
-11. Shadow Analytics System
-12. System Architecture (Causal Execution Graph)
-13. System Invariants
-14. Infrastructure Design
-15. Known Constraints
-16. Research Status
-17. System Classification
-18. Disclaimer
+1. [System Overview](#1-system-overview)
+2. [System Objective](#2-system-objective)
+3. [Getting Started](#3-getting-started)
+4. [Live Simulation Portfolio](#4-live-simulation-portfolio)
+5. [Data Architecture](#5-data-architecture)
+6. [Model Architecture](#6-model-architecture)
+7. [Validation Framework](#7-validation-framework)
+8. [Execution System (Paper Trading Engine)](#8-execution-system-paper-trading-engine)
+9. [Risk & Governance Layer](#9-risk--governance-layer)
+10. [Model Governance System](#10-model-governance-system)
+11. [Shadow Analytics System](#11-shadow-analytics-system)
+12. [System Architecture (Causal Execution Graph)](#12-system-architecture-causal-execution-graph)
+13. [System Invariants](#13-system-invariants)
+14. [Infrastructure Design](#14-infrastructure-design)
+15. [Known Constraints](#15-known-constraints)
+16. [Research Status](#16-research-status)
+17. [System Classification](#17-system-classification)
+18. [Disclaimer](#18-disclaimer)
 
 ---
 
@@ -89,8 +89,7 @@ PYTHONPATH=.
 Start full simulation system:
 
 ```bash
-chmod +x monitor_all
-./monitor_all
+python paper_trading/monitor.py
 ```
 
 Dashboard:
@@ -188,14 +187,23 @@ Label selection is asset-specific and regime-derived.
 
 ### 7.3 Empirical Results
 
+Walk-forward results for live portfolio assets and screened candidates.
+
 | Asset  | Sharpe | Stability | Notes                       |
 | ------ | ------ | --------- | --------------------------- |
 | NZDJPY | 2.72   | 5/5       | strongest carry structure   |
 | EURAUD | 2.28   | 5/5       | feature augmentation uplift |
-| USDCAD | 1.48   | 4/5       | stable macro sensitivity    |
 | CADJPY | 1.70   | 4/5       | regime-dependent uplift     |
-| BTC    | 0.83   | 3/5       | structurally unstable       |
+| USDCHF | 1.64   | 4/5       | screened, now live          |
+| USDCAD | 1.48   | 4/5       | stable macro sensitivity    |
+| USDJPY | 1.28   | 4/5       | screened, now live          |
+| GBPUSD | 1.24   | 4/5       | screened, now live          |
 | GC=F   | 1.06   | 4/5       | macro persistence observed  |
+| GBPJPY | 1.75   | 4/5       | screened, now live          |
+| BTC    | 0.83   | 3/5       | structurally unstable       |
+| AUDJPY | 2.62   | 5/5       | screened, now live          |
+
+> Results for newly promoted assets (AUDJPY, GBPJPY, USDJPY, USDCHF, GBPUSD) are from 5-year walk-forward screening with generic feature templates. Asset-specific driver features may improve performance.
 
 ---
 
@@ -313,8 +321,13 @@ C --> D3[BTC: Hybrid Macro-Momentum]
 C --> D4[EURAUD: Rate Differential Regime]
 C --> D5[CADJPY: Oil-Correlation Regime]
 C --> D6[USDCAD: USD Macro Regime]
+C --> D7[AUDJPY: JPY Carry Regime]
+C --> D8[GBPJPY: JPY Carry Regime]
+C --> D9[USDJPY: USD Macro + JPY Carry]
+C --> D10[USDCHF: USD Macro / Safe Haven]
+C --> D11[GBPUSD: USD Macro]
 
-D1 & D2 & D3 & D4 & D5 & D6 --> E[Labeling Layer]
+D1 & D2 & D3 & D4 & D5 & D6 & D7 & D8 & D9 & D10 & D11 --> E[Labeling Layer]
 
 E --> F1[tb20: Triple Barrier]
 E --> F2[fwd60: Forward Returns]
@@ -368,7 +381,7 @@ M & N & O --> P[Observability Layer]
 * Paper trading only (no live execution)
 * Data limited to Yahoo Finance + FRED
 * Weekend liquidity discontinuities
-* EURUSD / GBPUSD excluded (pending COT integration)
+* EURUSD excluded (pending COT integration)
 * Non-stationary feature effectiveness
 * Ensemble layer not yet activated in production loop
 
@@ -376,9 +389,10 @@ M & N & O --> P[Observability Layer]
 
 ## 16. RESEARCH STATUS
 
-* 6-asset live simulation active
+* 11-asset live simulation active
 * 30+ assets evaluated via walk-forward testing
 * EURAUD classified as first LIVE_CANDIDATE
+* 24 untested FX pairs screened; top performers promoted to live portfolio
 * Full governance pipeline operational
 * Shadow system continuously accumulating behavioral dataset
 

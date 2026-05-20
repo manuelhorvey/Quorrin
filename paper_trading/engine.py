@@ -150,7 +150,7 @@ def fetch_ref(ticker):
 
 
 class AssetEngine:
-    def __init__(self, ticker, name, contract, allocation, halt_config=None, config=None, expected_prob_conf=0.45, state_store=None, journal_path=None):
+    def __init__(self, ticker, name, contract, allocation, halt_config=None, config=None, expected_prob_conf=0.45, state_store=None, journal_path=None, sl_mult=1.0, tp_mult=2.5):
         self.ticker = ticker
         self.name = name
         self.contract = contract
@@ -185,6 +185,8 @@ class AssetEngine:
         self._shadow_action = None
         self._shadow_drift_intel = None
         self._shadow_learning = None
+        self.sl_mult = sl_mult
+        self.tp_mult = tp_mult
         self._research_mode = _cfg.get("research_mode", False)
         if state_store is not None:
             self.state_store = state_store
@@ -207,7 +209,7 @@ class AssetEngine:
         if pd.isna(vol) or pd.isna(entry_price) or entry_price == 0:
             logger.error('%s: invalid entry_price=%s or vol=%s', self.name, entry_price, vol)
             return
-        intent = PositionIntent.from_price_and_vol(side, entry_price, entry_date, vol)
+        intent = PositionIntent.from_price_and_vol(side, entry_price, entry_date, vol, self.sl_mult, self.tp_mult)
         self.pos_mgr.open(intent)
         self.position = {
             'side': intent.side, 'entry': intent.entry_price,
@@ -688,8 +690,11 @@ def _build_paper_portfolio():
             halt = copy.deepcopy(HALT)
             halt.update(user_halt)
             config = spec.get('config', {})
+            sl_mult = spec.get('sl_mult', 1.0)
+            tp_mult = spec.get('tp_mult', 2.5)
             pf[name] = {'ticker': ticker, 'contract': contract, 'alloc': alloc,
-                        'halt': halt, 'config': config}
+                        'halt': halt, 'config': config,
+                        'sl_mult': sl_mult, 'tp_mult': tp_mult}
         return pf
     return {
         'BTC': {'ticker': 'BTC-USD', 'contract': FEATURE_REGISTRY['BTC-USD'], 'alloc': 0.14,
@@ -741,6 +746,7 @@ class PaperTradingEngine:
             self.assets[name] = AssetEngine(
                 spec['ticker'], name, spec['contract'], spec['alloc'],
                 halt_config=spec['halt'], config=spec['config'],
+                sl_mult=spec.get('sl_mult', 1.0), tp_mult=spec.get('tp_mult', 2.5),
                 state_store=self.state_store,
             )
         for name, pos_data in saved_positions.items():
@@ -771,7 +777,16 @@ class PaperTradingEngine:
                 asset.prob_history = pos_data.get('prob_history', [])
 
     def initialize(self):
+        from features.registry import ASSET_LABEL_PARAMS
         for name, asset in self.assets.items():
+            registry_params = ASSET_LABEL_PARAMS.get(name)
+            if registry_params is not None:
+                assert asset.sl_mult == registry_params['sl'], \
+                    f"{name}: runtime sl_mult {asset.sl_mult} != " \
+                    f"training sl {registry_params['sl']} — labels misaligned"
+                assert asset.tp_mult == registry_params['pt'], \
+                    f"{name}: runtime tp_mult {asset.tp_mult} != " \
+                    f"training pt {registry_params['pt']} — labels misaligned"
             try:
                 asset.train(force=True)
                 logger.info('%s: training done', name)

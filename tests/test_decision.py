@@ -39,14 +39,14 @@ class TestPositionIntent:
         intent = PositionIntent.from_price_and_vol("long", 100.0, "2026-06-01", 0.02)
         assert intent.side == "long"
         assert intent.entry_price == 100.0
-        assert intent.stop_loss == 100.0 * (1 - 0.02 * 2)
-        assert intent.take_profit == 100.0 * (1 + 0.02 * 2)
+        assert intent.stop_loss == 100.0 * (1 - 0.02 * 1)
+        assert intent.take_profit == 100.0 * (1 + 0.02 * 2.5)
 
     def test_from_price_and_vol_short(self):
         intent = PositionIntent.from_price_and_vol("short", 100.0, "2026-06-01", 0.02)
         assert intent.side == "short"
-        assert intent.stop_loss == 100.0 * (1 + 0.02 * 2)
-        assert intent.take_profit == 100.0 * (1 - 0.02 * 2)
+        assert intent.stop_loss == 100.0 * (1 + 0.02 * 1)
+        assert intent.take_profit == 100.0 * (1 - 0.02 * 2.5)
 
     def test_fields(self):
         intent = PositionIntent(

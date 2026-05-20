@@ -12,6 +12,8 @@ paper_trading/models/
 *.pkl
 data/live/
 data/shadow_memory/
+data/shadow_feedback/
+data/shadow_learning/
 data/sandbox/
 paper_trading/dashboard/node_modules/
 paper_trading/dashboard/dist/

@@ -28,8 +28,8 @@ assets:
   EURAUD:
     ticker: EURAUD=X
     allocation: 0.17
-    sl_mult: 1.0
-    tp_mult: 2.5
+    sl_mult: 0.75
+    tp_mult: 2.25
     features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, euraud_mom_21, euraud_mom_63]
     halt:
       drawdown: -0.08
@@ -52,8 +52,8 @@ assets:
   NZDJPY:
     ticker: NZDJPY=X
     allocation: 0.11
-    sl_mult: 1.0
-    tp_mult: 2.5
+    sl_mult: 0.75
+    tp_mult: 2.25
     features: [vix_ma21, vix_delta_5, us_jp_10y_spread, nzdjpy_mom_21]
     halt:
       drawdown: -0.08
@@ -76,8 +76,8 @@ assets:
   AUDJPY:
     ticker: AUDJPY=X
     allocation: 0.07
-    sl_mult: 1.0
-    tp_mult: 2.5
+    sl_mult: 0.75
+    tp_mult: 2.25
     features: [vix_ma21, vix_delta_5, us_jp_10y_spread, audjpy_mom_21, audjpy_mom_63]
     halt:
       drawdown: -0.08
@@ -88,8 +88,8 @@ assets:
   USDCAD:
     ticker: USDCAD=X
     allocation: 0.07
-    sl_mult: 1.0
-    tp_mult: 2.5
+    sl_mult: 0.75
+    tp_mult: 2.25
     features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdcad_mom_21, usdcad_mom_63]
     halt:
       drawdown: -0.08

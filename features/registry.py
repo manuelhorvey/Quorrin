@@ -2,12 +2,12 @@ from features.contract import FeatureContract
 
 ASSET_LABEL_PARAMS: dict[str, dict[str, float]] = {
     "BTC": {"pt": 3.0, "sl": 1.5},
-    "EURAUD": {"pt": 2.5, "sl": 1.0},
+    "EURAUD": {"pt": 2.25, "sl": 0.75},
     "GC": {"pt": 4.0, "sl": 1.2},
-    "NZDJPY": {"pt": 2.5, "sl": 1.0},
+    "NZDJPY": {"pt": 2.25, "sl": 0.75},
     "CADJPY": {"pt": 3.5, "sl": 0.8},
-    "AUDJPY": {"pt": 2.5, "sl": 1.0},
-    "USDCAD": {"pt": 2.5, "sl": 1.0},
+    "AUDJPY": {"pt": 2.25, "sl": 0.75},
+    "USDCAD": {"pt": 2.25, "sl": 0.75},
     "GBPJPY": {"pt": 2.5, "sl": 1.0},
     "USDJPY": {"pt": 2.5, "sl": 1.0},
     "USDCHF": {"pt": 2.5, "sl": 1.0},

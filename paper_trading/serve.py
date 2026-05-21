@@ -115,17 +115,27 @@ def try_serve_file(path, resp):
 
 
 def serve(port=DEFAULT_PORT, shutdown_event=None):
+    import gzip
     import http.server
     import socketserver
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def _send_json(self, data: str, status: int = 200) -> None:
-            self.send_response(status)
-            self.send_header('Content-Type', 'application/json')
+            body = data.encode('utf-8')
+            accept_gzip = self.headers.get('Accept-Encoding', '')
+            if 'gzip' in accept_gzip and len(body) > 512:
+                body = gzip.compress(body)
+                ct = 'application/json'
+                self.send_response(status)
+                self.send_header('Content-Type', ct)
+                self.send_header('Content-Encoding', 'gzip')
+            else:
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json')
             self.send_header('Cache-Control', 'no-cache')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(data.encode('utf-8'))
+            self.wfile.write(body)
 
         def _send_text(self, data: str, status: int = 200) -> None:
             self.send_response(status)
@@ -329,6 +339,8 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     self._send_json(json.dumps(signal, indent=2, default=str))
                 else:
                     self._send_json(json.dumps({'error': f'No health score for {asset}', 'asset': asset}), status=404)
+            elif path == '/ping':
+                self._send_json(json.dumps({'status': 'ok'}, indent=2))
             else:
                 self.send_response(404)
                 self.end_headers()

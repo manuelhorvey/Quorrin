@@ -1,4 +1,4 @@
-import sys, os, json
+import sys, os, json, time
 from dataclasses import asdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,6 +25,36 @@ MIME_TYPES = {
     ".woff2": "font/woff2",
     ".json": "application/json",
 }
+
+_CACHE: dict[str, tuple[str, float]] = {}
+_CACHE_TTL: dict[str, float] = {
+    "/state.json": 5.0,
+    "/trades.json": 15.0,
+    "/equity_history.json": 30.0,
+    "/confidence.json": 15.0,
+    "/volatility.json": 15.0,
+    "/risk.json": 30.0,
+    "/shadow-actions": 30.0,
+    "/health.json": 30.0,
+}
+
+
+def _cache_get(key: str) -> str | None:
+    entry = _CACHE.get(key)
+    if entry is None:
+        return None
+    value, expiry = entry
+    if time.monotonic() > expiry:
+        del _CACHE[key]
+        return None
+    return value
+
+
+def _cache_set(key: str, value: str, ttl: float | None = None) -> None:
+    if ttl is None:
+        ttl = _CACHE_TTL.get(key, 5.0)
+    _CACHE[key] = (value, time.monotonic() + ttl)
+
 
 VOL_BASELINES = {
     "GC": 0.009129,
@@ -112,6 +142,17 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 return
 
             # API endpoints
+            if path in _CACHE_TTL:
+                cached = _cache_get(path)
+                if cached is not None:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(cached.encode('utf-8'))
+                    return
+
             if path == '/state.json':
                 snapshot = _STORE.load_snapshot()
                 if snapshot is not None:
@@ -122,9 +163,10 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         'portfolio': {'total_value': 0, 'total_return': 0, 'days_running': 0,
                                       'start_date': '', 'last_update': None, 'capital': 100000,
                                         'allocations': {'EURAUD': 0.17, 'GC': 0.13, 'NZDJPY': 0.11, 'CADJPY': 0.09, 'CHFJPY': 0.07, 'EURCAD': 0.07, 'AUDJPY': 0.06, 'USDCAD': 0.06, 'GBPJPY': 0.05, 'DJI': 0.05, 'USDJPY': 0.04, 'USDCHF': 0.04, 'GBPUSD': 0.03},
-                                      'satellite_allocation_pct': 5.0, 'deployment_cleared': True},
+                                        'satellite_allocation_pct': 5.0, 'deployment_cleared': True},
                         'assets': {}, 'halt_conditions': {'drawdown': -0.08, 'monthly_pf': 0.7, 'signal_drought': 30, 'prob_drift': 0.15},
                     }, indent=2)
+                _cache_set('/state.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -140,15 +182,18 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                             for t in adata.get('metrics', {}).get('trade_log', []):
                                 trades.append(t)
                         trades = sorted(trades, key=lambda x: x.get('exit_date', ''), reverse=True)[:10]
+                data = json.dumps(trades, default=str)
+                _cache_set('/trades.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
-                self.wfile.write(json.dumps(trades, default=str).encode('utf-8'))
+                self.wfile.write(data.encode('utf-8'))
             elif path == '/equity_history.json':
                 history = _STORE.read_equity_history()
                 data = json.dumps(history, default=str)
+                _cache_set('/equity_history.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -176,6 +221,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     data = json.dumps({'live': live, 'historical': historical}, indent=2, default=str)
                 else:
                     data = json.dumps({'live': {}, 'historical': []})
+                _cache_set('/confidence.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -206,6 +252,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                                 'status': status,
                             })
                 data = json.dumps(regimes, indent=2, default=str)
+                _cache_set('/volatility.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -240,6 +287,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     self.wfile.write(b'[no log file yet]')
             elif path == '/risk.json':
                 data = json.dumps(_get_risk_latest(), indent=2, default=str)
+                _cache_set('/risk.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -264,6 +312,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 snapshot = _STORE.load_snapshot()
                 actions = getattr(snapshot, 'shadow_actions', None) if snapshot else None
                 data = json.dumps(actions or {}, indent=2, default=str)
+                _cache_set('/shadow-actions', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')
@@ -288,6 +337,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 self.wfile.write(data.encode('utf-8'))
             elif path == '/health.json':
                 data = json.dumps(_compute_health_all(), indent=2, default=str)
+                _cache_set('/health.json', data)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-cache')

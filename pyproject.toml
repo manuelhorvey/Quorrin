@@ -2,19 +2,21 @@
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["paper_trading*", "quantforge*"]
+
 [project]
 name = "quantforge"
 version = "0.1.0"
 description = "Modular quantitative research framework for regime-conditioned equity and FX strategy research"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.10"
 authors = [{name = "MktOwl"}]
 keywords = ["quantitative-finance", "trading", "machine-learning", "xgboost"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Topic :: Office/Business :: Financial",
 ]

@@ -16,6 +16,7 @@ class FeatureContract:
     macro_filters: tuple[str, ...]
     price_mom_windows: tuple[int, ...]
     vs_spy_windows: tuple[int, ...]
+    custom_features: tuple[str, ...] = ()
     warmup_rows: int = 90
     min_history_days: int = 250
 
@@ -31,6 +32,7 @@ class FeatureContract:
             parts.append(f"{slug}_mom_{w}")
         for w in self.vs_spy_windows:
             parts.append(f"{slug}_vs_spy_{w}")
+        parts.extend(self.custom_features)
         return tuple(parts)
 
     def validate_dataframe(self, df: pd.DataFrame) -> None:

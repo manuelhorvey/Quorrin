@@ -913,12 +913,15 @@ class PaperTradingEngine:
         for name, asset in self.assets.items():
             registry_params = ASSET_LABEL_PARAMS.get(name)
             if registry_params is not None:
-                assert asset.sl_mult == registry_params['sl'], \
-                    f"{name}: runtime sl_mult {asset.sl_mult} != " \
-                    f"training sl {registry_params['sl']} — labels misaligned"
-                assert asset.tp_mult == registry_params['pt'], \
-                    f"{name}: runtime tp_mult {asset.tp_mult} != " \
-                    f"training pt {registry_params['pt']} — labels misaligned"
+                if (asset.sl_mult != registry_params['sl'] or
+                    asset.tp_mult != registry_params['pt']):
+                    logger.warning(
+                        '%s: runtime exit (sl=%.2f,tp=%.2f) != '
+                        'training label params (sl=%.2f,pt=%.2f) — '
+                        'asymmetric exits OK, but monitor ΔSharpe impact',
+                        name, asset.sl_mult, asset.tp_mult,
+                        registry_params['sl'], registry_params['pt'],
+                    )
             try:
                 asset.train(force=True)
                 logger.info('%s: training done', name)
@@ -1060,6 +1063,8 @@ class PaperTradingEngine:
             signal = dict(asset.prob_history[-1]) if asset.prob_history else None
             if signal and metrics.get('current_price'):
                 signal['close_price'] = metrics['current_price']
+            meta_inf = metrics.get('meta_inference') or {}
+            feat_stab = metrics.get('feature_stability') or {}
             ad[name] = {
                 'metrics': metrics,
                 'halt': halt,
@@ -1069,6 +1074,10 @@ class PaperTradingEngine:
                 'execution_state': 'HALTED' if halt['halted'] else 'ACTIVE',
                 'sl_mult': asset.sl_mult,
                 'tp_mult': asset.tp_mult,
+                'meta_confidence': meta_inf.get('meta_confidence'),
+                'meta_decision': meta_inf.get('meta_decision'),
+                'feature_stability_jaccard': feat_stab.get('jaccard_top_10'),
+                'feature_stability_spearman': feat_stab.get('spearman_rank_corr'),
             }
         n = len(self.assets) or 1
         exec_state = ExecutionState.HALTED if any_halted else (

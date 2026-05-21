@@ -57,6 +57,10 @@ export interface AssetState {
   execution_state?: string
   sl_mult?: number
   tp_mult?: number
+  meta_confidence?: number
+  meta_decision?: string
+  feature_stability_jaccard?: number
+  feature_stability_spearman?: number
 }
 
 export interface AssetMetrics {

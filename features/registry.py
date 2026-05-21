@@ -283,6 +283,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
         macro_filters=("rate_diff", "vix_ma21", "dxy_mom_21", "breakeven_delta_63"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(21, 63),
+        custom_features=(),
     ),
     "CL=F": FeatureContract(
         ticker="CL=F", name="CL",

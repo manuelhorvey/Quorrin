@@ -11,6 +11,7 @@ import EquityChart from './components/EquityChart'
 import ConfidenceChart from './components/ConfidenceChart'
 import VolRegimePanel from './components/VolRegimePanel'
 import HealthScores from './components/HealthScores'
+import GovernancePanel from './components/GovernancePanel'
 import EngineLogs from './components/EngineLogs'
 import Footer from './components/Footer'
 
@@ -80,6 +81,8 @@ export default function App() {
           </div>
         </div>
         <HaltConditions />
+
+        <GovernancePanel />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SignalsTable />

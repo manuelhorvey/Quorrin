@@ -1,7 +1,6 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import yaml
 
@@ -71,7 +70,7 @@ class EngineConfig:
         }
 
 
-def load_config(path: Optional[str] = None) -> EngineConfig:
+def load_config(path: str | None = None) -> EngineConfig:
     path = path or DEFAULT_CONFIG_PATH
     if os.path.exists(path):
         with open(path) as f:
@@ -85,7 +84,7 @@ def load_config(path: Optional[str] = None) -> EngineConfig:
 _GLOBAL_CONFIG: EngineConfig | None = None
 
 
-def get_config(path: Optional[str] = None) -> EngineConfig:
+def get_config(path: str | None = None) -> EngineConfig:
     global _GLOBAL_CONFIG
     if _GLOBAL_CONFIG is None:
         _GLOBAL_CONFIG = load_config(path)

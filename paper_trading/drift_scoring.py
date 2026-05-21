@@ -1,9 +1,8 @@
 from collections import Counter
-from typing import Optional
 
 import numpy as np
 
-from paper_trading.shadow_memory import read_events, load_baseline
+from paper_trading.shadow_memory import load_baseline, read_events
 
 
 def _extract_probas(events: list) -> tuple:
@@ -89,7 +88,7 @@ def _jaccard_similarity(a: set, b: set) -> float:
 
 def compute_model_drift(
     asset: str,
-    baseline: Optional[dict] = None,
+    baseline: dict | None = None,
     window_days: int = 30,
 ) -> dict:
     events = read_events(asset, days=window_days)
@@ -103,26 +102,27 @@ def compute_model_drift(
     if baseline is None:
         baseline = {}
 
-    current_hist = np.array([
-        _histogram(short),
-        _histogram(neutral),
-        _histogram(long_),
-    ])
+    current_hist = np.array(
+        [
+            _histogram(short),
+            _histogram(neutral),
+            _histogram(long_),
+        ]
+    )
 
     baseline_proba = baseline.get("model_proba_distribution", {})
-    baseline_hist = np.array([
-        _histogram(baseline_proba.get("short", [])),
-        _histogram(baseline_proba.get("neutral", [])),
-        _histogram(baseline_proba.get("long", [])),
-    ])
+    baseline_hist = np.array(
+        [
+            _histogram(baseline_proba.get("short", [])),
+            _histogram(baseline_proba.get("neutral", [])),
+            _histogram(baseline_proba.get("long", [])),
+        ]
+    )
 
     if baseline_hist.sum() == 0:
         return {"score": 0.0, "kl_divergence": 0.0, "event_count": len(short), "status": "no_baseline"}
 
-    kl_scores = [
-        _kl_divergence(current_hist[i].tolist(), baseline_hist[i].tolist())
-        for i in range(3)
-    ]
+    kl_scores = [_kl_divergence(current_hist[i].tolist(), baseline_hist[i].tolist()) for i in range(3)]
     avg_kl = sum(kl_scores) / 3.0
 
     score = min(avg_kl / 0.5, 1.0)
@@ -140,7 +140,7 @@ def compute_model_drift(
 
 def compute_signal_drift(
     asset: str,
-    baseline: Optional[dict] = None,
+    baseline: dict | None = None,
     window_days: int = 30,
 ) -> dict:
     events = read_events(asset, days=window_days)
@@ -158,10 +158,7 @@ def compute_signal_drift(
     baseline_sig = baseline.get("signal_distribution", {})
     baseline_mismatch = baseline_sig.get("mismatch_rate", mismatch_rate)
 
-    if baseline_mismatch > 0:
-        score = min(mismatch_rate / baseline_mismatch, 1.0)
-    else:
-        score = min(mismatch_rate * 10, 1.0)
+    score = min(mismatch_rate / baseline_mismatch, 1.0) if baseline_mismatch > 0 else min(mismatch_rate * 10, 1.0)
 
     return {
         "score": round(score, 4),
@@ -176,7 +173,7 @@ def compute_signal_drift(
 
 def compute_pnl_drift(
     asset: str,
-    baseline: Optional[dict] = None,
+    baseline: dict | None = None,
     window_days: int = 30,
 ) -> dict:
     events = read_events(asset, days=window_days)
@@ -191,10 +188,7 @@ def compute_pnl_drift(
     baseline_pnl = baseline.get("pnl_mismatch_stats", {}) if baseline else {}
     baseline_mae = baseline_pnl.get("mean_abs_error", mae)
 
-    if baseline_mae > 0:
-        score = min(mae / baseline_mae, 1.0)
-    else:
-        score = 0.0
+    score = min(mae / baseline_mae, 1.0) if baseline_mae > 0 else 0.0
 
     return {
         "score": round(score, 4),
@@ -241,7 +235,7 @@ def compute_feature_stability(
 
 def compute_regime_consistency(
     asset: str,
-    baseline: Optional[dict] = None,
+    baseline: dict | None = None,
     window_days: int = 30,
 ) -> dict:
     events = read_events(asset, days=window_days)
@@ -280,7 +274,7 @@ def compute_regime_consistency(
 
 def get_shadow_intelligence(
     asset: str,
-    baseline: Optional[dict] = None,
+    baseline: dict | None = None,
 ) -> dict:
     if baseline is None:
         baseline = load_baseline(asset) or {}
@@ -314,7 +308,9 @@ def get_shadow_intelligence(
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     top_sources = [s[0] for s in sorted_scores[:3] if s[1] > 0.1]
 
-    baseline_dist = round(abs(baseline.get("event_count", 0) - len(read_events(asset, days=30))) / (baseline.get("event_count", 1) + 1), 4)
+    baseline_dist = round(
+        abs(baseline.get("event_count", 0) - len(read_events(asset, days=30))) / (baseline.get("event_count", 1) + 1), 4
+    )
 
     return {
         "asset": asset,

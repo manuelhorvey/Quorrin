@@ -11,7 +11,6 @@ import xgboost as xgb
 from features.builder import build_features, compute_macro_derived, model_path
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
 from monitoring.validity_state_machine import (
-    ValidityState as _ValidityState,
     ValidityStateMachine as _ValidityStateMachine,
 )
 from paper_trading import diagnostics as diag
@@ -26,7 +25,7 @@ from paper_trading.shadow_actions import compute_shadow_actions as _compute_shad
 from paper_trading.shadow_feedback import record_shadow_feedback as _record_feedback
 from paper_trading.shadow_learning import compile_shadow_learning as _compile_learning
 from paper_trading.shadow_memory import store_event as _shadow_store
-from paper_trading.state_store import StateStore, _SKIP_JOURNAL
+from paper_trading.state_store import _SKIP_JOURNAL, StateStore
 from paper_trading.tracer import (
     shadow_compare_pnl,
     shadow_compare_signal,
@@ -73,11 +72,7 @@ class AssetEngine:
         self.features = list(contract.features)
         self.allocation = allocation
         engine_cfg = get_config()
-        self.initial_capital = (
-            initial_capital
-            if initial_capital is not None
-            else engine_cfg.capital * allocation
-        )
+        self.initial_capital = initial_capital if initial_capital is not None else engine_cfg.capital * allocation
         self.halt_config = halt_config or dict(engine_cfg.halt)
         self.config = config or {}
         self.expected_prob_conf = expected_prob_conf
@@ -142,9 +137,7 @@ class AssetEngine:
         if pd.isna(vol) or pd.isna(entry_price) or entry_price == 0:
             logger.error("%s: invalid entry_price=%s or vol=%s", self.name, entry_price, vol)
             return
-        intent = PositionIntent.from_price_and_vol(
-            side, entry_price, entry_date, vol, self.sl_mult, self.tp_mult
-        )
+        intent = PositionIntent.from_price_and_vol(side, entry_price, entry_date, vol, self.sl_mult, self.tp_mult)
         self.pos_mgr.open(intent)
         self.position = {
             "side": intent.side,
@@ -185,9 +178,7 @@ class AssetEngine:
         logger.info("%s: downloading history...", self.name)
         df = fetch_history(self.ticker)
         ref = fetch_ref("SPY")
-        macro = compute_macro_derived(
-            pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet"))
-        )
+        macro = compute_macro_derived(pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet")))
         features = self._build_features(df, ref, macro)
         logger.info("%s: %d feature rows", self.name, len(features))
 
@@ -432,11 +423,7 @@ class AssetEngine:
     def _apply_decision(self, decision: TradeDecision, df):
         today = decision.timestamp
         current_side = self.pos_mgr.current_side()
-        new_side = (
-            "long"
-            if decision.signal == "BUY"
-            else ("short" if decision.signal == "SELL" else None)
-        )
+        new_side = "long" if decision.signal == "BUY" else ("short" if decision.signal == "SELL" else None)
 
         if new_side != current_side:
             if self.pos_mgr.has_position():
@@ -471,9 +458,7 @@ class AssetEngine:
                     "entry": round(pos.entry_price, 4) if pos else None,
                     "sl": round(pos.stop_loss, 4) if pos else None,
                     "tp": round(pos.take_profit, 4) if pos else None,
-                    "current_pnl": (
-                        round(self._position_pnl(decision.close_price), 4) if pos else None
-                    ),
+                    "current_pnl": (round(self._position_pnl(decision.close_price), 4) if pos else None),
                 }
                 if pos
                 else None
@@ -521,17 +506,12 @@ class AssetEngine:
         sig = self.signal_data["signal"].iloc[-2]
         direction = 1 if sig == 2 else (-1 if sig == 0 else 0)
         pos_size = (
-            float(self.signal_data["position_size"].iloc[-2])
-            if "position_size" in self.signal_data.columns
-            else 1.0
+            float(self.signal_data["position_size"].iloc[-2]) if "position_size" in self.signal_data.columns else 1.0
         )
         prev_close = float(close.iloc[-2])
         ret = (
             (today_close / prev_close - 1)
-            if len(close) >= 2
-            and prev_close != 0
-            and not pd.isna(today_close)
-            and not pd.isna(prev_close)
+            if len(close) >= 2 and prev_close != 0 and not pd.isna(today_close) and not pd.isna(prev_close)
             else 0
         )
         if pd.isna(ret) or np.isinf(ret):
@@ -594,24 +574,14 @@ class AssetEngine:
             for m, g in td.groupby("month"):
                 profits = g[g["pnl"] > 0]["pnl"].sum()
                 losses = abs(g[g["pnl"] < 0]["pnl"].sum())
-                monthly_pfs.append(
-                    {"month": str(m), "pf": profits / losses if losses > 0 else float("inf")}
-                )
+                monthly_pfs.append({"month": str(m), "pf": profits / losses if losses > 0 else float("inf")})
         monthly_pf = monthly_pfs[-1]["pf"] if monthly_pfs else None
 
         total_profits = sum(t["pnl"] for t in self.trade_log if t["pnl"] > 0)
         total_losses = abs(sum(t["pnl"] for t in self.trade_log if t["pnl"] < 0))
-        pf = (
-            total_profits / total_losses
-            if total_losses > 0
-            else (float("inf") if total_profits > 0 else 0)
-        )
+        pf = total_profits / total_losses if total_losses > 0 else (float("inf") if total_profits > 0 else 0)
 
-        win_rate = (
-            len([t for t in self.trade_log if t["pnl"] > 0]) / len(self.trade_log)
-            if self.trade_log
-            else 0
-        )
+        win_rate = len([t for t in self.trade_log if t["pnl"] > 0]) / len(self.trade_log) if self.trade_log else 0
         sc = {"BUY": 0, "SELL": 0, "FLAT": 0}
         for p in self.prob_history:
             sc[p["signal"]] = sc.get(p["signal"], 0) + 1
@@ -636,9 +606,7 @@ class AssetEngine:
 
         pnl_pct = (
             self._position_pnl(self.current_price) / 100
-            if self.pos_mgr.has_position()
-            and self.current_price is not None
-            and not pd.isna(self.current_price)
+            if self.pos_mgr.has_position() and self.current_price is not None and not pd.isna(self.current_price)
             else 0
         )
         pos_size_config = get_config().position_size
@@ -708,11 +676,9 @@ class AssetEngine:
         bucket = {"asset": self.name, "date": str(datetime.now(tz=ET).date())}
         for p in self.prob_history[-20:]:
             conf = p["confidence"]
-            bucket.setdefault(f"count_{int(conf/10)*10}_{int(conf/10+1)*10}", 0)
-            bucket[f"count_{int(conf/10)*10}_{int(conf/10+1)*10}"] += 1
-        bucket["mean_conf"] = (
-            np.mean([p["confidence"] for p in self.prob_history[-20:]]) if self.prob_history else 0
-        )
+            bucket.setdefault(f"count_{int(conf / 10) * 10}_{int(conf / 10 + 1) * 10}", 0)
+            bucket[f"count_{int(conf / 10) * 10}_{int(conf / 10 + 1) * 10}"] += 1
+        bucket["mean_conf"] = np.mean([p["confidence"] for p in self.prob_history[-20:]]) if self.prob_history else 0
         bucket["n_signals"] = min(20, len(self.prob_history))
         if self.state_store is not None:
             self.state_store.append_confidence_bucket(bucket)
@@ -758,16 +724,14 @@ class AssetEngine:
         hc = self.halt_config
         reasons = []
         if dd <= hc["drawdown"]:
-            reasons.append(f'DD {metrics["drawdown"]:.1f}% <= {hc["drawdown"]*100:.0f}%')
+            reasons.append(f"DD {metrics['drawdown']:.1f}% <= {hc['drawdown'] * 100:.0f}%")
         mpf = metrics.get("monthly_pf")
         if mpf is not None and not pd.isna(mpf) and mpf < hc["monthly_pf"]:
             reasons.append(f"PF {mpf:.2f} < {hc['monthly_pf']:.2f}")
         drought_ok = True
         drought_days = hc.get("signal_drought", 30)
         if self.last_signal_date is not None:
-            days_since = (
-                datetime.now(tz=ET).date() - pd.Timestamp(self.last_signal_date).date()
-            ).days
+            days_since = (datetime.now(tz=ET).date() - pd.Timestamp(self.last_signal_date).date()).days
             if days_since > drought_days:
                 reasons.append(f"Signal drought: {days_since}d > {drought_days}d")
                 drought_ok = False

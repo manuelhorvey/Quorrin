@@ -14,10 +14,8 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger("quantforge.satellite")
 
@@ -28,27 +26,29 @@ class SatelliteConfig:
 
     Tune via survival sim output from PR #2 before going live.
     """
+
     # ── Capital constraints ────────────────────────────────────────
-    max_allocation_pct: float = 0.05       # hard cap: 5% of AUM
-    vol_target: float = 0.40               # separate annualised vol target
-    max_drawdown_pct: float = -0.25        # separate max drawdown limit
+    max_allocation_pct: float = 0.05  # hard cap: 5% of AUM
+    vol_target: float = 0.40  # separate annualised vol target
+    max_drawdown_pct: float = -0.25  # separate max drawdown limit
 
     # ── Regime gate thresholds ─────────────────────────────────────
-    max_correlation_to_portfolio: float = 0.30   # max rolling corr to core
-    max_btc_vol_zscore: float = 2.0              # max BTC vol z-score to enter
-    vix_threshold: float = 25.0                  # VIX below this = risk-on
-    dxy_momentum_threshold: float = 0.02         # max DXY 21d momentum (appreciation)
-    min_crisis_regime_gap_days: int = 5          # days since last CRISIS regime flag
+    max_correlation_to_portfolio: float = 0.30  # max rolling corr to core
+    max_btc_vol_zscore: float = 2.0  # max BTC vol z-score to enter
+    vix_threshold: float = 25.0  # VIX below this = risk-on
+    dxy_momentum_threshold: float = 0.02  # max DXY 21d momentum (appreciation)
+    min_crisis_regime_gap_days: int = 5  # days since last CRISIS regime flag
 
     # ── Marginal contribution monitoring ───────────────────────────
-    contribution_window_days: int = 63           # rolling window for ΔSharpe calc
-    delta_sharpe_alert_threshold: float = -0.5   # soft alert trigger
+    contribution_window_days: int = 63  # rolling window for ΔSharpe calc
+    delta_sharpe_alert_threshold: float = -0.5  # soft alert trigger
     delta_sharpe_reduce_threshold: float = -1.0  # auto-reduce allocation
 
 
 @dataclass
 class GateDecision:
     """Result of a regime gate evaluation."""
+
     allowed: bool
     reasons_blocked: list[str] = field(default_factory=list)
     correlation_value: float = 0.0
@@ -61,6 +61,7 @@ class GateDecision:
 @dataclass
 class SatelliteSnapshot:
     """Point-in-time state of the satellite bucket."""
+
     allocation_pct: float
     gate_open: bool
     gate_reasons: list[str]
@@ -85,7 +86,7 @@ class HighVolSatellite:
     def __init__(
         self,
         total_aum: float,
-        config: Optional[SatelliteConfig] = None,
+        config: SatelliteConfig | None = None,
         name: str = "BTC",
     ):
         self.name = name
@@ -101,7 +102,7 @@ class HighVolSatellite:
         # Position
         self.position_active = False
         self.position_entry = 0.0
-        self.position_side: Optional[str] = None
+        self.position_side: str | None = None
 
         # Rolling performance buffer
         self._daily_returns: list[float] = []
@@ -112,7 +113,7 @@ class HighVolSatellite:
         )
 
         # Gate state
-        self._last_gate: Optional[GateDecision] = None
+        self._last_gate: GateDecision | None = None
         self._days_since_last_crisis_flag = 999
         self._consecutive_gate_closed = 0
 
@@ -123,8 +124,8 @@ class HighVolSatellite:
         vix: float = 0.0,
         dxy_mom_21: float = 0.0,
         btc_vol_zscore: float = 0.0,
-        portfolio_returns_63d: Optional[np.ndarray] = None,
-        btc_returns_63d: Optional[np.ndarray] = None,
+        portfolio_returns_63d: np.ndarray | None = None,
+        btc_returns_63d: np.ndarray | None = None,
         crisis_regime_active: bool = False,
     ) -> GateDecision:
         """Evaluate whether the satellite should be active.
@@ -140,24 +141,20 @@ class HighVolSatellite:
 
         # ── Condition 1: Correlation gate ──────────────────────────
         correlation = 0.0
-        if portfolio_returns_63d is not None and btc_returns_63d is not None:
-            if len(portfolio_returns_63d) > 5 and len(btc_returns_63d) > 5:
-                corr_matrix = np.corrcoef(
-                    portfolio_returns_63d[-63:], btc_returns_63d[-63:]
-                )
-                correlation = float(corr_matrix[0, 1]) if corr_matrix.shape == (2, 2) else 0.0
-                if abs(correlation) > self.config.max_correlation_to_portfolio:
-                    reasons.append(
-                        f"correlation {correlation:.2f} > "
-                        f"{self.config.max_correlation_to_portfolio}"
-                    )
+        if (
+            portfolio_returns_63d is not None
+            and btc_returns_63d is not None
+            and len(portfolio_returns_63d) > 5
+            and len(btc_returns_63d) > 5
+        ):
+            corr_matrix = np.corrcoef(portfolio_returns_63d[-63:], btc_returns_63d[-63:])
+            correlation = float(corr_matrix[0, 1]) if corr_matrix.shape == (2, 2) else 0.0
+            if abs(correlation) > self.config.max_correlation_to_portfolio:
+                reasons.append(f"correlation {correlation:.2f} > {self.config.max_correlation_to_portfolio}")
 
         # ── Condition 2: Vol gate ──────────────────────────────────
         if btc_vol_zscore > self.config.max_btc_vol_zscore:
-            reasons.append(
-                f"BTC vol z-score {btc_vol_zscore:.1f} > "
-                f"{self.config.max_btc_vol_zscore}"
-            )
+            reasons.append(f"BTC vol z-score {btc_vol_zscore:.1f} > {self.config.max_btc_vol_zscore}")
 
         # ── Condition 3: VIX gate (risk-on macro) ──────────────────
         if vix > self.config.vix_threshold:
@@ -167,17 +164,14 @@ class HighVolSatellite:
         abs_dxy = abs(dxy_mom_21)
         if abs_dxy > self.config.dxy_momentum_threshold:
             reasons.append(
-                f"DXY momentum {dxy_mom_21:+.4f} exceeds threshold "
-                f"\u00b1{self.config.dxy_momentum_threshold}"
+                f"DXY momentum {dxy_mom_21:+.4f} exceeds threshold \u00b1{self.config.dxy_momentum_threshold}"
             )
 
         # ── Condition 5: CRISIS regime gate ────────────────────────
         if crisis_regime_active:
             self._days_since_last_crisis_flag = 0
         else:
-            self._days_since_last_crisis_flag = min(
-                self._days_since_last_crisis_flag + 1, 9999
-            )
+            self._days_since_last_crisis_flag = min(self._days_since_last_crisis_flag + 1, 9999)
         if self._days_since_last_crisis_flag < self.config.min_crisis_regime_gap_days:
             reasons.append(
                 f"CRISIS regime active {self._days_since_last_crisis_flag}d ago "
@@ -212,7 +206,7 @@ class HighVolSatellite:
         """Record a daily return and update capital."""
         self._daily_returns.append(daily_return)
         if len(self._daily_returns) > self._max_window:
-            self._daily_returns = self._daily_returns[-self._max_window:]
+            self._daily_returns = self._daily_returns[-self._max_window :]
 
         # Update capital
         if self.position_active:
@@ -255,7 +249,7 @@ class HighVolSatellite:
         window = self.config.contribution_window_days
         if len(r) < 20:
             return 0.0
-        recent = r[-min(window, len(r)):]
+        recent = r[-min(window, len(r)) :]
         mean_r = float(np.mean(recent))
         std_r = float(np.std(recent))
         if std_r < 1e-10:
@@ -276,12 +270,11 @@ class HighVolSatellite:
             }
         """
         # Build combined return series (core + satellite)
-        sat_returns = self._daily_returns[-len(core_returns):] if len(core_returns) > 0 else []
+        sat_returns = self._daily_returns[-len(core_returns) :] if len(core_returns) > 0 else []
         # Align lengths
         min_len = min(len(core_returns), len(sat_returns))
         if min_len < 20:
-            return {"delta_sharpe": 0.0, "alert_level": "normal",
-                    "recommended_allocation_cut_pct": 0.0}
+            return {"delta_sharpe": 0.0, "alert_level": "normal", "recommended_allocation_cut_pct": 0.0}
 
         core = core_returns[-min_len:]
         sat = sat_returns[-min_len:]
@@ -333,22 +326,14 @@ class HighVolSatellite:
 
     def get_state(self) -> SatelliteSnapshot:
         gate = self._last_gate
-        total_return = (
-            (self.current_value / self.initial_capital - 1.0) * 100
-            if self.initial_capital > 0
-            else 0.0
-        )
+        total_return = (self.current_value / self.initial_capital - 1.0) * 100 if self.initial_capital > 0 else 0.0
         return SatelliteSnapshot(
-            allocation_pct=round(
-                self.current_value / max(1.0, self.total_aum) * 100, 2
-            ),
+            allocation_pct=round(self.current_value / max(1.0, self.total_aum) * 100, 2),
             gate_open=gate.allowed if gate else False,
             gate_reasons=gate.reasons_blocked if gate else ["gate never evaluated"],
             current_value=round(self.current_value, 2),
             total_return_pct=round(total_return, 2),
-            sharpe_contribution=round(
-                self.compute_rolling_sharpe(), 2
-            ),
+            sharpe_contribution=round(self.compute_rolling_sharpe(), 2),
             delta_sharpe_63d=0.0,  # computed externally with core context
             position_active=self.position_active,
             drawdown_pct=round(self.drawdown_pct * 100, 2),

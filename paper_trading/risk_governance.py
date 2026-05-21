@@ -1,9 +1,7 @@
 import threading
 from datetime import datetime
-from typing import Optional
 
 from paper_trading.drift_scoring import get_shadow_intelligence
-
 
 _lock = threading.Lock()
 _cache: dict = {}
@@ -26,10 +24,7 @@ def evaluate(asset: str) -> dict:
         drift_scores = intelligence.get("drift_scores", {})
         details = intelligence.get("details", {})
 
-        risk_score = sum(
-            drift_scores.get(k, 0.0) * v
-            for k, v in WEIGHTS.items()
-        )
+        risk_score = sum(drift_scores.get(k, 0.0) * v for k, v in WEIGHTS.items())
 
         if risk_score < 0.3:
             risk_level = "LOW"
@@ -83,7 +78,7 @@ def evaluate(asset: str) -> dict:
         return _fallback_signal(asset)
 
 
-def get_latest(asset: Optional[str] = None):
+def get_latest(asset: str | None = None):
     with _lock:
         if asset:
             return _cache.get(asset)

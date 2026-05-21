@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import Optional
 
 
 def compute_shadow_actions(
     asset: str,
-    state: Optional[dict],
-    drift_report: Optional[dict],
-    risk_signal: Optional[dict],
+    state: dict | None,
+    drift_report: dict | None,
+    risk_signal: dict | None,
 ) -> dict:
     try:
         if not drift_report or not risk_signal:
@@ -15,7 +14,7 @@ def compute_shadow_actions(
         drift = drift_report.get("drift_scores", {})
         risk_level = risk_signal.get("risk_level", "LOW")
         risk_score = risk_signal.get("risk_score", 0.0)
-        risk_flags = risk_signal.get("risk_flags", [])
+        risk_signal.get("risk_flags", [])
 
         model = drift.get("model_drift", 0.0)
         signal = drift.get("signal_drift", 0.0)

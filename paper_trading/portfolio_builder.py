@@ -15,12 +15,8 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             ticker = spec.get("ticker", f"{name}")
             contract = FEATURE_REGISTRY.get(ticker)
             if contract is None:
-                logger.warning(
-                    "No contract for ticker %s; using config features", ticker
-                )
-                contract = type(
-                    "Contract", (), {"features": spec.get("features", [])}
-                )()
+                logger.warning("No contract for ticker %s; using config features", ticker)
+                contract = type("Contract", (), {"features": spec.get("features", [])})()
             alloc = spec.get("allocation", 0)
             user_halt = spec.get("halt", {})
             halt = dict(halt_defaults)

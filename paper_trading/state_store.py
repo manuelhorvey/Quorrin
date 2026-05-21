@@ -1,12 +1,11 @@
-import logging
-import os
-import json
 import fcntl
+import json
+import logging
 import math
-import numpy as np
-from dataclasses import dataclass, asdict
-from typing import Optional
+import os
+from dataclasses import asdict, dataclass
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger("quantforge.state_store")
@@ -18,13 +17,13 @@ SCHEMA_VERSION = "1.0.0"
 class EngineSnapshot:
     schema_version: str = SCHEMA_VERSION
     timestamp: str = ""
-    portfolio: Optional[dict] = None
-    assets: Optional[dict] = None
-    open_positions: Optional[dict] = None
-    engine_status: Optional[dict] = None
-    halt_conditions: Optional[dict] = None
-    risk_signals: Optional[dict] = None
-    shadow_actions: Optional[dict] = None
+    portfolio: dict | None = None
+    assets: dict | None = None
+    open_positions: dict | None = None
+    engine_status: dict | None = None
+    halt_conditions: dict | None = None
+    risk_signals: dict | None = None
+    shadow_actions: dict | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "EngineSnapshot":
@@ -76,11 +75,11 @@ class StateStore:
             fcntl.flock(f, fcntl.LOCK_UN)
         os.replace(tmp_path, self.state_path)
 
-    def load_snapshot(self) -> Optional[EngineSnapshot]:
+    def load_snapshot(self) -> EngineSnapshot | None:
         if not os.path.exists(self.state_path):
             return None
         try:
-            with open(self.state_path, "r") as f:
+            with open(self.state_path) as f:
                 data = json.load(f)
             return EngineSnapshot.from_dict(data)
         except Exception as e:
@@ -120,7 +119,7 @@ class StateStore:
         history = []
         if os.path.exists(self.equity_history_path):
             try:
-                with open(self.equity_history_path, "r") as f:
+                with open(self.equity_history_path) as f:
                     history = json.load(f)
             except (json.JSONDecodeError, ValueError):
                 history = []
@@ -133,7 +132,7 @@ class StateStore:
         if not os.path.exists(self.equity_history_path):
             return []
         try:
-            with open(self.equity_history_path, "r") as f:
+            with open(self.equity_history_path) as f:
                 return json.load(f)
         except (json.JSONDecodeError, ValueError):
             return []
@@ -147,7 +146,7 @@ class StateStore:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         df.to_parquet(path)
 
-    def load_cache(self, ticker: str) -> Optional[pd.DataFrame]:
+    def load_cache(self, ticker: str) -> pd.DataFrame | None:
         path = self.cache_path(ticker)
         if os.path.exists(path):
             try:

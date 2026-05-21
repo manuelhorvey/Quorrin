@@ -2,8 +2,7 @@ import json
 import os
 import threading
 from collections import Counter
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 import numpy as np
 
@@ -11,17 +10,14 @@ from paper_trading.shadow_feedback import read_feedback
 
 _lock = threading.Lock()
 
-LEARNING_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "shadow_learning"
-)
+LEARNING_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "shadow_learning")
 
 
 def compile_shadow_learning(
     asset: str,
-    feedback_logs: Optional[list] = None,
-    drift_history: Optional[dict] = None,
-    risk_history: Optional[dict] = None,
+    feedback_logs: list | None = None,
+    drift_history: dict | None = None,
+    risk_history: dict | None = None,
 ) -> dict:
     try:
         if feedback_logs is None:
@@ -56,7 +52,13 @@ def compile_shadow_learning(
 def _compute_learning_profile(events: list) -> dict:
     n = len(events)
     if n == 0:
-        return {"behavioral_stability": 0.0, "drift_resilience": 0.0, "signal_consistency": 0.0, "risk_sensitivity": 0.0, "action_coherence": 0.0}
+        return {
+            "behavioral_stability": 0.0,
+            "drift_resilience": 0.0,
+            "signal_consistency": 0.0,
+            "risk_sensitivity": 0.0,
+            "action_coherence": 0.0,
+        }
 
     instabilities = []
     alignments = []
@@ -121,7 +123,7 @@ def _mine_latent_patterns(events: list) -> list:
         sig = inp.get("signal", {})
         flip_rates.append(1.0 - sig.get("confidence", 1.0) / 100.0)
 
-        rc = inp.get("drift", {})
+        inp.get("drift", {})
         regime_counts["event"] += 1
 
     drift_arr = np.array(drift_scores)
@@ -133,9 +135,9 @@ def _mine_latent_patterns(events: list) -> list:
         if abs(corr) > 0.3:
             patterns.append(f"HIGH_DRIFT_PERIODS_CORRELATE_WITH_{'SIGNAL_FLIPS' if corr > 0 else 'SIGNAL_STABILITY'}")
 
-        high_instability = instability_arr > np.percentile(instability_arr, 75)
-        high_drift = drift_arr > np.percentile(drift_arr, 75)
-        feature_decay_windows = sum(1 for i in range(1, n) if instability_arr[i] > instability_arr[i-1] * 1.5)
+        instability_arr > np.percentile(instability_arr, 75)
+        drift_arr > np.percentile(drift_arr, 75)
+        feature_decay_windows = sum(1 for i in range(1, n) if instability_arr[i] > instability_arr[i - 1] * 1.5)
         if feature_decay_windows > n * 0.1:
             patterns.append("FEATURE_DECAY_AFTER_VOLATILITY_SPIKES")
 
@@ -144,16 +146,20 @@ def _mine_latent_patterns(events: list) -> list:
         patterns.append("PROLONGED_HIGH_RISK_REGIME_DETECTED")
 
     medium_risk_with_normal_action = sum(
-        1 for i, r in enumerate(risk_levels)
-        if r == "MEDIUM" and i < len(events)
+        1
+        for i, r in enumerate(risk_levels)
+        if r == "MEDIUM"
+        and i < len(events)
         and events[i].get("inputs", {}).get("shadow_action", {}).get("action_type") == "NONE"
     )
     if medium_risk_with_normal_action > n * 0.1:
         patterns.append("RISK_UNDERREACTION_IN_MEDIUM_RISK_PERIODS")
 
     high_risk_no_action = sum(
-        1 for i, r in enumerate(risk_levels)
-        if r == "HIGH" and i < len(events)
+        1
+        for i, r in enumerate(risk_levels)
+        if r == "HIGH"
+        and i < len(events)
         and events[i].get("inputs", {}).get("shadow_action", {}).get("action_type") in ("NONE", "INCREASE_MONITORING")
     )
     if high_risk_no_action > n * 0.05:
@@ -164,7 +170,10 @@ def _mine_latent_patterns(events: list) -> list:
 
 def _build_regime_behavior_map(events: list) -> dict:
     if not events:
-        return {"low_vol": {"stability": 0.5, "risk_action_rate": 0.0}, "high_vol": {"stability": 0.5, "risk_action_rate": 0.0}}
+        return {
+            "low_vol": {"stability": 0.5, "risk_action_rate": 0.0},
+            "high_vol": {"stability": 0.5, "risk_action_rate": 0.0},
+        }
 
     low_vol_stabilities = []
     high_vol_stabilities = []
@@ -254,11 +263,13 @@ def _save_compiled(asset: str, report: dict) -> None:
             for key in ["learning_profile", "latent_patterns", "shadow_insights"]:
                 existing[key] = report.get(key, existing.get(key, {} if key != "latent_patterns" else []))
             history = existing.get("history", [])
-            history.append({
-                "timestamp": report["timestamp"],
-                "event_count": report["event_count"],
-                "learning_profile": report["learning_profile"],
-            })
+            history.append(
+                {
+                    "timestamp": report["timestamp"],
+                    "event_count": report["event_count"],
+                    "learning_profile": report["learning_profile"],
+                }
+            )
             if len(history) > 180:
                 history = history[-180:]
             existing["history"] = history
@@ -270,7 +281,7 @@ def _save_compiled(asset: str, report: dict) -> None:
         pass
 
 
-def load_compiled(asset: str) -> Optional[dict]:
+def load_compiled(asset: str) -> dict | None:
     try:
         path = os.path.join(LEARNING_DIR, asset, "compiled.json")
         if not os.path.exists(path):
@@ -286,8 +297,21 @@ def _empty_report(asset: str) -> dict:
         "asset": asset,
         "timestamp": datetime.utcnow().isoformat(),
         "event_count": 0,
-        "learning_profile": {"behavioral_stability": 0.0, "drift_resilience": 0.0, "signal_consistency": 0.0, "risk_sensitivity": 0.0, "action_coherence": 0.0},
+        "learning_profile": {
+            "behavioral_stability": 0.0,
+            "drift_resilience": 0.0,
+            "signal_consistency": 0.0,
+            "risk_sensitivity": 0.0,
+            "action_coherence": 0.0,
+        },
         "latent_patterns": [],
-        "regime_behavior_map": {"low_vol": {"stability": 0.5, "risk_action_rate": 0.0}, "high_vol": {"stability": 0.5, "risk_action_rate": 0.0}},
-        "shadow_insights": {"top_instability_drivers": [], "dominant_failure_mode": "unknown", "execution_fragility_score": 0.0},
+        "regime_behavior_map": {
+            "low_vol": {"stability": 0.5, "risk_action_rate": 0.0},
+            "high_vol": {"stability": 0.5, "risk_action_rate": 0.0},
+        },
+        "shadow_insights": {
+            "top_instability_drivers": [],
+            "dominant_failure_mode": "unknown",
+            "execution_fragility_score": 0.0,
+        },
     }

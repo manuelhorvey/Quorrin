@@ -1,13 +1,11 @@
-import pandas as pd
 import numpy as np
-from typing import Optional
+import pandas as pd
 
 from features.builder import build_features, compute_macro_derived
 from features.contract import FeatureContract
+from shared.pnl import DefaultPnLStrategy
 from shared.signal import FixedThresholdStrategy
 from shared.sizing import VolTargetSizing
-from shared.pnl import DefaultPnLStrategy
-
 
 _signal_strategy = FixedThresholdStrategy()
 _sizing_strategy = VolTargetSizing()
@@ -24,7 +22,9 @@ def compute_signals(
     threshold: float = 0.45,
 ) -> pd.DataFrame:
     return _signal_strategy.compute(
-        proba, index, threshold,
+        proba,
+        index,
+        threshold,
         close=pd.Series([0.0], index=index[:1]),
         position_size=1.0,
     ).signal_data.drop(columns=["close"], errors="ignore")
@@ -95,7 +95,7 @@ def compute_sl_tp(
 def compute_features(
     df: pd.DataFrame,
     macro: pd.DataFrame,
-    ref: Optional[pd.DataFrame],
+    ref: pd.DataFrame | None,
     contract: FeatureContract,
 ) -> pd.DataFrame:
     return build_features(df, macro, ref, contract)

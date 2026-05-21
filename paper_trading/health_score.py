@@ -1,12 +1,10 @@
 import json
 import os
 import threading
-from typing import Optional
 
 import numpy as np
 
 from paper_trading.drift_scoring import get_shadow_intelligence
-
 
 _lock = threading.Lock()
 _cache: dict = {}
@@ -45,10 +43,8 @@ def _load_state_assets() -> dict:
     return {}
 
 
-def _load_cmss(asset: str) -> Optional[float]:
-    path = os.path.join(
-        BASE_DIR, "sandbox", asset, "manifold_adversarial.json"
-    )
+def _load_cmss(asset: str) -> float | None:
+    path = os.path.join(BASE_DIR, "sandbox", asset, "manifold_adversarial.json")
     try:
         if os.path.exists(path):
             with open(path) as f:
@@ -121,9 +117,7 @@ def compute(asset: str) -> dict:
             "stress_robustness": round(stress_robustness, 4),
         }
 
-        health_score = sum(
-            components[k] * WEIGHTS[k] for k in WEIGHTS
-        )
+        health_score = sum(components[k] * WEIGHTS[k] for k in WEIGHTS)
 
         if health_score >= 0.80:
             health_label = "HEALTHY"
@@ -147,9 +141,7 @@ def compute(asset: str) -> dict:
             "health_color": health_color,
             "components": components,
             "weights": WEIGHTS,
-            "limiting_factors": [
-                {"component": k, "score": v} for k, v in limiting if v < 0.75
-            ],
+            "limiting_factors": [{"component": k, "score": v} for k, v in limiting if v < 0.75],
             "drift_scores": {k: round(v, 4) for k, v in drift_scores.items()},
             "validity_state": validity_state,
             "stress_robustness_source": "adversarial_manifold" if cmss is not None else "estimated",
@@ -163,7 +155,7 @@ def compute(asset: str) -> dict:
         return _fallback(asset)
 
 
-def get_latest(asset: Optional[str] = None):
+def get_latest(asset: str | None = None):
     with _lock:
         if asset:
             return _cache.get(asset)

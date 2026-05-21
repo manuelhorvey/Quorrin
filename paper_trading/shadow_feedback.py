@@ -5,10 +5,7 @@ from datetime import datetime
 
 _lock = threading.Lock()
 
-FEEDBACK_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "shadow_feedback"
-)
+FEEDBACK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "shadow_feedback")
 
 
 def record_shadow_feedback(
@@ -39,7 +36,7 @@ def _compute_derived_metrics(
     avg_drift = sum(drift_scores.values()) / max(len(drift_scores), 1)
 
     confidence = signal_data.get("confidence", 0.0) if signal_data else 0.0
-    risk_score = risk.get("risk_score", 0.0) if risk else 0.0
+    risk.get("risk_score", 0.0) if risk else 0.0
     action_type = action.get("action_type", "NONE") if action else "NONE"
 
     severity_map = {"NONE": 0.0, "INCREASE_MONITORING": 0.33, "REDUCE_EXPOSURE": 0.66, "PAUSE_TRADING": 1.0}
@@ -126,9 +123,8 @@ def _store_event(asset: str, event: dict) -> None:
         month_key = now.strftime("%Y-%m")
         path = os.path.join(FEEDBACK_DIR, asset, f"{month_key}.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with _lock:
-            with open(path, "a") as f:
-                f.write(json.dumps(event, default=str) + "\n")
+        with _lock, open(path, "a") as f:
+            f.write(json.dumps(event, default=str) + "\n")
     except Exception:
         pass
 

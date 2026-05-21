@@ -1,7 +1,5 @@
 import logging
-from typing import Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from paper_trading.decision import PositionIntent
@@ -21,13 +19,13 @@ class PositionManager:
         self.peak_value = initial_capital
         self.position_size = position_size
         self.exposure_multiplier = 1.0
-        self.position: Optional[PositionIntent] = None
+        self.position: PositionIntent | None = None
         self.trade_log: list = []
 
     def open(self, intent: PositionIntent) -> None:
         self.position = intent
 
-    def close(self, exit_price: float, exit_date: str, reason: str) -> Optional[dict]:
+    def close(self, exit_price: float, exit_date: str, reason: str) -> dict | None:
         if self.position is None:
             return None
         side = self.position.side
@@ -55,7 +53,7 @@ class PositionManager:
             self.peak_value = self.current_value
         return trade
 
-    def check_sl_tp(self, current_price: float) -> Optional[Tuple[str, float]]:
+    def check_sl_tp(self, current_price: float) -> tuple[str, float] | None:
         if self.position is None:
             return None
         sl = self.position.stop_loss
@@ -83,7 +81,7 @@ class PositionManager:
         else:
             return (self.position.entry_price / current_price - 1) * 100
 
-    def current_side(self) -> Optional[str]:
+    def current_side(self) -> str | None:
         return self.position.side if self.position else None
 
     def has_position(self) -> bool:

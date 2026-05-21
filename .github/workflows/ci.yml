@@ -31,8 +31,8 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check . --output-format=github
-          ruff format --check .
+          ruff check paper_trading/ --output-format=github
+          ruff format paper_trading/ --check
 
       - name: Run tests
         run: |

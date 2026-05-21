@@ -3,8 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from paper_trading.data_fetcher import fetch_live, safe_download, flatten
-from paper_trading.config_manager import get_config
+from paper_trading.data_fetcher import fetch_live, flatten, safe_download
 
 logger = logging.getLogger("quantforge.satellite_runner")
 
@@ -21,9 +20,7 @@ def fetch_macro_context() -> tuple:
     except Exception:
         pass
     try:
-        dxy_df = safe_download(
-            "DX-Y.NYB", period="3mo", auto_adjust=True, progress=False
-        )
+        dxy_df = safe_download("DX-Y.NYB", period="3mo", auto_adjust=True, progress=False)
         if not dxy_df.empty:
             dxy_df = flatten(dxy_df)
             dxy_21d_ago = (
@@ -50,24 +47,14 @@ def compute_btc_context(price_data: pd.DataFrame | None) -> dict:
     ctx["returns_63d"] = returns_all.values[-63:] if len(returns_all) >= 63 else returns_all.values
 
     vol_21 = float(returns_all[-21:].std()) if len(returns_all) >= 21 else 0.0
-    vol_252 = (
-        float(returns_all[-252:].std())
-        if len(returns_all) >= 252
-        else vol_21
-    )
-    ctx["vol_zscore"] = (
-        (vol_21 - vol_252) / max(vol_252, 1e-10) if vol_252 > 0 else 0.0
-    )
+    vol_252 = float(returns_all[-252:].std()) if len(returns_all) >= 252 else vol_21
+    ctx["vol_zscore"] = (vol_21 - vol_252) / max(vol_252, 1e-10) if vol_252 > 0 else 0.0
     return ctx
 
 
 def compute_core_returns(assets: dict) -> np.ndarray | None:
     """Compute weighted core portfolio returns over a 63-day window."""
-    core_values = [
-        a.pos_mgr.current_value
-        for a in assets.values()
-        if hasattr(a, "pos_mgr") and a.pos_mgr is not None
-    ]
+    core_values = [a.pos_mgr.current_value for a in assets.values() if hasattr(a, "pos_mgr") and a.pos_mgr is not None]
     if not core_values:
         return None
 
@@ -75,11 +62,7 @@ def compute_core_returns(assets: dict) -> np.ndarray | None:
     core_weights = [v / max(core_total, 1) for v in core_values]
     core_returns_list = []
     for a in assets.values():
-        if (
-            hasattr(a, "signal_data")
-            and a.signal_data is not None
-            and "close" in a.signal_data.columns
-        ):
+        if hasattr(a, "signal_data") and a.signal_data is not None and "close" in a.signal_data.columns:
             cr = a.signal_data["close"].pct_change().dropna().values[-63:]
             core_returns_list.append(cr)
     if not core_returns_list:

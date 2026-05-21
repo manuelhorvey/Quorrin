@@ -1,17 +1,14 @@
-import os
 from collections import Counter
-from typing import Optional
 
 import numpy as np
 
 from paper_trading.shadow_feedback import read_feedback
-from paper_trading.shadow_learning import compile_shadow_learning, load_compiled
-
+from paper_trading.shadow_learning import compile_shadow_learning
 
 PAPER_PORTFOLIO = ["NZDJPY", "CADJPY", "USDCAD", "GC", "EURAUD", "AUDJPY", "GBPJPY", "USDJPY", "USDCHF", "GBPUSD"]
 
 
-def build_asset_learning_profile(asset: str, months: int = 3) -> Optional[dict]:
+def build_asset_learning_profile(asset: str, months: int = 3) -> dict | None:
     try:
         events = read_feedback(asset, months=months)
         if not events:
@@ -43,14 +40,9 @@ def build_asset_learning_profile(asset: str, months: int = 3) -> Optional[dict]:
         avg_risk_alignment = sum(risk_alignment_scores) / n
         drift_sensitivity = sum(drift_sensitivities) / n
 
-        action_utilization = {
-            k: round(v / n, 4) for k, v in sorted(action_counter.items())
-        }
+        action_utilization = {k: round(v / n, 4) for k, v in sorted(action_counter.items())}
 
-        risk_overreaction_count = sum(
-            1 for e in events
-            if e.get("derived", {}).get("risk_alignment", 1.0) < 0.5
-        )
+        risk_overreaction_count = sum(1 for e in events if e.get("derived", {}).get("risk_alignment", 1.0) < 0.5)
         risk_overreaction_rate = risk_overreaction_count / n
 
         return {
@@ -103,14 +95,16 @@ def compare_learning_profiles() -> dict:
             insights = compiled.get("shadow_insights", {})
             if compiled.get("event_count", 0) == 0:
                 continue
-            rankings.append({
-                "asset": asset,
-                "stability": profile.get("behavioral_stability", 0.0),
-                "drift_resilience": profile.get("drift_resilience", 0.0),
-                "risk_sensitivity": profile.get("risk_sensitivity", 0.0),
-                "execution_fragility": insights.get("execution_fragility_score", 0.0),
-                "dominant_failure_mode": insights.get("dominant_failure_mode", "unknown"),
-            })
+            rankings.append(
+                {
+                    "asset": asset,
+                    "stability": profile.get("behavioral_stability", 0.0),
+                    "drift_resilience": profile.get("drift_resilience", 0.0),
+                    "risk_sensitivity": profile.get("risk_sensitivity", 0.0),
+                    "execution_fragility": insights.get("execution_fragility_score", 0.0),
+                    "dominant_failure_mode": insights.get("dominant_failure_mode", "unknown"),
+                }
+            )
 
         rankings.sort(key=lambda r: r["stability"], reverse=True)
         return {"rankings": rankings}
@@ -128,16 +122,11 @@ def detect_systemic_patterns() -> dict:
             compiled = compile_shadow_learning(asset)
             for p in compiled.get("latent_patterns", []):
                 all_patterns[p] += 1
-            fragility_scores.append(
-                compiled.get("shadow_insights", {}).get("execution_fragility_score", 0.0)
-            )
+            fragility_scores.append(compiled.get("shadow_insights", {}).get("execution_fragility_score", 0.0))
             profile = compiled.get("learning_profile", {})
             risk_signatures.append(1.0 - profile.get("behavioral_stability", 0.0))
 
-        global_patterns = [
-            p for p, count in all_patterns.most_common()
-            if count >= len(PAPER_PORTFOLIO) * 0.3
-        ]
+        global_patterns = [p for p, count in all_patterns.most_common() if count >= len(PAPER_PORTFOLIO) * 0.3]
 
         if not global_patterns and all_patterns:
             top = all_patterns.most_common(1)

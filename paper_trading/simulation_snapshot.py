@@ -10,13 +10,9 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-from dataclasses import dataclass, asdict, field
-from datetime import datetime
-from typing import Optional
+from dataclasses import asdict, dataclass, field
 
 import pandas as pd
-
-from paper_trading.state_store import StateStore
 
 logger = logging.getLogger("quantforge.simulation_snapshot")
 
@@ -32,27 +28,27 @@ class AssetSnapshot:
     current_value: float
     peak_value: float
     initial_capital: float
-    position_side: Optional[str]
-    position_entry: Optional[float]
-    position_sl: Optional[float]
-    position_tp: Optional[float]
-    position_entry_date: Optional[str]
-    position_vol: Optional[float]
+    position_side: str | None
+    position_entry: float | None
+    position_sl: float | None
+    position_tp: float | None
+    position_entry_date: str | None
+    position_vol: float | None
     n_trades: int
     n_signals: int
     trade_log: list = field(default_factory=list)
     prob_history: list = field(default_factory=list)
-    last_signal: Optional[str] = None
-    last_confidence: Optional[float] = None
-    last_close_price: Optional[float] = None
-    last_prob_long: Optional[float] = None
-    last_prob_short: Optional[float] = None
+    last_signal: str | None = None
+    last_confidence: float | None = None
+    last_close_price: float | None = None
+    last_prob_long: float | None = None
+    last_prob_short: float | None = None
     validity_state: str = "YELLOW"
     validity_exposure: float = 1.0
-    meta_confidence: Optional[float] = None
-    meta_decision: Optional[str] = None
-    feature_stability_jaccard: Optional[float] = None
-    feature_stability_spearman: Optional[float] = None
+    meta_confidence: float | None = None
+    meta_decision: str | None = None
+    feature_stability_jaccard: float | None = None
+    feature_stability_spearman: float | None = None
 
 
 @dataclass
@@ -82,7 +78,7 @@ class SimulationStore:
         cash_buffer: float,
         satellite_value: float,
         asset_snapshots: list[AssetSnapshot],
-        cold_state: Optional[dict] = None,
+        cold_state: dict | None = None,
     ) -> None:
         """Save a simulation snapshot row for each asset."""
         if not asset_snapshots:
@@ -99,28 +95,30 @@ class SimulationStore:
             cash_buffer=cash_buffer,
             satellite_value=satellite_value,
         )
-        rows.append({
-            "_meta": "portfolio",
-            "asset": "__portfolio__",
-            "timestamp": ps.timestamp,
-            "portfolio_value": ps.portfolio_value,
-            "total_return": ps.total_return,
-            "cash_buffer": ps.cash_buffer,
-            "satellite_value": ps.satellite_value,
-            "current_value": 0.0,
-            "peak_value": 0.0,
-            "initial_capital": 0.0,
-            "position_side": None,
-            "position_entry": None,
-            "position_sl": None,
-            "position_tp": None,
-            "position_entry_date": None,
-            "position_vol": None,
-            "n_trades": 0,
-            "n_signals": 0,
-            "trade_log": [],
-            "prob_history": [],
-        })
+        rows.append(
+            {
+                "_meta": "portfolio",
+                "asset": "__portfolio__",
+                "timestamp": ps.timestamp,
+                "portfolio_value": ps.portfolio_value,
+                "total_return": ps.total_return,
+                "cash_buffer": ps.cash_buffer,
+                "satellite_value": ps.satellite_value,
+                "current_value": 0.0,
+                "peak_value": 0.0,
+                "initial_capital": 0.0,
+                "position_side": None,
+                "position_entry": None,
+                "position_sl": None,
+                "position_tp": None,
+                "position_entry_date": None,
+                "position_vol": None,
+                "n_trades": 0,
+                "n_signals": 0,
+                "trade_log": [],
+                "prob_history": [],
+            }
+        )
 
         df = pd.DataFrame(rows)
         if os.path.exists(self.snapshot_path) and os.path.getsize(self.snapshot_path) > 0:
@@ -146,7 +144,7 @@ class SimulationStore:
             except Exception as e:
                 logger.warning("failed to persist cold state: %s", e)
 
-    def load_cold_state(self) -> Optional[dict]:
+    def load_cold_state(self) -> dict | None:
         if not os.path.exists(self.cold_state_path):
             return None
         try:
@@ -156,7 +154,7 @@ class SimulationStore:
             logger.warning("failed to load cold state: %s", e)
             return None
 
-    def load_snapshot(self, timestamp: str) -> Optional[PortfolioSnapshot]:
+    def load_snapshot(self, timestamp: str) -> PortfolioSnapshot | None:
         """Load a complete portfolio snapshot for a given date."""
         if not os.path.exists(self.snapshot_path):
             return None
@@ -192,7 +190,9 @@ class SimulationStore:
                 position_entry=float(row["position_entry"]) if pd.notna(row.get("position_entry")) else None,
                 position_sl=float(row["position_sl"]) if pd.notna(row.get("position_sl")) else None,
                 position_tp=float(row["position_tp"]) if pd.notna(row.get("position_tp")) else None,
-                position_entry_date=str(row["position_entry_date"]) if pd.notna(row.get("position_entry_date")) else None,
+                position_entry_date=str(row["position_entry_date"])
+                if pd.notna(row.get("position_entry_date"))
+                else None,
                 position_vol=float(row["position_vol"]) if pd.notna(row.get("position_vol")) else None,
                 n_trades=int(row["n_trades"]),
                 n_signals=int(row["n_signals"]),
@@ -207,14 +207,18 @@ class SimulationStore:
                 validity_exposure=float(row["validity_exposure"]) if pd.notna(row.get("validity_exposure")) else 1.0,
                 meta_confidence=float(row["meta_confidence"]) if pd.notna(row.get("meta_confidence")) else None,
                 meta_decision=str(row["meta_decision"]) if pd.notna(row.get("meta_decision")) else None,
-                feature_stability_jaccard=float(row["feature_stability_jaccard"]) if pd.notna(row.get("feature_stability_jaccard")) else None,
-                feature_stability_spearman=float(row["feature_stability_spearman"]) if pd.notna(row.get("feature_stability_spearman")) else None,
+                feature_stability_jaccard=float(row["feature_stability_jaccard"])
+                if pd.notna(row.get("feature_stability_jaccard"))
+                else None,
+                feature_stability_spearman=float(row["feature_stability_spearman"])
+                if pd.notna(row.get("feature_stability_spearman"))
+                else None,
             )
             ps.assets[a.asset] = a
 
         return ps
 
-    def load_snapshot_by_date(self, date_str: str) -> Optional[PortfolioSnapshot]:
+    def load_snapshot_by_date(self, date_str: str) -> PortfolioSnapshot | None:
         """Load the latest snapshot for a given date (YYYY-MM-DD)."""
         if not os.path.exists(self.snapshot_path):
             return None
@@ -248,8 +252,8 @@ def build_asset_snapshot(
     metrics: dict,
     validity_state: str,
     validity_exposure: float,
-    meta_inference: Optional[dict],
-    feature_stability: Optional[dict],
+    meta_inference: dict | None,
+    feature_stability: dict | None,
     timestamp: str,
 ) -> AssetSnapshot:
     """Build an AssetSnapshot from an asset's runtime state."""

@@ -3,16 +3,12 @@ import os
 import threading
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Optional
 
 import numpy as np
 
 _lock = threading.Lock()
 
-MEMORY_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "shadow_memory"
-)
+MEMORY_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "shadow_memory")
 
 BASELINE_DIR = os.path.join(MEMORY_DIR, "baseline")
 
@@ -23,9 +19,8 @@ def store_event(asset: str, event: dict) -> None:
         date_str = ts[:10] if isinstance(ts, str) else datetime.utcnow().strftime("%Y-%m-%d")
         path = os.path.join(MEMORY_DIR, asset, f"{date_str}.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with _lock:
-            with open(path, "a") as f:
-                f.write(json.dumps(event, default=str) + "\n")
+        with _lock, open(path, "a") as f:
+            f.write(json.dumps(event, default=str) + "\n")
     except Exception:
         pass
 
@@ -66,8 +61,7 @@ def _histogram_bins(values: list, bins: int = 10, low: float = 0.0, high: float 
         return []
     hist, edges = np.histogram(values, bins=bins, range=(low, high))
     return [
-        {"bin_start": float(edges[i]), "bin_end": float(edges[i + 1]), "count": int(hist[i])}
-        for i in range(len(hist))
+        {"bin_start": float(edges[i]), "bin_end": float(edges[i + 1]), "count": int(hist[i])} for i in range(len(hist))
     ]
 
 
@@ -80,7 +74,7 @@ def _kl_divergence(p: list, q: list) -> float:
     return float(np.sum(p * np.log(p / q)))
 
 
-def build_baseline(asset: str, events: Optional[list] = None) -> dict:
+def build_baseline(asset: str, events: list | None = None) -> dict:
     if events is None:
         events = read_events(asset, days=90)
 
@@ -156,7 +150,7 @@ def save_baseline(asset: str, baseline: dict) -> None:
         pass
 
 
-def load_baseline(asset: str) -> Optional[dict]:
+def load_baseline(asset: str) -> dict | None:
     try:
         path = os.path.join(BASELINE_DIR, f"{asset}.json")
         if not os.path.exists(path):

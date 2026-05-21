@@ -1,11 +1,8 @@
 import threading
-from collections import defaultdict
 from datetime import datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd
-
 
 _lock = threading.Lock()
 _distribution_history: dict = {}
@@ -55,8 +52,10 @@ def analyze_model_distribution(
         "proba_neutral": float(proba[1]),
         "proba_long": float(proba[2]),
         "predicted": (
-            "SHORT" if proba[0] > max(proba[1], proba[2])
-            else "LONG" if proba[2] > max(proba[0], proba[1])
+            "SHORT"
+            if proba[0] > max(proba[1], proba[2])
+            else "LONG"
+            if proba[2] > max(proba[0], proba[1])
             else "NEUTRAL"
         ),
         "confidence": float(max(proba)),
@@ -70,7 +69,7 @@ def analyze_model_distribution(
             _distribution_history[asset] = _distribution_history[asset][-window:]
         hist = _distribution_history[asset]
 
-    recent = hist[-min(len(hist), window):]
+    recent = hist[-min(len(hist), window) :]
     if len(recent) < 2:
         return {
             "current": entry,
@@ -113,11 +112,13 @@ def analyze_feature_impact(
             perturbed_proba = model.predict_proba(perturbed)
             perturbed_conf = float(perturbed_proba[0, baseline_class])
             impact = baseline_conf - perturbed_conf
-            impacts.append({
-                "feature": feat,
-                "impact": round(impact, 6),
-                "direction": "increases" if impact > 0 else "decreases",
-            })
+            impacts.append(
+                {
+                    "feature": feat,
+                    "impact": round(impact, 6),
+                    "direction": "increases" if impact > 0 else "decreases",
+                }
+            )
 
         impacts.sort(key=lambda x: abs(x["impact"]), reverse=True)
         return impacts[:5]
@@ -132,10 +133,7 @@ def analyze_regime_context(close: pd.Series) -> dict:
             return {"volatility_regime": "unknown", "current_vol": 0.0, "vol_percentile": 0.0}
 
         recent_vol = returns.tail(20).std() * np.sqrt(252)
-        rolling = [
-            returns.iloc[i:i+20].std() * np.sqrt(252)
-            for i in range(len(returns) - 19)
-        ]
+        rolling = [returns.iloc[i : i + 20].std() * np.sqrt(252) for i in range(len(returns) - 19)]
         if not rolling:
             return {
                 "volatility_regime": "unknown",
@@ -196,12 +194,12 @@ def build_shadow_report(
     asset: str,
     timestamp: str,
     signal_match: bool,
-    pnl_match: Optional[bool] = None,
-    model_divergence: Optional[dict] = None,
-    signal_divergence: Optional[dict] = None,
-    feature_drivers: Optional[list] = None,
-    regime_context: Optional[dict] = None,
-    pnl_decomposition: Optional[dict] = None,
+    pnl_match: bool | None = None,
+    model_divergence: dict | None = None,
+    signal_divergence: dict | None = None,
+    feature_drivers: list | None = None,
+    regime_context: dict | None = None,
+    pnl_decomposition: dict | None = None,
 ) -> dict:
     report = {
         "asset": asset,

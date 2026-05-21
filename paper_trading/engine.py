@@ -1,7 +1,6 @@
 import logging
 import os
 
-import numpy as np
 import pandas as pd
 import pytz
 from datetime import datetime
@@ -24,6 +23,7 @@ from paper_trading.decision import PositionIntent
 from enum import Enum
 from paper_trading.satellite import HighVolSatellite, SatelliteConfig
 from paper_trading.simulation_snapshot import SimulationStore, build_asset_snapshot
+from paper_trading.satellite_runner import fetch_macro_context, compute_btc_context, compute_core_returns, fetch_btc_price
 from shared.registry import StrategyRegistry
 
 
@@ -77,13 +77,20 @@ class PaperTradingEngine:
         self.assets = {}
         self.start_date = datetime.now(tz=ET)
         self.last_update = None
-        saved_positions = {}
+
         snapshot = self.state_store.load_snapshot()
-        if snapshot is not None:
-            eng_status = snapshot.engine_status or {}
-            if eng_status.get('start_time'):
-                self.start_date = datetime.fromisoformat(eng_status['start_time'])
-            saved_positions = snapshot.open_positions or {}
+        if snapshot is not None and snapshot.engine_status:
+            self.start_date = datetime.fromisoformat(
+                snapshot.engine_status.get('start_time', self.start_date.isoformat())
+            )
+        saved_positions = (snapshot.open_positions or {}) if snapshot else {}
+
+        self._build_asset_registry()
+        self._init_satellite()
+        self._restore_positions(saved_positions)
+        self._sim_store = SimulationStore(BASE)
+
+    def _build_asset_registry(self) -> None:
         _reg = StrategyRegistry.get_instance()
         _reg.register_defaults(list(PAPER_PORTFOLIO.keys()))
         for name, spec in PAPER_PORTFOLIO.items():
@@ -93,37 +100,8 @@ class PaperTradingEngine:
                 sl_mult=spec.get('sl_mult', 1.0), tp_mult=spec.get('tp_mult', 2.5),
                 state_store=self.state_store,
             )
-        for name, pos_data in saved_positions.items():
-            if name in self.assets:
-                asset = self.assets[name]
-                pos_dict = pos_data.get('position')
-                if pos_dict:
-                    # Dynamically recalculate stop_loss and take_profit based on current configuration multiples to reflect changes
-                    intent = PositionIntent.from_price_and_vol(
-                        side=pos_dict['side'],
-                        entry_price=pos_dict['entry'],
-                        entry_date=pos_dict['entry_date'],
-                        vol=pos_dict['vol'],
-                        sl_mult=asset.sl_mult,
-                        tp_mult=asset.tp_mult,
-                    )
-                    pos_dict['sl'] = intent.stop_loss
-                    pos_dict['tp'] = intent.take_profit
-                    asset.position = pos_dict
-                    asset.pos_mgr.open(intent)
-                cv = pos_data.get('current_value')
-                if cv is not None:
-                    asset.current_value = cv
-                    asset.pos_mgr.current_value = cv
-                pv = pos_data.get('peak_value')
-                if pv is not None:
-                    asset.peak_value = pv
-                    asset.pos_mgr.peak_value = pv
-                asset.trade_log = pos_data.get('trade_log', [])
-                asset.pos_mgr.trade_log = list(pos_data.get('trade_log', []))
-                asset.prob_history = pos_data.get('prob_history', [])
 
-        # ── Satellite (high-vol bucket, initially BTC) ───────────────
+    def _init_satellite(self) -> None:
         self.satellite = None
         sat_cfg = get_config().satellite
         btc_sat = sat_cfg.get('BTC', {})
@@ -139,8 +117,38 @@ class PaperTradingEngine:
                 name="BTC",
             )
 
-        # ── Simulation snapshot store ──────────────────────────────
-        self._sim_store = SimulationStore(BASE)
+    @staticmethod
+    def _restore_saved_position(asset, pos_data: dict) -> None:
+        pos_dict = pos_data.get('position')
+        if pos_dict:
+            intent = PositionIntent.from_price_and_vol(
+                side=pos_dict['side'],
+                entry_price=pos_dict['entry'],
+                entry_date=pos_dict['entry_date'],
+                vol=pos_dict['vol'],
+                sl_mult=asset.sl_mult,
+                tp_mult=asset.tp_mult,
+            )
+            pos_dict['sl'] = intent.stop_loss
+            pos_dict['tp'] = intent.take_profit
+            asset.position = pos_dict
+            asset.pos_mgr.open(intent)
+        cv = pos_data.get('current_value')
+        if cv is not None:
+            asset.current_value = cv
+            asset.pos_mgr.current_value = cv
+        pv = pos_data.get('peak_value')
+        if pv is not None:
+            asset.peak_value = pv
+            asset.pos_mgr.peak_value = pv
+        asset.trade_log = pos_data.get('trade_log', [])
+        asset.pos_mgr.trade_log = list(pos_data.get('trade_log', []))
+        asset.prob_history = pos_data.get('prob_history', [])
+
+    def _restore_positions(self, saved_positions: dict) -> None:
+        for name, pos_data in saved_positions.items():
+            if name in self.assets:
+                self._restore_saved_position(self.assets[name], pos_data)
 
     def initialize(self):
         from features.registry import ASSET_LABEL_PARAMS
@@ -193,86 +201,37 @@ class PaperTradingEngine:
         if sat is None:
             return
 
-        # Fetch BTC data for the gate evaluation
         try:
-            btc_engine = self.assets.get('BTC')
-            if btc_engine is None:
-                # BTC not in core — fetch independently
-                df = fetch_live('BTC-USD', min_days=100)
-            else:
-                df = btc_engine.price_data if btc_engine.price_data is not None else fetch_live('BTC-USD', min_days=100)
+            btc_price_data = fetch_btc_price(self.assets)
+            if btc_price_data is None or btc_price_data.empty:
+                results["satellite"] = {"asset": "BTC", "error": "no BTC price data"}
+                return
 
-            close = df['close'].ffill()
-            returns_63d = close.pct_change().dropna().values[-63:]
+            ctx = compute_btc_context(btc_price_data)
+            vix, dxy_mom = fetch_macro_context()
+            core_rets_63d = compute_core_returns(self.assets)
 
-            # Compute BTC vol z-score (21d vol vs 252d vol)
-            returns_all = close.pct_change().dropna()
-            vol_21 = float(returns_all[-21:].std())
-            vol_252 = float(returns_all[-min(len(returns_all), 252):].std()) if len(returns_all) >= 21 else vol_21
-            btc_vol_zscore = (vol_21 - vol_252) / max(vol_252, 1e-10) if vol_252 > 0 else 0.0
-
-            # Core portfolio returns for correlation computation
-            core_rets_63d = None
-            core_values = [
-                a.pos_mgr.current_value for a in self.assets.values()
-                if hasattr(a, 'pos_mgr') and a.pos_mgr is not None
-            ]
-            if core_values:
-                core_total = sum(core_values)
-                core_weights = [v / max(core_total, 1) for v in core_values]
-                core_returns_list = []
-                for a in self.assets.values():
-                    if hasattr(a, 'signal_data') and a.signal_data is not None and 'close' in a.signal_data.columns:
-                        cr = a.signal_data['close'].pct_change().dropna().values[-63:]
-                        core_returns_list.append(cr)
-                if core_returns_list:
-                    min_len = min(len(cr) for cr in core_returns_list)
-                    aligned = np.array([cr[-min_len:] for cr in core_returns_list])
-                    core_rets_63d = np.average(aligned, axis=0, weights=core_weights[:len(aligned)])
-
-            # Fetch macro context
-            vix = 0.0
-            dxy_mom = 0.0
-            crisis_flag = False
-            try:
-                vix_df = safe_download('^VIX', period='1mo', auto_adjust=True, progress=False)
-                if not vix_df.empty:
-                    vix_df = flatten(vix_df)
-                    vix = float(vix_df['close'].ffill().iloc[-1])
-            except Exception:
-                pass
-            try:
-                dxy_df = safe_download('DX-Y.NYB', period='3mo', auto_adjust=True, progress=False)
-                if not dxy_df.empty:
-                    dxy_df = flatten(dxy_df)
-                    dxy_21d_ago = float(dxy_df['close'].ffill().iloc[-22]) if len(dxy_df) >= 22 else float(dxy_df['close'].ffill().iloc[0])
-                    dxy_now = float(dxy_df['close'].ffill().iloc[-1])
-                    dxy_mom = (dxy_now - dxy_21d_ago) / max(dxy_21d_ago, 1e-10)
-            except Exception:
-                pass
-
-            # Evaluate gate
             decision = sat.evaluate_gate(
                 vix=vix,
                 dxy_mom_21=dxy_mom,
-                btc_vol_zscore=btc_vol_zscore,
+                btc_vol_zscore=ctx["vol_zscore"],
                 portfolio_returns_63d=core_rets_63d,
-                btc_returns_63d=returns_63d if len(returns_63d) > 0 else None,
+                btc_returns_63d=ctx["returns_63d"],
                 crisis_regime_active=self._detect_crisis_regime(),
             )
 
-            # Record return (for P&L tracking)
-            if len(returns_all) >= 2:
-                sat.record_return(float(returns_all.iloc[-1]))
+            returns_all = ctx.get("returns_all")
+            if returns_all is not None and len(returns_all) >= 2:
+                sat.record_return(float(returns_all[-1]))
 
-            results['satellite'] = {
-                'asset': 'BTC',
-                'gate_allowed': decision.allowed,
-                'gate_reasons': decision.reasons_blocked,
+            results["satellite"] = {
+                "asset": "BTC",
+                "gate_allowed": decision.allowed,
+                "gate_reasons": decision.reasons_blocked,
             }
         except Exception as e:
             logger.error("satellite gating failed: %s", e)
-            results['satellite'] = {'asset': 'BTC', 'error': str(e)}
+            results["satellite"] = {"asset": "BTC", "error": str(e)}
 
     def _detect_crisis_regime(self) -> bool:
         """Check if any core asset has an active CRISIS validity state."""
@@ -313,18 +272,23 @@ class PaperTradingEngine:
                 'feature_stability_jaccard': feat_stab.get('jaccard_top_10'),
                 'feature_stability_spearman': feat_stab.get('spearman_rank_corr'),
             }
+        return {
+            'portfolio': self._compute_portfolio_summary(overall_validity, any_halted),
+            'assets': ad,
+            'satellite': self._satellite_snapshot(),
+            'halt_conditions': HALT,
+        }
+
+    def _compute_portfolio_summary(self, overall_validity: float, any_halted: bool) -> dict:
         n = len(self.assets) or 1
         exec_state = ExecutionState.HALTED if any_halted else (
             ExecutionState.PAUSED if (overall_validity / n) < 0.5 else ExecutionState.ACTIVE
         )
-
         realized_total = sum(
             a.current_value if not pd.isna(a.current_value) else a.initial_capital
             for a in self.assets.values()
         )
         tc = sum(a.initial_capital for a in self.assets.values())
-
-        # Include satellite capital in totals
         satellite_value = self.satellite.current_value if self.satellite is not None else 0.0
         satellite_pct = self.satellite.current_value / max(CONFIG['capital'], 1) * 100 if self.satellite is not None else 0.0
         realized_total += satellite_value
@@ -344,52 +308,44 @@ class PaperTradingEngine:
         mtm_total = realized_total + unrealized_dollars
         mtm_return = (mtm_total - tc) / tc * 100 if tc > 0 else 0
         realized_return = (realized_total - satellite_value - tc) / tc * 100 if tc > 0 else 0
-
-        # Satellite snapshot for reporting
-        sat_snapshot = None
-        if self.satellite is not None:
-            sat_state = self.satellite.get_state()
-            sat_snapshot = {
-                'name': self.satellite.name,
-                'allocation_pct': sat_state.allocation_pct,
-                'gate_open': sat_state.gate_open,
-                'gate_reasons': sat_state.gate_reasons,
-                'current_value': sat_state.current_value,
-                'total_return_pct': sat_state.total_return_pct,
-                'sharpe_contribution': sat_state.sharpe_contribution,
-                'position_active': sat_state.position_active,
-                'drawdown_pct': sat_state.drawdown_pct,
-            }
-
         delta = datetime.now(tz=ET) - self.start_date
-        dr = delta.days
-        runtime_hours = delta.total_seconds() / 3600
 
         return {
-            'portfolio': {
-                'total_value': round(mtm_total, 2),
-                'mtm_value': round(mtm_total, 2),
-                'total_return': round(mtm_return, 2),
-                'realized_value': round(realized_total, 2),
-                'realized_return': round(realized_return, 2),
-                'unrealized_pnl': round(unrealized_dollars, 2),
-                'days_running': dr,
-                'runtime_hours': round(runtime_hours, 1),
-                'start_date': self.start_date.strftime('%Y-%m-%d'),
-                'start_datetime': self.start_date.isoformat(),
-                'last_update': self.last_update.strftime('%Y-%m-%d %H:%M:%S') if self.last_update else None,
-                'capital': CONFIG['capital'],
-                'allocations': {n: a.allocation for n, a in self.assets.items()},
-                'deployment_cleared': True,
-                'open_positions': open_positions,
-                'closed_trades': closed_trades,
-                'execution_state': exec_state.value,
-                'average_validity_exposure': round(overall_validity / n, 4),
-                'satellite_allocation_pct': round(satellite_pct, 2),
-            },
-            'assets': ad,
-            'satellite': sat_snapshot,
-            'halt_conditions': HALT,
+            'total_value': round(mtm_total, 2),
+            'mtm_value': round(mtm_total, 2),
+            'total_return': round(mtm_return, 2),
+            'realized_value': round(realized_total, 2),
+            'realized_return': round(realized_return, 2),
+            'unrealized_pnl': round(unrealized_dollars, 2),
+            'days_running': delta.days,
+            'runtime_hours': round(delta.total_seconds() / 3600, 1),
+            'start_date': self.start_date.strftime('%Y-%m-%d'),
+            'start_datetime': self.start_date.isoformat(),
+            'last_update': self.last_update.strftime('%Y-%m-%d %H:%M:%S') if self.last_update else None,
+            'capital': CONFIG['capital'],
+            'allocations': {n: a.allocation for n, a in self.assets.items()},
+            'deployment_cleared': True,
+            'open_positions': open_positions,
+            'closed_trades': closed_trades,
+            'execution_state': exec_state.value,
+            'average_validity_exposure': round(overall_validity / n, 4),
+            'satellite_allocation_pct': round(satellite_pct, 2),
+        }
+
+    def _satellite_snapshot(self) -> dict | None:
+        if self.satellite is None:
+            return None
+        s = self.satellite.get_state()
+        return {
+            'name': self.satellite.name,
+            'allocation_pct': s.allocation_pct,
+            'gate_open': s.gate_open,
+            'gate_reasons': s.gate_reasons,
+            'current_value': s.current_value,
+            'total_return_pct': s.total_return_pct,
+            'sharpe_contribution': s.sharpe_contribution,
+            'position_active': s.position_active,
+            'drawdown_pct': s.drawdown_pct,
         }
 
     def save_state(self):

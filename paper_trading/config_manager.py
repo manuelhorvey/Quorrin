@@ -77,3 +77,18 @@ def load_config(path: Optional[str] = None) -> EngineConfig:
         return EngineConfig.from_dict(data)
     logger.warning("Config file %s not found; using defaults", path)
     return EngineConfig()
+
+
+_GLOBAL_CONFIG: EngineConfig | None = None
+
+
+def get_config(path: Optional[str] = None) -> EngineConfig:
+    global _GLOBAL_CONFIG
+    if _GLOBAL_CONFIG is None:
+        _GLOBAL_CONFIG = load_config(path)
+    return _GLOBAL_CONFIG
+
+
+def reset_config() -> None:
+    global _GLOBAL_CONFIG
+    _GLOBAL_CONFIG = None

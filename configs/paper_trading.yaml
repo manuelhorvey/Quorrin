@@ -11,20 +11,17 @@ halt:
   signal_drought: 30
   prob_drift: 0.15
 
-assets:
+satellite:
   BTC:
+    max_allocation_pct: 0.05
+    vol_target: 0.40
+    max_drawdown_pct: -0.25
     ticker: BTC-USD
-    allocation: 0.05
     sl_mult: 0.58
     tp_mult: 1.51
     features: [rate_diff, 2y_yield_delta_63, vix_delta_5, dxy_mom_21, vix_ma21, btc_mom_10, btc_mom_21, btc_vs_spy_21, btc_mom_63, btc_vs_spy_63]
-    halt:
-      drawdown: -0.15
-      monthly_pf: 0.70
-      signal_drought: 30
-      prob_drift: 0.15
-    config:
-      vol_scalar: true
+
+assets:
   EURAUD:
     ticker: EURAUD=X
     allocation: 0.20

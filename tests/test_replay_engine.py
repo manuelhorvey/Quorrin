@@ -21,7 +21,7 @@ class TestUpdatePnlDeterministic:
     @pytest.fixture
     def engine(self):
         return AssetEngine(
-            "BTC-USD", "BTC", FEATURE_REGISTRY["BTC-USD"], PAPER_PORTFOLIO["BTC"]["alloc"],
+            "NZDJPY=X", "NZDJPY", FEATURE_REGISTRY["NZDJPY=X"], PAPER_PORTFOLIO["NZDJPY"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 

@@ -120,7 +120,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         'engine_status': {'initialized': True, 'last_update': None, 'start_time': None},
                         'portfolio': {'total_value': 0, 'total_return': 0, 'days_running': 0,
                                       'start_date': '', 'last_update': None, 'capital': 100000,
-                                       'allocations': {'BTC': 0.05, 'EURAUD': 0.20, 'GC': 0.15, 'NZDJPY': 0.13, 'CADJPY': 0.10, 'AUDJPY': 0.07, 'USDCAD': 0.07, 'GBPJPY': 0.06, 'USDJPY': 0.05, 'USDCHF': 0.04, 'GBPUSD': 0.04},
+                                        'allocations': {'EURAUD': 0.20, 'GC': 0.15, 'NZDJPY': 0.13, 'CADJPY': 0.10, 'AUDJPY': 0.07, 'USDCAD': 0.07, 'GBPJPY': 0.06, 'USDJPY': 0.05, 'USDCHF': 0.04, 'GBPUSD': 0.04},
                                       'deployment_cleared': True},
                         'assets': {}, 'halt_conditions': {'drawdown': -0.08, 'monthly_pf': 0.7, 'signal_drought': 30, 'prob_drift': 0.15},
                     }, indent=2)

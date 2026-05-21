@@ -65,7 +65,6 @@ class TestConfig:
         assert "btc_vs_spy_21" in features
 
     def test_paper_portfolio_structure(self):
-        assert "BTC" in PAPER_PORTFOLIO
         assert "NZDJPY" in PAPER_PORTFOLIO
         assert "CADJPY" in PAPER_PORTFOLIO
         assert "USDCAD" in PAPER_PORTFOLIO
@@ -83,7 +82,7 @@ class TestConfig:
 class TestUpdatePnl:
     @pytest.fixture
     def engine(self):
-        return AssetEngine("BTC-USD", "BTC", FEATURE_REGISTRY["BTC-USD"], PAPER_PORTFOLIO["BTC"]["alloc"],
+        return AssetEngine("NZDJPY=X", "NZDJPY", FEATURE_REGISTRY["NZDJPY=X"], PAPER_PORTFOLIO["NZDJPY"]["alloc"],
                            journal_path=_SKIP_JOURNAL)
 
     @pytest.fixture

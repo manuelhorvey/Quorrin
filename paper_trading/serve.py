@@ -3,6 +3,8 @@ from dataclasses import asdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paper_trading.state_store import StateStore
+from paper_trading.config_manager import get_config
+from paper_trading.portfolio_builder import build_paper_portfolio
 from paper_trading.risk_governance import get_latest as _get_risk_latest
 from paper_trading.health_score import get_latest as _get_health_latest, compute_all as _compute_health_all
 
@@ -56,7 +58,7 @@ def _cache_set(key: str, value: str, ttl: float | None = None) -> None:
     _CACHE[key] = (value, time.monotonic() + ttl)
 
 
-VOL_BASELINES = {
+_FALLBACK_VOL_BASELINES = {
     "GC": 0.009129,
     "NZDJPY": 0.006581, "CADJPY": 0.005989,
     "USDCAD": 0.004463, "EURAUD": 0.005026,
@@ -65,6 +67,11 @@ VOL_BASELINES = {
     "GBPUSD": 0.005595,
     "CHFJPY": 0.004780, "EURCAD": 0.003476, "DJI": 0.008061,
 }
+
+
+def _get_vol_baselines() -> dict:
+    cfg = get_config()
+    return cfg.vol_baselines or _FALLBACK_VOL_BASELINES
 
 STATIC_ROUTES_VANILLA = {
     "/": "index.html",
@@ -158,13 +165,21 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 if snapshot is not None:
                     data = json.dumps(asdict(snapshot), indent=2, default=str)
                 else:
+                    cfg = get_config()
+                    pf = build_paper_portfolio(cfg.halt)
                     data = json.dumps({
                         'engine_status': {'initialized': True, 'last_update': None, 'start_time': None},
-                        'portfolio': {'total_value': 0, 'total_return': 0, 'days_running': 0,
-                                      'start_date': '', 'last_update': None, 'capital': 100000,
-                                        'allocations': {'EURAUD': 0.17, 'GC': 0.13, 'NZDJPY': 0.11, 'CADJPY': 0.09, 'CHFJPY': 0.07, 'EURCAD': 0.07, 'AUDJPY': 0.06, 'USDCAD': 0.06, 'GBPJPY': 0.05, 'DJI': 0.05, 'USDJPY': 0.04, 'USDCHF': 0.04, 'GBPUSD': 0.03},
-                                        'satellite_allocation_pct': 5.0, 'deployment_cleared': True},
-                        'assets': {}, 'halt_conditions': {'drawdown': -0.08, 'monthly_pf': 0.7, 'signal_drought': 30, 'prob_drift': 0.15},
+                        'portfolio': {
+                            'total_value': 0, 'total_return': 0, 'days_running': 0,
+                            'runtime_hours': 0, 'start_date': '', 'start_datetime': '',
+                            'last_update': None, 'capital': cfg.capital,
+                            'allocations': {n: spec['alloc'] for n, spec in pf.items()},
+                            'satellite_allocation_pct': 5.0, 'deployment_cleared': True,
+                            'open_positions': 0, 'closed_trades': 0, 'execution_state': 'ACTIVE',
+                            'average_validity_exposure': 1.0,
+                        },
+                        'assets': {},
+                        'halt_conditions': dict(cfg.halt),
                     }, indent=2)
                 _cache_set('/state.json', data)
                 self.send_response(200)
@@ -231,9 +246,10 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
             elif path == '/volatility.json':
                 snapshot = _STORE.load_snapshot()
                 regimes = []
+                vol_baselines = _get_vol_baselines()
                 if snapshot and snapshot.assets:
                     for name, asset in sorted(snapshot.assets.items()):
-                        training_vol = VOL_BASELINES.get(name)
+                        training_vol = vol_baselines.get(name)
                         pos = asset.get('metrics', {}).get('position', {})
                         current_vol = pos.get('current_vol') if pos else None
                         if training_vol is not None and current_vol is not None:

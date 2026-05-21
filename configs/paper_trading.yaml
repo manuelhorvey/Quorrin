@@ -5,6 +5,21 @@ retrain_freq: annual
 retrain_window: 5
 research_mode: false
 
+vol_baselines:
+  GC: 0.009129
+  NZDJPY: 0.006581
+  CADJPY: 0.005989
+  USDCAD: 0.004463
+  EURAUD: 0.005026
+  AUDJPY: 0.006759
+  GBPJPY: 0.006138
+  USDJPY: 0.004498
+  USDCHF: 0.004307
+  GBPUSD: 0.005595
+  CHFJPY: 0.004780
+  EURCAD: 0.003476
+  DJI: 0.008061
+
 halt:
   drawdown: -0.08
   monthly_pf: 0.70

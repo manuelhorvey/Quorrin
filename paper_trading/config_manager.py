@@ -34,6 +34,7 @@ class EngineConfig:
     halt: dict = field(default_factory=_default_halt)
     satellite: dict = field(default_factory=dict)
     assets: dict = field(default_factory=dict)
+    vol_baselines: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "EngineConfig":
@@ -52,6 +53,7 @@ class EngineConfig:
             halt=halt,
             satellite=data.get("satellite", {}),
             assets=data.get("assets", {}),
+            vol_baselines=data.get("vol_baselines", {}),
         )
 
     def to_dict(self) -> dict:
@@ -65,6 +67,7 @@ class EngineConfig:
             "halt": self.halt,
             "satellite": self.satellite,
             "assets": self.assets,
+            "vol_baselines": self.vol_baselines,
         }
 
 

@@ -119,6 +119,22 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
     import socketserver
 
     class Handler(http.server.SimpleHTTPRequestHandler):
+        def _send_json(self, data: str, status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(data.encode('utf-8'))
+
+        def _send_text(self, data: str, status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(data.encode('utf-8'))
+
         def do_GET(self):
             path = self.path.split('?')[0]
 
@@ -152,12 +168,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
             if path in _CACHE_TTL:
                 cached = _cache_get(path)
                 if cached is not None:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(cached.encode('utf-8'))
+                    self._send_json(cached)
                     return
 
             if path == '/state.json':
@@ -182,12 +193,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         'halt_conditions': dict(cfg.halt),
                     }, indent=2)
                 _cache_set('/state.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path == '/trades.json':
                 trades = _STORE.read_trades(10)
                 if not trades:
@@ -199,22 +205,12 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         trades = sorted(trades, key=lambda x: x.get('exit_date', ''), reverse=True)[:10]
                 data = json.dumps(trades, default=str)
                 _cache_set('/trades.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path == '/equity_history.json':
                 history = _STORE.read_equity_history()
                 data = json.dumps(history, default=str)
                 _cache_set('/equity_history.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path == '/confidence.json':
                 snapshot = _STORE.load_snapshot()
                 if snapshot and snapshot.assets:
@@ -222,7 +218,8 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     for name, asset in snapshot.assets.items():
                         sig = asset.get('last_signal', {})
                         conf = sig.get('confidence', 0)
-                        bucket = f"{int(conf // 10) * 10}-{int(conf // 10) * 10 + 10}"
+                        bucket_low = min(int(conf // 10) * 10, 90)
+                        bucket = f"{bucket_low}-{bucket_low + 10}"
                         live.setdefault(name, {})
                         live[name][bucket] = live[name].get(bucket, 0) + 1
                     historical = []
@@ -237,12 +234,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 else:
                     data = json.dumps({'live': {}, 'historical': []})
                 _cache_set('/confidence.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path == '/volatility.json':
                 snapshot = _STORE.load_snapshot()
                 regimes = []
@@ -269,12 +261,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                             })
                 data = json.dumps(regimes, indent=2, default=str)
                 _cache_set('/volatility.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path == '/logs':
                 try:
                     with open(LOG_PATH, 'r') as f:
@@ -288,92 +275,46 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         tail = ''.join(lines[boundary:][-200:])
                     else:
                         tail = ''.join(lines[-200:])
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/plain; charset=utf-8')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(tail.encode('utf-8'))
+                    self._send_text(tail)
                 except FileNotFoundError:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/plain; charset=utf-8')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(b'[no log file yet]')
+                    self._send_text('[no log file yet]')
             elif path == '/risk.json':
                 data = json.dumps(_get_risk_latest(), indent=2, default=str)
                 _cache_set('/risk.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path.startswith('/risk/') and path.endswith('.json'):
                 asset = path[len('/risk/'):-len('.json')]
                 signal = _get_risk_latest(asset)
                 if signal is not None:
-                    data = json.dumps(signal, indent=2, default=str)
-                    self.send_response(200)
+                    self._send_json(json.dumps(signal, indent=2, default=str))
                 else:
-                    data = json.dumps({'error': f'No risk signal for {asset}', 'asset': asset})
-                    self.send_response(404)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                    self._send_json(json.dumps({'error': f'No risk signal for {asset}', 'asset': asset}), status=404)
             elif path == '/shadow-actions':
                 snapshot = _STORE.load_snapshot()
                 actions = getattr(snapshot, 'shadow_actions', None) if snapshot else None
                 data = json.dumps(actions or {}, indent=2, default=str)
                 _cache_set('/shadow-actions', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path.startswith('/shadow-actions/') and path.endswith('.json'):
                 asset = path[len('/shadow-actions/'):-len('.json')]
                 snapshot = _STORE.load_snapshot()
                 actions = getattr(snapshot, 'shadow_actions', None) if snapshot else None
                 action = (actions or {}).get(asset)
                 if action is not None:
-                    data = json.dumps(action, indent=2, default=str)
-                    self.send_response(200)
+                    self._send_json(json.dumps(action, indent=2, default=str))
                 else:
-                    data = json.dumps({'error': f'No shadow action for {asset}', 'asset': asset})
-                    self.send_response(404)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                    self._send_json(json.dumps({'error': f'No shadow action for {asset}', 'asset': asset}), status=404)
             elif path == '/health.json':
                 data = json.dumps(_compute_health_all(), indent=2, default=str)
                 _cache_set('/health.json', data)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                self._send_json(data)
             elif path.startswith('/health/') and path.endswith('.json'):
                 asset = path[len('/health/'):-len('.json')]
                 signal = _get_health_latest(asset)
                 if signal is not None:
-                    data = json.dumps(signal, indent=2, default=str)
-                    self.send_response(200)
+                    self._send_json(json.dumps(signal, indent=2, default=str))
                 else:
-                    data = json.dumps({'error': f'No health score for {asset}', 'asset': asset})
-                    self.send_response(404)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Cache-Control', 'no-cache')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(data.encode('utf-8'))
+                    self._send_json(json.dumps({'error': f'No health score for {asset}', 'asset': asset}), status=404)
             else:
                 self.send_response(404)
                 self.end_headers()

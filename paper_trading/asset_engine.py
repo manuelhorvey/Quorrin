@@ -110,8 +110,9 @@ class AssetEngine:
         self.regime_geometry = regime_geometry or {}
         self.execution_bridge = execution_bridge
         self._research_mode = engine_cfg.research_mode
-        self._last_macro_return_proxy: float | None = None
-        self._last_blend_return_proxy: float | None = None
+        self._last_macro_dir: int | None = None
+        self._last_blend_dir: int | None = None
+        self._entry_signal_dir: int = 0
         self._retrain_window = retrain_window if retrain_window is not None else engine_cfg.retrain_window
         if state_store is not None:
             self.state_store = state_store
@@ -149,10 +150,12 @@ class AssetEngine:
         cfg["impact_bps"] = self.execution_bridge.estimate_impact_bps(self.ticker, notional)
         return cfg
 
-    def _record_inference_proxies(self, proba: np.ndarray, X: pd.DataFrame) -> None:
-        """Store macro vs blend directional proxies for adaptive weight feedback."""
-        self._last_blend_return_proxy = None
-        self._last_macro_return_proxy = None
+    def _record_inference_proxies(self, proba: np.ndarray, X: pd.DataFrame, signal: str) -> None:
+        """Store macro vs blend directions for adaptive weight feedback on trade close."""
+        self._last_macro_dir = None
+        self._last_blend_dir = None
+        self._entry_signal_dir = 1 if signal == "BUY" else (-1 if signal == "SELL" else 0)
+
         macro_head = getattr(self.model, "macro_head", None) if self.model else None
         if macro_head is None or X.empty:
             return
@@ -161,13 +164,21 @@ class AssetEngine:
             if len(macro_cols) < 3:
                 return
             macro_probs = macro_head.predict_proba(X.iloc[[-1]][macro_cols])[0]
-            blend_probs = proba[-1]
-            macro_dir = int(np.argmax(macro_probs)) - 1
-            blend_dir = int(np.argmax(blend_probs)) - 1
-            self._last_macro_return_proxy = float(macro_dir)
-            self._last_blend_return_proxy = float(blend_dir)
+            self._last_macro_dir = int(np.argmax(macro_probs)) - 1
+            self._last_blend_dir = int(np.argmax(proba[-1])) - 1
         except Exception:
             pass
+
+    def _macro_blend_trade_returns(self, trade_ret: float) -> tuple[float, float]:
+        """Attribute trade PnL to macro-only vs blended heads by directional agreement."""
+        entry = self._entry_signal_dir
+        if entry == 0:
+            return trade_ret, trade_ret
+        macro_dir = self._last_macro_dir
+        blend_dir = self._last_blend_dir
+        macro_ret = trade_ret if macro_dir is None or macro_dir == entry else -trade_ret
+        blend_ret = trade_ret if blend_dir is None or blend_dir == entry else -trade_ret
+        return macro_ret, blend_ret
 
     def _enable_adaptive_macro(self) -> None:
         if not self.config.get("adaptive_macro") or self.model is None:
@@ -250,16 +261,7 @@ class AssetEngine:
             macro_head = getattr(self.model, "macro_head", None) if self.model else None
             if macro_head is not None and macro_head.online_weight:
                 trade_ret = float(trade.get("return", 0.0))
-                macro_ret = (
-                    self._last_macro_return_proxy
-                    if self._last_macro_return_proxy is not None
-                    else trade_ret
-                )
-                blend_ret = (
-                    self._last_blend_return_proxy
-                    if self._last_blend_return_proxy is not None
-                    else trade_ret
-                )
+                macro_ret, blend_ret = self._macro_blend_trade_returns(trade_ret)
                 macro_head.update_weight(macro_ret, blend_ret)
         except Exception:
             pass
@@ -400,7 +402,7 @@ class AssetEngine:
         else:
             pos_size = self._sizing_strategy.compute(df["close"], sizing_cfg)
 
-        self._record_inference_proxies(proba, X)
+        self._record_inference_proxies(proba, X, result.signal_type)
 
         # Meta-model: train on accumulated trades if enough data
         result = self._signal_strategy.compute(proba, X.index, threshold, df["close"], pos_size)
@@ -553,10 +555,16 @@ class AssetEngine:
 
     def _decision_to_dict(self, decision: TradeDecision):
         pos = self.pos_mgr.position
+        macro_weight = None
+        macro_head = getattr(self.model, "macro_head", None) if self.model else None
+        if macro_head is not None:
+            macro_weight = round(float(getattr(macro_head, "current_weight", 0.45)), 4)
+
         return {
             "asset": self.name,
             "signal": decision.signal,
             "confidence": decision.confidence,
+            "macro_weight": macro_weight,
             "close_price": decision.close_price,
             "date": decision.timestamp,
             "label": decision.label,

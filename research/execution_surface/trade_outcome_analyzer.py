@@ -344,15 +344,16 @@ def print_summary(report: dict):
             continue
         o = r['overall']
         ok = r.get('benchmark_check', {}).get('all_ok', False)
+        pf_str = f'{o["profit_factor"]:.2f}' if o["profit_factor"] is not None and o["profit_factor"] != float('inf') else 'INF' if o.get("profit_factor") == float('inf') else 'N/A'
         print(hdr.format(
             name,
-            o['n_trades'],
+            str(o['n_trades']),
             f'{o["tp_rate"]*100:.0f}%',
             f'{o["sl_rate"]*100:.0f}%',
             f'{o["flip_rate"]*100:.0f}%',
             f'{o["expiry_rate"]*100:.0f}%',
             f'{o["win_rate_tp_sl"]*100:.0f}%',
-            f'{o["profit_factor"]:.2f}',
+            pf_str,
             f'{o["avg_r"]:.2f}',
             f'{o["avg_hold_bars"]:.0f}',
             'YES' if ok else 'NO',
@@ -371,7 +372,7 @@ def print_summary(report: dict):
         for regime, ro in r['by_regime'].items():
             print(reg_hdr.format(
                 regime[:12],
-                ro['n_trades'],
+                str(ro['n_trades']),
                 f'{ro["tp_rate"]*100:.0f}%',
                 f'{ro["sl_rate"]*100:.0f}%',
                 f'{ro["flip_rate"]*100:.0f}%',

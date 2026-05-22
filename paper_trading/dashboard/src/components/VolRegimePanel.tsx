@@ -25,9 +25,9 @@ function volStatus(ratio: number): VolRegime['status'] {
 }
 
 const statusConfig = {
-  green: { label: 'NORMAL', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', bar: 'bg-emerald-500' },
+  green: { label: 'OK', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', bar: 'bg-emerald-500' },
   amber: { label: 'WATCH', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', bar: 'bg-amber-500' },
-  red: { label: 'ELEVATED', bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20', bar: 'bg-red-500' },
+  red: { label: 'HIGH', bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20', bar: 'bg-red-500' },
 }
 
 export default function VolRegimePanel() {
@@ -51,10 +51,10 @@ export default function VolRegimePanel() {
   if (isPending) {
     return (
       <div className="card-gradient card-border rounded-xl p-4">
-        <div className="h-4 bg-gray-800 rounded w-1/3 mb-4" />
-        <div className="space-y-2">
+        <div className="h-4 bg-gray-800 rounded w-1/3 mb-3" />
+        <div className="space-y-1.5">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-12 bg-gray-800/50 rounded animate-pulse" />
+            <div key={i} className="h-8 bg-gray-800/50 rounded animate-pulse" />
           ))}
         </div>
       </div>
@@ -63,44 +63,60 @@ export default function VolRegimePanel() {
 
   return (
     <div className="card-gradient card-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         <div className="w-2 h-2 rounded-full bg-amber-500/50" />
         <h2 className="text-sm font-semibold text-primary">Vol Regime</h2>
       </div>
       {regimes.length === 0 ? (
         <div className="text-xs text-tertiary text-center py-8">No position data yet</div>
       ) : (
-        <div className="space-y-2">
-              {regimes.map(r => {
-            const cfg = statusConfig[r.status]
-            const barWidth = Math.min(Math.max((r.ratio / 1.5) * 100, 0), 100)
-            const cv = isNaN(r.current_vol) ? 0 : r.current_vol
-            const tv = isNaN(r.training_vol) ? 0 : r.training_vol
-            const ratio = isNaN(r.ratio) ? 0 : r.ratio
-            return (
-              <div key={r.asset} className="bg-panel rounded-lg p-3 transition-colors hover:bg-panel/80">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-primary">{r.asset}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                    {cfg.label}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] mb-1.5">
-                  <span className="text-tertiary">Current</span>
-                  <span className="font-mono text-secondary">{cv.toFixed(4)}</span>
-                  <span className="text-tertiary">/ Baseline</span>
-                  <span className="font-mono text-tertiary">{tv.toFixed(4)}</span>
-                  <span className={`font-mono ml-auto ${cfg.text}`}>{ratio.toFixed(2)}x</span>
-                </div>
-                <div className="w-full h-1 bg-panel rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${cfg.bar}`}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+        <div className="overflow-hidden -mx-4 px-4">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-default">
+                <th className="table-header text-left py-1 pr-2">Asset</th>
+                <th className="table-header text-right py-1 pr-2">Curr</th>
+                <th className="table-header text-right py-1 pr-2">Base</th>
+                <th className="table-header text-right py-1 pr-2">Ratio</th>
+                <th className="table-header text-right py-1 pr-2">Bar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regimes.map((r, i) => {
+                const cfg = statusConfig[r.status]
+                const barWidth = Math.min(Math.max((r.ratio / 1.5) * 100, 0), 100)
+                return (
+                  <tr
+                    key={r.asset}
+                    className={`border-b border-default/20 transition-colors hover:bg-panel/50 ${i % 2 === 0 ? '' : 'bg-panel/20'}`}
+                  >
+                    <td className="py-1 pr-2">
+                      <span className="text-xs font-medium text-primary">{r.asset}</span>
+                    </td>
+                    <td className="py-1 pr-2 text-right font-mono text-secondary tabular-nums">
+                      {r.current_vol.toFixed(4)}
+                    </td>
+                    <td className="py-1 pr-2 text-right font-mono text-tertiary tabular-nums">
+                      {r.training_vol.toFixed(4)}
+                    </td>
+                    <td className="py-1 pr-2 text-right">
+                      <span className={`font-mono ${cfg.text} tabular-nums`}>{r.ratio.toFixed(2)}x</span>
+                    </td>
+                    <td className="py-1 pr-1 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="w-10 h-1 bg-panel rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${cfg.bar}`} style={{ width: `${barWidth}%` }} />
+                        </div>
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-semibold ${cfg.bg} ${cfg.text}`}>
+                          {cfg.label}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

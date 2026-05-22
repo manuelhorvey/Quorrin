@@ -118,6 +118,8 @@ export interface AssetHaltConfig {
   monthly_pf: number
   signal_drought: number
   prob_drift: number
+  halted?: boolean
+  reasons?: string[]
 }
 
 export interface HaltConditions {

@@ -86,7 +86,7 @@ export default function TradeFeed() {
               const ret = (t.return ?? 0) * 100
               return (
                 <tr
-                  key={t.asset + t.exit_date + t.side}
+                  key={`${t.asset}_${t.exit_date}_${t.entry}_${i}`}
                   className={`border-b border-default/50 transition-colors hover:bg-panel/50 ${
                     i % 2 === 0 ? '' : 'bg-panel/30'
                   }`}
@@ -117,8 +117,8 @@ export default function TradeFeed() {
                   </td>
                   <td className="py-2.5 text-right">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                      t.reason === 'TP' ? 'bg-emerald-500/10 text-emerald-400' :
-                      t.reason === 'SL' ? 'bg-red-500/10 text-red-400' :
+                      t.reason === 'tp' || t.reason === 'TP' ? 'bg-emerald-500/10 text-emerald-400' :
+                      t.reason === 'sl' || t.reason === 'SL' ? 'bg-red-500/10 text-red-400' :
                       'bg-amber-500/10 text-amber-400'
                     }`}>
                       {t.reason ?? '—'}

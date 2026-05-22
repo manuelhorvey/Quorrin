@@ -30,16 +30,16 @@ export default function FeatureCard({ title, label, children }: Props) {
       onMouseEnter={handleMouseEnter}
       onMouseMove={onMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`relative bg-gray-950 border rounded-xl p-5 transition-all duration-300 will-change-transform ${
-        hovered ? 'border-gray-600' : 'border-gray-800'
+      className={`relative bg-gray-950 border rounded-xl p-4 transition-all duration-300 will-change-transform ${
+        hovered ? 'border-gray-500' : 'border-gray-800'
       }`}
       style={{
-        boxShadow: hovered ? 'inset 0 0 60px rgba(255,255,255,0.02)' : 'none',
+        boxShadow: hovered ? 'inset 0 0 80px rgba(255,255,255,0.03)' : 'none',
       }}
     >
-      <h3 className="text-white font-semibold text-sm mb-3">{title}</h3>
-      <div className="mb-3 min-h-[80px]">{kids}</div>
-      <p className="text-gray-500 text-[11px]">{label}</p>
+      <h3 className="text-white font-semibold text-sm mb-2">{title}</h3>
+      <div className="mb-2 min-h-[60px]">{kids}</div>
+      <p className="text-gray-500 text-xs">{label}</p>
     </div>
   )
 }

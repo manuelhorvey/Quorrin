@@ -23,11 +23,11 @@ export default function HaltConditions() {
 
   if (isPending) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl p-4 bg-panel/50 animate-pulse">
-            <div className="h-3 bg-gray-800 rounded w-1/3 mb-3" />
-            <div className="h-6 bg-gray-800 rounded w-1/2 mb-2" />
+          <div key={i} className="rounded-xl px-3 py-2.5 bg-panel/50 animate-pulse">
+            <div className="h-3 bg-gray-800 rounded w-1/3 mb-2" />
+            <div className="h-5 bg-gray-800 rounded w-1/2 mb-1" />
             <div className="h-3 bg-gray-800/50 rounded w-2/3" />
           </div>
         ))}
@@ -36,6 +36,23 @@ export default function HaltConditions() {
   }
 
   if (!data) return null
+
+  const assets = data?.assets ?? {}
+  let haltedAny = false
+  let haltedCount = 0
+  let droughtAny = false
+  let driftAny = false
+  for (const name in assets) {
+    const ah = assets[name].halt
+    if (ah?.halted) {
+      haltedAny = true
+      haltedCount++
+      for (const r of (ah.reasons ?? [])) {
+        if (r.toLowerCase().includes('drought')) droughtAny = true
+        if (r.toLowerCase().includes('drift')) driftAny = true
+      }
+    }
+  }
 
   const cards = [
     {
@@ -52,46 +69,56 @@ export default function HaltConditions() {
     },
     {
       label: 'Signal Drought',
-      value: '0d',
+      value: droughtAny ? 'Halted' : 'OK',
       threshold: `${data.halt_conditions?.signal_drought ?? 30}d`,
-      pass: true,
+      pass: !droughtAny,
     },
     {
       label: 'Prob Drift',
-      value: `< ${((data.halt_conditions?.prob_drift ?? 0.15) * 100).toFixed(0)}%`,
+      value: driftAny ? 'Halted' : 'OK',
       threshold: `${((data.halt_conditions?.prob_drift ?? 0.15) * 100).toFixed(0)}%`,
-      pass: true,
+      pass: !driftAny,
     },
   ]
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map(c => (
-        <div
-          key={c.label}
-          className={`rounded-xl p-4 border transition-all duration-200 ${
-            c.pass
-              ? 'bg-emerald-500/5 border-emerald-500/15'
-              : 'bg-red-500/5 border-red-500/15'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-tertiary font-medium tracking-wide">{c.label}</span>
-            <div className={`p-0.5 rounded-full ${c.pass ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-              {c.pass ? <CheckIcon /> : <XIcon />}
+    <div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {cards.map(c => (
+          <div
+            key={c.label}
+            className={`rounded-xl px-3 py-2.5 border transition-all duration-200 ${
+              c.pass
+                ? 'bg-emerald-500/5 border-emerald-500/15'
+                : 'bg-red-500/5 border-red-500/15'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-tertiary font-medium tracking-wide">{c.label}</span>
+              <div className={`p-0.5 rounded-full ${c.pass ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                {c.pass ? <CheckIcon /> : <XIcon />}
+              </div>
+            </div>
+            <div className={`text-base font-bold tracking-tight metric-value ${c.pass ? 'text-emerald-400' : 'text-red-400'}`}>
+              {c.value}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-[10px] text-tertiary">Threshold:</span>
+              <span className={`text-[10px] font-mono ${c.pass ? 'text-secondary' : 'text-red-400/70'}`}>
+                {c.threshold}
+              </span>
             </div>
           </div>
-          <div className={`text-lg font-bold tracking-tight metric-value ${c.pass ? 'text-emerald-400' : 'text-red-400'}`}>
-            {c.value}
-          </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[11px] text-tertiary">Threshold:</span>
-            <span className={`text-[11px] font-mono ${c.pass ? 'text-secondary' : 'text-red-400/70'}`}>
-              {c.threshold}
-            </span>
-          </div>
+        ))}
+      </div>
+      {haltedAny && (
+        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/5 border border-red-500/15 text-[11px] text-red-400">
+          <svg className="w-3 h-3 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span className="font-medium">{haltedCount} asset{haltedCount > 1 ? 's' : ''} halted</span>
         </div>
-      ))}
+      )}
     </div>
   )
 }

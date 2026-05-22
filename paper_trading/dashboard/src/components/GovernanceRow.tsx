@@ -58,61 +58,50 @@ export default function GovernanceRow({ asset, state }: GovernanceRowProps) {
   const classification = classifyCalibration(prematureRate)
 
   return (
-    <div className="border border-slate-800 bg-slate-900/50 p-4 rounded-xl font-mono text-xs text-slate-300">
-      <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-white">{asset}</span>
-          <span className={`px-2 py-0.5 rounded border ${stateColors[classification]}`}>
+    <div className="bg-panel border border-default rounded-lg px-3 py-2.5 text-[11px] text-secondary">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-primary">{asset}</span>
+          <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${stateColors[classification]}`}>
             {classification}
           </span>
         </div>
-        <div className="text-slate-500">
-          Exposure:{' '}
-          <span className="text-white">
-            {state.validity_exposure != null ? state.validity_exposure.toFixed(2) : '—'}x
-          </span>
-        </div>
+        <span className="text-tertiary">
+          Exposure <span className="font-mono text-secondary">{state.validity_exposure != null ? state.validity_exposure.toFixed(2) : '—'}x</span>
+        </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <div className="flex justify-between">
-            <span>Jaccard (10d):</span>
-            <span className={state.feature_stability_jaccard != null ? 'text-indigo-400' : 'text-slate-500'}>
-              {state.feature_stability_jaccard?.toFixed(2) ?? '—'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Meta-Model:</span>
-            <span className="text-white">
-              {metaBand(state.meta_decision)} (p={state.meta_confidence?.toFixed(2) ?? '—'})
-            </span>
-          </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1">
+        <div>
+          <span className="text-tertiary">Jaccard (10d): </span>
+          <span className={`font-mono ${state.feature_stability_jaccard != null ? 'text-indigo-400' : 'text-tertiary'}`}>
+            {state.feature_stability_jaccard?.toFixed(2) ?? '—'}
+          </span>
         </div>
-
-        <div className="space-y-1.5 border-l border-slate-800 pl-4">
-          <div className="flex justify-between">
-            <span>Label vs Run Exits:</span>
-            <span className={labelVsRunColor(label.sl, runtimeSl)}>
-              [{label.sl}/{label.pt}] vs [{runtimeSl.toFixed(2)}/{runtimeTp.toFixed(2)}]
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Premature Stops:</span>
-            <span
-              className={
-                prematureRate == null
-                  ? 'text-slate-500'
-                  : prematureRate > 0.3
-                    ? 'text-rose-400 font-bold'
-                    : prematureRate > 0.1
-                      ? 'text-amber-400'
-                      : 'text-emerald-400'
-              }
-            >
-              {prematureRate != null ? `${(prematureRate * 100).toFixed(1)}%` : '—'}
-            </span>
-          </div>
+        <div>
+          <span className="text-tertiary">Meta: </span>
+          <span className="font-mono text-primary">{metaBand(state.meta_decision)}</span>
+          <span className="font-mono text-tertiary ml-0.5">(p={state.meta_confidence?.toFixed(2) ?? '—'})</span>
+        </div>
+        <div>
+          <span className="text-tertiary">Label/Run: </span>
+          <span className={`font-mono ${labelVsRunColor(label.sl, runtimeSl)}`}>
+            [{label.sl}/{label.pt}] / [{runtimeSl.toFixed(2)}/{runtimeTp.toFixed(2)}]
+          </span>
+        </div>
+        <div>
+          <span className="text-tertiary">Premature: </span>
+          <span className={`font-mono ${
+            prematureRate == null
+              ? 'text-tertiary'
+              : prematureRate > 0.3
+                ? 'text-rose-400 font-bold'
+                : prematureRate > 0.1
+                  ? 'text-amber-400'
+                  : 'text-emerald-400'
+          }`}>
+            {prematureRate != null ? `${(prematureRate * 100).toFixed(1)}%` : '—'}
+          </span>
         </div>
       </div>
     </div>

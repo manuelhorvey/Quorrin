@@ -1,22 +1,13 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
-import { useEquityHistory } from '../hooks/useEquityHistory'
 import { formatAssetPrice } from '../utils/format'
-import Sparkline from './Sparkline'
 
 interface Props {
   name: string
 }
 
-function confidenceColor(c: number): string {
-  if (c >= 60) return 'bg-emerald-500'
-  if (c >= 45) return 'bg-amber-500'
-  return 'bg-red-500'
-}
-
 const AssetCard: React.FC<Props> = React.memo(({ name }) => {
   const { data } = usePortfolioState()
-  const { data: eqHistory } = useEquityHistory()
   const asset = data?.assets?.[name]
 
   const prevEntryRef = useRef<number | null>(null)
@@ -27,18 +18,13 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
     const m = asset.metrics
     const sig = asset.last_signal
     const pos = m.position
-    const signalClass = sig?.signal === 'BUY' ? 'signal-pill-buy' : sig?.signal === 'SELL' ? 'signal-pill-sell' : 'signal-pill-flat'
-    const confColor = confidenceColor(sig?.confidence ?? 0)
     const open = data?.open_positions?.[name]
     const hist = open?.prob_history ?? []
     const isNew = hist.length >= 2 && hist[hist.length - 1].signal !== hist[hist.length - 2].signal
-    const sparkValues = eqHistory?.map(p => p.assets?.[name]).filter((v): v is number => v != null && !isNaN(v)) ?? []
     return {
       signal: sig?.signal ?? 'FLAT',
       confidence: sig?.confidence ?? 0,
       price: sig?.close_price,
-      signalClass,
-      confColor,
       totalReturn: m.mtm_return ?? m.total_return ?? 0,
       drawdown: m.drawdown ?? 0,
       meanConf: m.mean_confidence ?? 0,
@@ -46,13 +32,11 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
       nSignals: m.n_signals ?? 0,
       pos,
       dist: m.signal_distribution,
-      currentValue: m.current_value ?? 0,
-      isNew,
       slMult: m.current_sl_mult ?? asset.sl_mult,
       tpMult: m.current_tp_mult ?? asset.tp_mult,
-      sparkValues,
+      isNew,
     }
-  }, [asset, data, name, eqHistory])
+  }, [asset, data, name])
 
   useEffect(() => {
     const entry = info?.pos?.entry
@@ -69,78 +53,61 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
 
   if (!info) {
     return (
-      <div className="card-gradient card-border rounded-xl p-4">
+      <div className="card-gradient card-border rounded-xl px-4 py-3">
         <div className="text-sm text-secondary font-medium">{name}</div>
-        <div className="text-xs text-tertiary mt-2">No data</div>
+        <div className="text-xs text-tertiary mt-1">No data</div>
       </div>
     )
   }
 
+  const confColor = info.confidence >= 60 ? 'text-emerald-400' : info.confidence >= 45 ? 'text-amber-400' : 'text-red-400'
+  const retColor = info.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400'
+  const ddColor = info.drawdown > -3 ? 'text-emerald-400' : info.drawdown > -5 ? 'text-amber-400' : 'text-red-400'
+
   return (
-    <div className="relative card-gradient card-border rounded-xl p-4 hover-lift overflow-hidden group">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-primary">{name}</span>
-          {(info.isNew || newBadge) && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 animate-pulse">
-              NEW
-            </span>
-          )}
-        </div>
-        {info.price != null && (
-          <span className="text-xs text-tertiary font-mono">
-            ${formatAssetPrice(info.price)}
+    <div className="relative card-gradient card-border rounded-xl px-4 py-3 hover-lift overflow-hidden group">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="font-semibold text-sm text-primary">{name}</span>
+        {(info.isNew || newBadge) && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 animate-pulse leading-none">
+            NEW
           </span>
         )}
-      </div>
-
-      <div className="flex items-center gap-2 mb-3">
-        <span className={`signal-pill ${info.signalClass}`}>
-          {info.signal}
-        </span>
-        <div className="flex-1 conf-bar">
-          <div className={`conf-bar-fill ${info.confColor}`} style={{ width: `${Math.min(info.confidence ?? 0, 100)}%` }} />
-        </div>
-        <span className="text-[11px] text-tertiary font-mono w-10 text-right tabular-nums">
-          {(info.confidence ?? 0).toFixed(1)}%
+        {info.price != null && (
+          <span className="text-xs text-tertiary font-mono ml-1">${formatAssetPrice(info.price)}</span>
+        )}
+        <span className="ml-auto flex items-center gap-2">
+          <span className={`text-xs font-semibold ${info.signal === 'BUY' ? 'text-emerald-400' : info.signal === 'SELL' ? 'text-red-400' : 'text-slate-500'}`}>
+            {info.signal}
+          </span>
+          <span className={`text-xs font-mono ${confColor}`}>{info.confidence.toFixed(0)}%</span>
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 text-xs">
-        {[
-          { label: 'Return', value: info.totalReturn, color: info.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400', format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` },
-          { label: 'DD', value: info.drawdown, color: info.drawdown > -3 ? 'text-emerald-400' : info.drawdown > -5 ? 'text-amber-400' : 'text-red-400', format: (v: number) => `${v.toFixed(2)}%` },
-          { label: 'Conf', value: info.meanConf, color: 'text-primary', format: (v: number) => `${v.toFixed(1)}%` },
-        ].map(stat => (
-          <div key={stat.label} className="bg-panel rounded-lg p-2">
-            <div className="text-[10px] text-tertiary mb-0.5">{stat.label}</div>
-            <div className={`font-mono text-[12px] font-medium ${stat.color}`}>
-              {stat.format(stat.value)}
-            </div>
-          </div>
-        ))}
+      <div className="flex items-center gap-2 text-xs text-tertiary mb-2">
+        <span className={retColor}>{info.totalReturn >= 0 ? '+' : ''}{info.totalReturn.toFixed(2)}%</span>
+        <span className="text-default/50">|</span>
+        <span className={ddColor}>DD {info.drawdown.toFixed(2)}%</span>
+        <span className="text-default/50">|</span>
+        <span>Conf {info.meanConf.toFixed(1)}%</span>
       </div>
-
-      {info.sparkValues.length >= 2 && (
-        <div className="mt-2.5 flex items-center justify-center opacity-60">
-          <Sparkline values={info.sparkValues} width={160} height={20} color={info.signal === 'BUY' ? 'var(--color-emerald)' : info.signal === 'SELL' ? 'var(--color-red)' : 'var(--color-text-muted)'} />
-        </div>
-      )}
 
       {info.slMult != null && info.tpMult != null && (
-        <div className="mt-2.5 bg-panel/30 border border-default/40 rounded-lg px-2.5 py-1.5 flex items-center justify-between text-[11px] text-tertiary">
-          <span className="font-medium text-tertiary">Multipliers</span>
-          <span className="font-mono text-secondary font-semibold">
-            SL <span className="text-red-400">{info.slMult.toFixed(2)}x</span> · TP <span className="text-emerald-400">{info.tpMult.toFixed(2)}x</span>
-          </span>
+        <div className="flex items-center gap-2 text-xs text-tertiary mb-1">
+          <span className="text-tertiary">SL <span className="font-mono text-red-400/70">{info.slMult.toFixed(2)}x</span></span>
+          <span className="text-default/50">·</span>
+          <span className="text-tertiary">TP <span className="font-mono text-emerald-400/70">{info.tpMult.toFixed(2)}x</span></span>
+          <span className="text-default/50">·</span>
+          <span className="font-mono text-tertiary">{info.dist ? `${info.dist.BUY ?? 0}B ${info.dist.SELL ?? 0}S ${info.dist.FLAT ?? 0}F` : '—'}</span>
+          <span className="ml-auto font-mono text-tertiary">{info.nSignals} sigs · {info.nTrades} trds</span>
         </div>
       )}
 
       {info.pos && (
-        <div className="mt-2 pt-2 border-t border-default space-y-1.5">
-          <div className="flex justify-between text-[11px] text-tertiary">
+        <div className="pt-2 border-t border-default/30">
+          <div className="flex items-center justify-between text-xs text-tertiary">
             <span className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${info.pos.side === 'long' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${info.pos.side === 'long' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {info.pos.side.toUpperCase()} @ ${formatAssetPrice(info.pos.entry)}
             </span>
             <span className="font-mono">
@@ -151,45 +118,34 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
               )}
             </span>
           </div>
-          <div className="flex items-center gap-3 text-[10px]">
+          <div className="flex items-center gap-2 text-xs mt-1">
             {(() => {
               const p = info.pos
               const isLong = p.side === 'long'
-              const entry = p.entry
-              const cur = info.price ?? entry
-              const tpDist = isLong
-                ? ((p.tp - cur) / cur) * 100
-                : ((cur - p.tp) / cur) * 100
-              const slDist = isLong
-                ? ((cur - p.sl) / cur) * 100
-                : ((p.sl - cur) / cur) * 100
-              const reward = Math.abs(p.tp - entry)
-              const risk = Math.abs(entry - p.sl)
+              const cur = info.price ?? p.entry
+              const tpDist = isLong ? ((p.tp - cur) / cur) * 100 : ((cur - p.tp) / cur) * 100
+              const slDist = isLong ? ((cur - p.sl) / cur) * 100 : ((p.sl - cur) / cur) * 100
+              const reward = Math.abs(p.tp - p.entry)
+              const risk = Math.abs(p.entry - p.sl)
               const rr = risk > 0 ? reward / risk : 0
               return (
                 <>
-                  {info.pos!.tp != null && info.pos!.tp !== 0 && (
+                  {p.tp != null && p.tp !== 0 && (
                     <span className="flex items-center gap-1 text-tertiary">
-                      <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                      TP {formatAssetPrice(info.pos!.tp)}
-                      <span className="text-emerald-400 font-mono">
-                        ↑{tpDist.toFixed(2)}%
-                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      TP {formatAssetPrice(p.tp)}
+                      <span className="text-emerald-400 font-mono">↑{tpDist.toFixed(2)}%</span>
                     </span>
                   )}
-                  {info.pos!.sl != null && info.pos!.sl !== 0 && (
+                  {p.sl != null && p.sl !== 0 && (
                     <span className="flex items-center gap-1 text-tertiary">
-                      <span className="w-1 h-1 rounded-full bg-red-500" />
-                      SL {formatAssetPrice(info.pos!.sl)}
-                      <span className="font-mono text-red-400">
-                        ↓{slDist.toFixed(2)}%
-                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      SL {formatAssetPrice(p.sl)}
+                      <span className="font-mono text-red-400">↓{slDist.toFixed(2)}%</span>
                     </span>
                   )}
                   {rr > 0 && (
-                    <span className={`ml-auto font-mono font-semibold ${
-                      rr >= 2 ? 'text-emerald-400' : rr >= 1 ? 'text-amber-400' : 'text-red-400'
-                    }`}>
+                    <span className={`ml-auto font-mono font-semibold ${rr >= 2 ? 'text-emerald-400' : rr >= 1 ? 'text-amber-400' : 'text-red-400'}`}>
                       {rr.toFixed(1)}:1
                     </span>
                   )}
@@ -199,17 +155,6 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
           </div>
         </div>
       )}
-
-      <div className="mt-2 flex gap-2 text-[10px] text-tertiary">
-        {info.dist && (
-          <>
-            <span className="text-emerald-500/70">{info.dist.BUY ?? 0}B</span>
-            <span className="text-red-500/70">{info.dist.SELL ?? 0}S</span>
-            <span className="text-amber-500/70">{info.dist.FLAT ?? 0}F</span>
-          </>
-        )}
-        <span className="ml-auto text-tertiary">{info.nSignals} sigs · {info.nTrades} trades</span>
-      </div>
     </div>
   )
 })

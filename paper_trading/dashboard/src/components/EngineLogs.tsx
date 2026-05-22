@@ -1,5 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useEngineLogs } from '../hooks/useEngineLogs'
+
+function logColor(line: string): string {
+  if (line.includes('[ERROR]') || line.includes('[CRITICAL]')) return 'text-red-400'
+  if (line.includes('[WARNING]')) return 'text-amber-400'
+  if (line.includes('[INFO]')) return 'text-emerald-400'
+  return 'text-secondary'
+}
 
 export default function EngineLogs() {
   const [open, setOpen] = useState(false)
@@ -39,8 +46,10 @@ export default function EngineLogs() {
               [log unavailable]
             </div>
           ) : data ? (
-            <pre className="px-4 py-3 text-[11px] font-mono text-secondary leading-relaxed whitespace-pre-wrap break-all">
-              {data}
+            <pre className="px-4 py-3 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+              {data.split('\n').map((line, i) => (
+                <span key={i} className={`${logColor(line)} block`}>{line || '\u00A0'}</span>
+              ))}
             </pre>
           ) : (
             <div className="px-4 py-6 flex items-center justify-center gap-2">

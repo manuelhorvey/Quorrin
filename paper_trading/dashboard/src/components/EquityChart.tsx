@@ -85,7 +85,7 @@ export default function EquityChart() {
         })}
       </div>
 
-      <div className="h-64">
+      <div className="h-64 w-full min-w-0 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-panel)" />

@@ -37,17 +37,17 @@ export default function FeatureCards() {
   }, [])
 
   return (
-    <section ref={ref} className="bg-gray-950 px-6 py-24">
+    <section ref={ref} className="bg-gray-950 px-6 py-16">
       <div className="max-w-6xl mx-auto">
-        <h2 className={`text-white text-2xl font-semibold text-center mb-12 transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+        <h2 className={`text-white text-xl font-semibold text-center mb-10 transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
           Engineered for institutional-grade trading
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {cards.map((card, i) => (
             <div
               key={card.title}
-              className={`transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+              className={`transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
               style={{ transitionDelay: `${i * 100}ms` }}
             >
               <FeatureCard title={card.title} label={card.label}>

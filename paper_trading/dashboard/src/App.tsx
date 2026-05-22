@@ -1,7 +1,6 @@
 import { usePortfolioState } from './hooks/usePortfolioState'
 import Header from './components/Header'
 import PortfolioSummary from './components/PortfolioSummary'
-import SatelliteCard from './components/SatelliteCard'
 import AssetGrid from './components/AssetGrid'
 import SignalsTable from './components/SignalsTable'
 import MetricsGrid from './components/MetricsGrid'
@@ -72,21 +71,18 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6 relative">
         <PortfolioSummary />
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-3">
-            <AssetGrid />
-          </div>
-          <div>
-            <SatelliteCard />
-          </div>
-        </div>
+        <AssetGrid />
         <HaltConditions />
 
         <GovernancePanel />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SignalsTable />
-          <EquityChart />
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+          <div className="xl:col-span-3 min-w-0 overflow-hidden">
+            <SignalsTable />
+          </div>
+          <div className="xl:col-span-2 min-w-0 overflow-hidden">
+            <EquityChart />
+          </div>
         </div>
 
         <HealthScores />

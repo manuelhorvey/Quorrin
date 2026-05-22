@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 
 async function fetchConfidence(): Promise<{ live: Record<string, Record<string, number>>; historical: Record<string, number>[] }> {
@@ -49,41 +49,43 @@ export default function ConfidenceChart() {
   const showHistorical = historicalCount && historicalCount.total > 0
 
   return (
-    <div className="card-gradient card-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="card-gradient card-border rounded-xl p-3">
+      <div className="flex items-center gap-2 mb-2">
         <div className="w-2 h-2 rounded-full bg-emerald-500/50" />
-        <h2 className="text-sm font-semibold text-primary">Confidence Distribution</h2>
+        <h2 className="text-sm font-semibold text-primary">Confidence</h2>
       </div>
       {isPending ? (
-        <div className="text-xs text-tertiary text-center py-8 animate-pulse">Loading...</div>
+        <div className="text-xs text-tertiary text-center py-6 animate-pulse">Loading...</div>
       ) : liveBuckets.length === 0 && !showHistorical ? (
-        <div className="text-xs text-tertiary text-center py-8">No signal data yet</div>
+        <div className="text-xs text-tertiary text-center py-6">No signal data yet</div>
       ) : (
-        <div className="h-48">
+        <div className="h-32">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={liveBuckets} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-panel)" />
-              <XAxis dataKey="range" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={{ stroke: 'var(--color-border)' }} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} allowDecimals={false} axisLine={false} tickLine={false} />
+            <BarChart data={liveBuckets} margin={{ top: 2, right: 4, left: -8, bottom: 0 }}>
+              <XAxis dataKey="range" tick={{ fontSize: 9, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 9, fill: 'var(--color-text-tertiary)' }} allowDecimals={false} axisLine={false} tickLine={false} width={16} />
               <Tooltip
                 contentStyle={{
                   background: 'var(--color-card)',
                   border: '1px solid var(--color-border)',
                   borderRadius: '8px',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   boxShadow: 'var(--shadow-lift)',
                 }}
                 labelStyle={{ color: 'var(--color-text-tertiary)' }}
               />
-              <Bar dataKey="count" fill="#34d399" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="count" fill="#34d399" radius={[2, 2, 0, 0]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
       {showHistorical && (
-        <div className="mt-3 pt-3 border-t border-default">
-          <div className="text-[10px] text-tertiary mb-2">Historical: {historicalCount.total} signals across {Object.keys(historicalCount.buckets).length} buckets</div>
-          <div className="flex gap-1 h-6">
+        <div className="mt-2 pt-2 border-t border-default">
+          <div className="flex items-center justify-between text-[9px] text-tertiary mb-1">
+            <span>Historical</span>
+            <span>{historicalCount.total} signals</span>
+          </div>
+          <div className="flex gap-0.5 h-4">
             {Object.entries(historicalCount.buckets)
               .sort(([a], [b]) => parseInt(a) - parseInt(b))
               .map(([range, count]) => (
@@ -99,7 +101,7 @@ export default function ConfidenceChart() {
                 </div>
               ))}
           </div>
-          <div className="flex justify-between text-[9px] text-tertiary mt-1">
+          <div className="flex justify-between text-[8px] text-tertiary mt-0.5">
             {Object.entries(historicalCount.buckets)
               .sort(([a], [b]) => parseInt(a) - parseInt(b))
               .map(([range]) => (

@@ -4,8 +4,9 @@ interface Props {
 
 export default function EnterButton({ onClick }: Props) {
   return (
-    <section className="bg-gray-950 px-6 pb-32">
-      <div className="max-w-6xl mx-auto flex justify-center">
+    <section className="bg-gray-950 px-6 pb-24">
+      <div className="max-w-6xl mx-auto flex flex-col items-center gap-4">
+        <p className="text-gray-500 text-sm">Ready to see it in action?</p>
         <button
           onClick={onClick}
           className="group relative px-10 py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-300 overflow-hidden"

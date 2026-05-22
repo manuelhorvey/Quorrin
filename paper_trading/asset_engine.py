@@ -8,7 +8,11 @@ import pandas as pd
 import pytz
 import xgboost as xgb
 
+from features.contract import validate_no_cross_asset_leakage
+from features.regime_features import generate_regime_features
+from features.registry import FEATURE_REGISTRY
 from features.builder import build_features, compute_macro_derived, model_path
+from models.regime.regime_classifier import RegimeClassifier
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
 from monitoring.validity_state_machine import (
     ValidityStateMachine as _ValidityStateMachine,
@@ -113,6 +117,10 @@ class AssetEngine:
             self.state_store = _STORE
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self._importance_store = ImportanceStore(base_dir)
+        self.regime_classifier = RegimeClassifier()
+        if self.config.get("regime_sizing"):
+            self._sizing_strategy.regime_aware = True
+
         self._window_id_counter = 0
         self._current_window_train_start = ""
         self._current_window_train_end = ""
@@ -198,6 +206,7 @@ class AssetEngine:
         ref = fetch_ref("SPY")
         macro = compute_macro_derived(pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet")))
         features = self._build_features(df, ref, macro)
+        validate_no_cross_asset_leakage(features, self.contract, known_slugs=FEATURE_REGISTRY.keys())
         logger.info("%s: %d feature rows", self.name, len(features))
 
         end_date = features.index[-1]
@@ -283,6 +292,7 @@ class AssetEngine:
             pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet"))
         )
         features_df = self._feature_pipeline.build(df, macro, ref, self.contract)
+        validate_no_cross_asset_leakage(features_df, self.contract, known_slugs=FEATURE_REGISTRY.keys())
 
         X = features_df[self.features]
         if len(X) == 0:
@@ -292,7 +302,13 @@ class AssetEngine:
         if proba.shape[1] < 3:
             raise ValueError(f"Model returned {proba.shape[1]} classes, expected 3")
 
-        pos_size = self._sizing_strategy.compute(df["close"], self.config)
+        if self.config.get("regime_sizing"):
+            regime_features_df = generate_regime_features(df)
+            regime_results = self.regime_classifier.classify(regime_features_df)
+            current_regime = regime_results["regime"].iloc[-1]
+            pos_size = self._sizing_strategy.compute(df["close"], self.config, regime=current_regime)
+        else:
+            pos_size = self._sizing_strategy.compute(df["close"], self.config)
 
         # Meta-model: train on accumulated trades if enough data
         result = self._signal_strategy.compute(proba, X.index, threshold, df["close"], pos_size)

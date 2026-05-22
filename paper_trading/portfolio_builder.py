@@ -53,6 +53,8 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             halt = dict(halt_defaults)
             halt.update(user_halt)
             config = spec.get("config", {})
+            if spec.get("regime_sizing"):
+                config["regime_sizing"] = True
             sl_mult = spec.get("sl_mult", 1.0)
             tp_mult = spec.get("tp_mult", 2.5)
             pf[name] = {

@@ -1,7 +1,7 @@
 import os, pickle
 import pandas as pd
 import numpy as np
-from features.contract import FeatureContract
+from features.contract import FeatureContract, validate_no_cross_asset_leakage
 from features.registry import FEATURE_REGISTRY
 from features.publication_lags import (
     apply_publication_lags,
@@ -56,6 +56,11 @@ def compute_label(df: pd.DataFrame, contract: FeatureContract) -> pd.Series:
 
 def build_features(df: pd.DataFrame, macro: pd.DataFrame, ref: pd.DataFrame | None,
                    contract: FeatureContract) -> pd.DataFrame:
+    """
+    Builds a feature set for a specific asset contract.
+    Ensures that each feature is independent and belongs to the specified asset
+    (using the contract_prefix) or allowed shared macro prefixes.
+    """
     df = _normalize(df)
     if ref is not None:
         ref = _normalize(ref)
@@ -66,7 +71,7 @@ def build_features(df: pd.DataFrame, macro: pd.DataFrame, ref: pd.DataFrame | No
     a = macro.reindex(pi, method='ffill')
     a.index = labels.index
 
-    slug = contract.name.lower()
+    slug = (contract.contract_prefix or contract.name).lower()
     for w in contract.price_mom_windows:
         a[f'{slug}_mom_{w}'] = df['close'].pct_change(w)
 
@@ -76,7 +81,9 @@ def build_features(df: pd.DataFrame, macro: pd.DataFrame, ref: pd.DataFrame | No
         a[f'{slug}_vs_spy_{w}'] = mom - spy_mom
 
     a['label'] = labels
-    return a.dropna(subset=list(contract.features) + ['label'])
+    result = a.dropna(subset=list(contract.features) + ['label'])
+    validate_no_cross_asset_leakage(result, contract, known_slugs=FEATURE_REGISTRY.keys())
+    return result
 
 
 def compute_training_data(ticker: str, macro: pd.DataFrame, ref: pd.DataFrame,

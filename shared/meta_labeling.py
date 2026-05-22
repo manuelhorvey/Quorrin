@@ -133,16 +133,8 @@ class MetaModel:
             self._trained = False
             return
 
-        X = features[FEATURE_NAMES].values
+        X = features[FEATURE_NAMES].values.copy()
         y = labels.values
-
-        # Handle constant features by adding tiny jitter so the scaler doesn't choke
-        col_std = np.std(X, axis=0)
-        if col_std.min() < 1e-10:
-            jitter_mask = col_std < 1e-10
-            jitter = np.random.default_rng(42).normal(0, 1e-6, size=(X.shape[0], jitter_mask.sum()))
-            X[:, jitter_mask] += jitter
-            logger.info("added jitter to %d constant features in meta-model input", int(jitter_mask.sum()))
 
         self.scaler = StandardScaler()
         X_scaled = self.scaler.fit_transform(X)

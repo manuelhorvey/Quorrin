@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { TradeEntry } from '../types/trades'
+import { useMarketClosed } from './useMarketClosed'
 
 async function fetchTrades(params: { limit?: number; offset?: number } = {}): Promise<TradeEntry[]> {
   const qs = new URLSearchParams()
@@ -11,10 +12,11 @@ async function fetchTrades(params: { limit?: number; offset?: number } = {}): Pr
 }
 
 export function useTrades(limit = 10, offset = 0) {
+  const closed = useMarketClosed()
   return useQuery({
     queryKey: ['trades', limit, offset],
     queryFn: () => fetchTrades({ limit, offset }),
-    refetchInterval: 60_000,
-    staleTime: 50_000,
+    refetchInterval: closed ? 300_000 : 60_000,
+    staleTime: closed ? 290_000 : 50_000,
   })
 }

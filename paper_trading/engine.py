@@ -8,6 +8,7 @@ import pytz
 
 from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
+from paper_trading.market_hours import is_market_closed
 
 # Re-exported from child modules for backward compatibility
 from paper_trading.data_fetcher import (  # noqa: F401
@@ -207,6 +208,9 @@ class PaperTradingEngine:
                 logger.error("%s: training FAILED - %s", name, e)
 
     def run_once(self):
+        if is_market_closed():
+            logger.debug("Market closed — run_once skipped")
+            return {}
         pd_limit = get_config().portfolio_drawdown_limit
         results = {}
 

@@ -153,6 +153,7 @@ export interface EngineStatus {
   initialized: boolean
   last_update: string
   start_time: string
+  market_closed?: boolean
   satellite?: SatelliteState | null
 }
 

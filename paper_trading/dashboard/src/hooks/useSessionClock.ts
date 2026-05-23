@@ -18,9 +18,10 @@ interface SessionInfo {
 }
 
 export function isMarketOpen(day: number, hour: number): boolean {
-  if (day === 6) return false
-  if (day === 0) return hour >= 17 || hour < 0
-  return true
+  if (day === 6) return false                     // Saturday
+  if (day === 0) return hour >= 17                // Sunday open at 5pm ET
+  if (day === 5) return hour < 17                 // Friday close at 5pm ET
+  return true                                     // Mon-Thu
 }
 
 export function useSessionClock(): SessionInfo {

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useMarketClosed } from './useMarketClosed'
 
 export interface HealthComponent {
   validity: number
@@ -40,10 +41,11 @@ async function fetchHealth(): Promise<HealthResponse> {
 }
 
 export function useHealthScores() {
+  const closed = useMarketClosed()
   return useQuery({
     queryKey: ['healthScores'],
     queryFn: fetchHealth,
-    refetchInterval: 60_000,
-    staleTime: 50_000,
+    refetchInterval: closed ? 300_000 : 60_000,
+    staleTime: closed ? 290_000 : 50_000,
   })
 }

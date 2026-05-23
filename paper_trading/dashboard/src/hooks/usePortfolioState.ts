@@ -11,7 +11,13 @@ export function usePortfolioState() {
   return useQuery({
     queryKey: ['portfolioState'],
     queryFn: fetchState,
-    refetchInterval: 30_000,
-    staleTime: 25_000,
+    refetchInterval: (q) => {
+      const d = q.state.data
+      return d?.engine_status?.market_closed ? 120_000 : 30_000
+    },
+    staleTime: (q) => {
+      const d = q.state.data
+      return d?.engine_status?.market_closed ? 110_000 : 25_000
+    },
   })
 }

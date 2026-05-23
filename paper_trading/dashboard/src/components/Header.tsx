@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Sun, Moon, RefreshCw, Calendar, Clock, TrendingUp } from 'lucide-react'
+import { Sun, Moon, RefreshCw, Calendar, Clock, TrendingUp, Pause } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { useSessionClock } from '../hooks/useSessionClock'
 import { useQueryClient } from '@tanstack/react-query'
+import { format } from 'date-fns'
 
 export default function Header() {
   const { dataUpdatedAt, isError, isFetching, data } = usePortfolioState()
@@ -17,15 +18,34 @@ export default function Header() {
   const staleness = dataUpdatedAt ? Date.now() - dataUpdatedAt : Infinity
   const isLive = !isError && staleness <= 35_000
   const isDelayed = !isError && staleness > 35_000 && staleness <= 120_000
-  const statusClass = isError
+  const isDisconnected = isError
+
+  const serverClosed = data?.engine_status?.market_closed === true
+  const marketsClosed = serverClosed || !marketsOpen
+
+  const statusClass = isDisconnected
     ? 'border-gov-red/25 bg-gov-red-muted text-gov-red'
-    : isDelayed
+    : marketsClosed
       ? 'border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow'
-      : 'border-gov-green/25 bg-gov-green-muted text-gov-green'
-  const statusText = isError ? 'Disconnected' : isDelayed ? 'Delayed' : 'Live'
+      : isDelayed
+        ? 'border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow'
+        : 'border-gov-green/25 bg-gov-green-muted text-gov-green'
+  const statusText = isDisconnected ? 'Disconnected' : marketsClosed ? 'CLSD' : isDelayed ? 'Delayed' : 'Live'
+
   const daysRunning = data?.portfolio?.days_running ?? 0
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
+
+  const lastUpdate = data?.engine_status?.last_update
+  const lastRefreshStr = lastUpdate
+    ? (() => {
+        try {
+          return format(new Date(lastUpdate), 'MMM dd, HH:mm')
+        } catch {
+          return ''
+        }
+      })()
+    : ''
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -48,11 +68,17 @@ export default function Header() {
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border transition-colors ${statusClass}`}>
-            <span className={`relative inline-flex w-1.5 h-1.5 rounded-full bg-current ${isLive ? 'animate-pulse' : ''}`}>
-              {isLive && (
-                <span className="absolute inset-0 rounded-full bg-current animate-ping opacity-30" />
-              )}
-            </span>
+            {marketsClosed && !isDisconnected ? (
+              <Pause className="w-2.5 h-2.5" strokeWidth={2.5} />
+            ) : (
+              <>
+                <span className={`relative inline-flex w-1.5 h-1.5 rounded-full bg-current ${isLive ? 'animate-pulse' : ''}`}>
+                  {isLive && (
+                    <span className="absolute inset-0 rounded-full bg-current animate-ping opacity-30" />
+                  )}
+                </span>
+              </>
+            )}
             <span className="text-2xs font-semibold font-mono uppercase tracking-wide">{statusText}</span>
             {isFetching && (
               <RefreshCw className="w-2.5 h-2.5 animate-spin opacity-70" strokeWidth={2.5} />
@@ -66,14 +92,25 @@ export default function Header() {
             <span className="font-mono tabular-nums">{timeStr}</span>
             <span
               className={`px-1.5 py-0.5 rounded text-2xs font-bold tracking-wider ${
-                marketsOpen
-                  ? 'bg-gov-green-muted text-gov-green border border-gov-green/20'
-                  : 'bg-gov-red-muted text-gov-red border border-gov-red/20'
+                marketsClosed
+                  ? 'bg-gov-yellow-muted text-gov-yellow border border-gov-yellow/20'
+                  : 'bg-gov-green-muted text-gov-green border border-gov-green/20'
               }`}
             >
-              {marketsOpen ? 'OPEN' : 'CLSD'}
+              {marketsClosed ? 'CLSD' : 'OPEN'}
             </span>
+            {marketsClosed && (
+              <span className="text-tertiary ml-1 italic">weekend — no refresh</span>
+            )}
           </div>
+
+          {lastRefreshStr && (
+            <div className="hidden md:flex items-center gap-1 text-2xs text-tertiary font-mono tabular-nums">
+              <Clock className="w-3 h-3 text-muted shrink-0" strokeWidth={1.5} />
+              <span className="text-muted">LAST</span>
+              <span className="text-secondary">{lastRefreshStr}</span>
+            </div>
+          )}
 
           <div className="hidden md:flex items-center gap-1 text-2xs text-tertiary font-mono tabular-nums">
             <span className="text-muted">RUN</span>

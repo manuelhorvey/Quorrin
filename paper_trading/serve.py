@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from paper_trading.config_manager import get_config
 from paper_trading.health_score import compute_all as _compute_health_all
 from paper_trading.health_score import get_latest as _get_health_latest
+from paper_trading.market_hours import is_market_closed
 from paper_trading.portfolio_builder import build_paper_portfolio
 from paper_trading.risk_governance import get_latest as _get_risk_latest
 from paper_trading.state_store import StateStore
@@ -208,13 +209,18 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
             if path == "/state.json":
                 snapshot = _STORE.load_snapshot()
                 if snapshot is not None:
-                    data = json.dumps(asdict(snapshot), indent=2, default=str)
+                    state = asdict(snapshot)
+                    status = state.setdefault("engine_status", {})
+                    status["market_closed"] = is_market_closed()
+                    if "last_update" not in status or status["last_update"] is None:
+                        status["last_update"] = state.get("timestamp", "")
+                    data = json.dumps(state, indent=2, default=str)
                 else:
                     cfg = get_config()
                     pf = build_paper_portfolio(cfg.halt)
                     data = json.dumps(
                         {
-                            "engine_status": {"initialized": True, "last_update": None, "start_time": None},
+                            "engine_status": {"initialized": True, "last_update": None, "start_time": None, "market_closed": is_market_closed()},
                             "portfolio": {
                                 "total_value": 0,
                                 "total_return": 0,

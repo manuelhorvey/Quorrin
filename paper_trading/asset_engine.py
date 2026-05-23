@@ -523,6 +523,12 @@ class AssetEngine:
         current_side = self.pos_mgr.current_side()
         new_side = "long" if decision.signal == "BUY" else ("short" if decision.signal == "SELL" else None)
 
+        # Minimum confidence gate — skip low-confidence entries
+        min_conf = self.config.get("min_confidence", 0.0)
+        if new_side and decision.confidence < min_conf:
+            logger.debug("%s: skipping trade, confidence %.1f%% < min %.1f%%", self.name, decision.confidence, min_conf)
+            new_side = None
+
         if new_side != current_side:
             if self.pos_mgr.has_position():
                 self._close_position(decision.close_price, today, "signal_flip")
@@ -590,6 +596,7 @@ class AssetEngine:
         self._ensure_position_synced()
 
         # 1. Intraday SL/TP Check - ALWAYS run this on every refresh using real-time price
+        max_hold = self.config.get("max_holding_days")
         if self.pos_mgr.has_position() and self.current_price is not None:
             hit = self.pos_mgr.check_sl_tp(self.current_price)
             if hit:
@@ -604,6 +611,21 @@ class AssetEngine:
                 if self.current_value > self.peak_value:
                     self.peak_value = self.current_value
                 return
+            # Time stop check — force close if held beyond max_holding_days
+            if max_hold is not None and self.pos_mgr.position is not None:
+                entry_str = str(self.pos_mgr.position.entry_date)
+                try:
+                    entry_dt = pd.Timestamp(entry_str)
+                    if entry_dt.tz is None:
+                        entry_dt = entry_dt.tz_localize("US/Eastern")
+                    elapsed = (datetime.now(tz=ET) - entry_dt).days
+                    if elapsed >= max_hold:
+                        last_bar = str(datetime.now(tz=ET).date())
+                        logger.info("%s: TIME STOP after %d days (max=%d)", self.name, elapsed, max_hold)
+                        self._close_position(self.current_price, last_bar, "time_stop")
+                        return
+                except Exception:
+                    pass
 
         # 2. Daily P&L Settlement - Only run if signal_data is available (historical context)
         if self.signal_data is None or len(self.signal_data) < 2:

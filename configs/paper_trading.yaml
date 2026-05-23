@@ -54,14 +54,14 @@ satellite:
 assets:
   EURAUD:
     ticker: EURAUD=X
-    allocation: 0.17
+    allocation: 0.12
     sl_mult: 0.30
     tp_mult: 1.00
     regime_sizing: true
     execution_config:
       base_spread_bps: 1.5
       avg_daily_volume: 500000000 # 500M
-    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, euraud_mom_21, euraud_mom_63]
+    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, euraud_mom_21, euraud_mom_63, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -94,7 +94,7 @@ assets:
     execution_config:
       base_spread_bps: 2.0
       avg_daily_volume: 300000000 # 300M
-    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, nzdjpy_mom_21]
+    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, nzdjpy_mom_21, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -110,7 +110,7 @@ assets:
     execution_config:
       base_spread_bps: 2.0
       avg_daily_volume: 300000000 # 300M
-    features: [vix_ma21, ca_jp_spread_mom_21, us_jp_10y_spread, vix_delta_5, ca_jp_10y_spread, dxy_mom_21, cadjpy_mom_10, cadjpy_mom_21, cadjpy_mom_63]
+    features: [vix_ma21, ca_jp_spread_mom_21, us_jp_10y_spread, vix_delta_5, ca_jp_10y_spread, dxy_mom_21, cadjpy_mom_10, cadjpy_mom_21, cadjpy_mom_63, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -126,7 +126,7 @@ assets:
     execution_config:
       base_spread_bps: 2.0
       avg_daily_volume: 400000000 # 400M
-    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, audjpy_mom_21, audjpy_mom_63, nzdjpy_lead_3]
+    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, audjpy_mom_21, audjpy_mom_63, nzdjpy_lead_3, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -135,14 +135,14 @@ assets:
     config: {}
   USDCAD:
     ticker: USDCAD=X
-    allocation: 0.06
+    allocation: 0.08
     sl_mult: 0.30
     tp_mult: 1.50
     regime_sizing: true
     execution_config:
       base_spread_bps: 0.8
       avg_daily_volume: 800000000 # 800M
-    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdcad_mom_21, usdcad_mom_63]
+    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdcad_mom_21, usdcad_mom_63, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -151,14 +151,14 @@ assets:
     config: {}
   GBPJPY:
     ticker: GBPJPY=X
-    allocation: 0.05
+    allocation: 0.08
     sl_mult: 0.30
     tp_mult: 1.25
     regime_sizing: true
     execution_config:
       base_spread_bps: 2.0
       avg_daily_volume: 500000000 # 500M
-    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, gbpjpy_mom_21, gbpjpy_mom_63]
+    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, gbpjpy_mom_21, gbpjpy_mom_63, dji_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -174,7 +174,7 @@ assets:
     execution_config:
       base_spread_bps: 0.5
       avg_daily_volume: 2000000000 # 2B
-    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, dxy_mom_21, usdjpy_mom_21, usdjpy_mom_63]
+    features: [vix_ma21, vix_delta_5, us_jp_10y_spread, dxy_mom_21, usdjpy_mom_21, usdjpy_mom_63, gc_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -190,7 +190,7 @@ assets:
     execution_config:
       base_spread_bps: 1.2
       avg_daily_volume: 400000000 # 400M
-    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdchf_mom_21, usdchf_mom_63]
+    features: [rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdchf_mom_21, usdchf_mom_63, gc_lead_1]
     halt:
       drawdown: -0.08
       monthly_pf: 0.70
@@ -199,7 +199,7 @@ assets:
     config: {}
   GBPUSD:
     ticker: GBPUSD=X
-    allocation: 0.03
+    allocation: 0.05
     sl_mult: 0.52
     tp_mult: 1.97
     regime_sizing: true
@@ -231,7 +231,7 @@ assets:
     config: {}
   EURCAD:
     ticker: EURCAD=X
-    allocation: 0.07
+    allocation: 0.05
     sl_mult: 0.30
     tp_mult: 1.75
     regime_sizing: true

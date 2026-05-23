@@ -8,7 +8,6 @@ import pytz
 
 from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
-from paper_trading.market_hours import is_market_closed
 
 # Re-exported from child modules for backward compatibility
 from paper_trading.data_fetcher import (  # noqa: F401
@@ -23,6 +22,7 @@ from paper_trading.data_fetcher import (  # noqa: F401
 from paper_trading.decision import PositionIntent
 from paper_trading.execution.paper_broker import PaperBroker
 from paper_trading.execution_bridge import ExecutionBridge
+from paper_trading.market_hours import is_market_closed
 from paper_trading.satellite import HighVolSatellite, SatelliteConfig
 from paper_trading.satellite_runner import (
     compute_btc_context,

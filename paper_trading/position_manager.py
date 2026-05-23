@@ -108,9 +108,7 @@ class PositionManager:
 
         # Check breakeven stop (from scale-out)
         if self._scale_out_breakeven is not None and self._remaining_fraction > 0:
-            if self.position.side == "long" and current_price <= self._scale_out_breakeven:
-                return ("breakeven", self._scale_out_breakeven)
-            elif self.position.side == "short" and current_price >= self._scale_out_breakeven:
+            if self.position.side == "long" and current_price <= self._scale_out_breakeven or self.position.side == "short" and current_price >= self._scale_out_breakeven:
                 return ("breakeven", self._scale_out_breakeven)
 
         sl = self.position.stop_loss

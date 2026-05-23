@@ -24,11 +24,11 @@ from paper_trading.data_fetcher import fetch_history, fetch_live, fetch_ref, fla
 from paper_trading.decision import PositionIntent, TradeDecision
 from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
 from paper_trading.dynamic_sltp import build_dynamic_sltp_from_config
-from paper_trading.scale_out import ScaleOutEngine, build_scale_out_from_config
 from paper_trading.position_manager import PositionManager
 from paper_trading.regime_classifier import RegimeClassifier
 from paper_trading.risk_governance import evaluate as _risk_evaluate
 from paper_trading.risk_governance import record_trade_outcome as _record_exit_outcome
+from paper_trading.scale_out import build_scale_out_from_config
 from paper_trading.shadow_actions import compute_shadow_actions as _compute_shadow
 from paper_trading.shadow_feedback import record_shadow_feedback as _record_feedback
 from paper_trading.shadow_learning import compile_shadow_learning as _compile_learning

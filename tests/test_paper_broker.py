@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from execution.broker_interface import Order
-from execution.paper_broker import PaperBroker
+from paper_trading.execution.broker_interface import Order
+from paper_trading.execution.paper_broker import PaperBroker
 from shared.execution_config import ExecutionConfig, compute_slippage_cost
 
 

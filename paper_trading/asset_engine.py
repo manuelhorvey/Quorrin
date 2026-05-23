@@ -12,7 +12,7 @@ from features.builder import build_features, compute_macro_derived, model_path
 from features.contract import validate_no_cross_asset_leakage
 from features.regime_features import generate_regime_features
 from features.registry import FEATURE_REGISTRY
-from models.regime.regime_classifier import RegimeClassifier
+from labels.meta_labels import MetaLabelModel
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
 from monitoring.validity_state_machine import (
     ValidityStateMachine as _ValidityStateMachine,
@@ -23,8 +23,11 @@ from paper_trading.config_manager import get_config
 from paper_trading.data_fetcher import fetch_history, fetch_live, fetch_ref, flatten, safe_download
 from paper_trading.decision import PositionIntent, TradeDecision
 from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
+from paper_trading.dynamic_sltp import build_dynamic_sltp_from_config
 from paper_trading.position_manager import PositionManager
+from paper_trading.regime_classifier import RegimeClassifier
 from paper_trading.risk_governance import evaluate as _risk_evaluate
+from paper_trading.risk_governance import record_trade_outcome as _record_exit_outcome
 from paper_trading.shadow_actions import compute_shadow_actions as _compute_shadow
 from paper_trading.shadow_feedback import record_shadow_feedback as _record_feedback
 from paper_trading.shadow_learning import compile_shadow_learning as _compile_learning
@@ -126,6 +129,11 @@ class AssetEngine:
         if self.config.get("regime_sizing"):
             self._sizing_strategy.regime_aware = True
 
+        self._sltp_engine = build_dynamic_sltp_from_config(self.config)
+        self._last_adjust_bar = 0
+        self._bars_at_entry = 0
+        self._entry_vol = None
+        self._meta_label_model = None
         self._window_id_counter = 0
         self._current_window_train_start = ""
         self._current_window_train_end = ""
@@ -222,7 +230,29 @@ class AssetEngine:
             qty = max(notional / entry_price, 1e-6)
             fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, entry_price)
 
-        intent = PositionIntent.from_price_and_vol(side, fill_price, entry_date, vol, sl_mult, tp_mult)
+        # Use DynamicSLTPEngine if configured, else fall back to original EWM vol method
+        if self.config.get("dynamic_sltp", {}).get("enabled", False):
+            regime = getattr(self, "_current_regime", "neutral")
+            sltp_result = self._sltp_engine.compute_barriers(
+                entry_price=fill_price,
+                side=side,
+                df=data,
+                sl_mult=sl_mult,
+                tp_mult=tp_mult,
+                regime=regime,
+                vol=vol,
+            )
+            intent = PositionIntent(
+                side=side,
+                entry_price=fill_price,
+                entry_date=entry_date,
+                stop_loss=sltp_result.stop_loss,
+                take_profit=sltp_result.take_profit,
+                vol=vol,
+            )
+        else:
+            intent = PositionIntent.from_price_and_vol(side, fill_price, entry_date, vol, sl_mult, tp_mult)
+
         self.pos_mgr.open(intent)
         self.position = {
             "side": intent.side,
@@ -234,6 +264,8 @@ class AssetEngine:
             "sl_mult": sl_mult,
             "tp_mult": tp_mult,
         }
+        self._entry_vol = vol
+        self._bars_at_entry = 0
 
     def _close_position(self, exit_price, exit_date, reason):
         fill_price = exit_price
@@ -263,6 +295,7 @@ class AssetEngine:
         self.current_value = self.pos_mgr.current_value
         self.trade_log = list(self.pos_mgr.trade_log)
         self._save_trade_journal(trade)
+        _record_exit_outcome(self.name, reason)
 
     def refresh_price(self):
         try:
@@ -322,6 +355,19 @@ class AssetEngine:
         self._enable_adaptive_macro()
         with open(self.model_path, "wb") as f:
             pickle.dump(model, f)
+
+        # Train meta-label model
+        if self.config.get("meta_labeling", {}).get("enabled", False):
+            self._meta_label_model = MetaLabelModel(
+                threshold=self.config.get("meta_labeling", {}).get("threshold", 0.55),
+            )
+            try:
+                primary_pred = model.predict_proba(X)
+                full_train = train.copy()
+                full_train["label"] = y
+                self._meta_label_model.train(full_train, primary_pred, self.features, self.name)
+            except Exception as e:
+                logger.warning("%s: meta-label training failed: %s", self.name, e)
 
         # Log feature importances
         self._window_id_counter += 1
@@ -384,13 +430,23 @@ class AssetEngine:
         if proba.shape[1] < 3:
             raise ValueError(f"Model returned {proba.shape[1]} classes, expected 3")
 
+        # Meta-label inference
+        self._last_meta_proba = None
+        if self._meta_label_model is not None and self._meta_label_model._trained:
+            try:
+                self._last_meta_proba = self._meta_label_model.predict_proba(X, proba)
+            except Exception as e:
+                logger.debug("%s: meta-label inference failed: %s", self.name, e)
+
         sizing_cfg = self._sizing_config(df["close"])
         if self.config.get("regime_sizing"):
             regime_features_df = generate_regime_features(df)
             regime_results = self.regime_classifier.classify(regime_features_df)
             current_regime = regime_results["regime"].iloc[-1]
+            self._current_regime = current_regime
             pos_size = self._sizing_strategy.compute(df["close"], sizing_cfg, regime=current_regime)
         else:
+            self._current_regime = "neutral"
             pos_size = self._sizing_strategy.compute(df["close"], sizing_cfg)
 
         result = self._signal_strategy.compute(proba, X.index, threshold, df["close"], pos_size)
@@ -529,6 +585,16 @@ class AssetEngine:
             logger.debug("%s: skipping trade, confidence %.1f%% < min %.1f%%", self.name, decision.confidence, min_conf)
             new_side = None
 
+        # Meta-label filter — skip trades unlikely to hit TP before SL
+        if new_side and self._meta_label_model is not None and self.config.get("meta_labeling", {}).get("enabled", False):
+            if hasattr(self, "_last_meta_proba"):
+                if not self._meta_label_model.should_enter(self._last_meta_proba):
+                    logger.info(
+                        "%s: meta-label blocking trade (p(TP>SL)=%.2f < threshold=%.2f)",
+                        self.name, self._last_meta_proba, self._meta_label_model.threshold,
+                    )
+                    new_side = None
+
         if new_side != current_side:
             if self.pos_mgr.has_position():
                 self._close_position(decision.close_price, today, "signal_flip")
@@ -611,6 +677,45 @@ class AssetEngine:
                 if self.current_value > self.peak_value:
                     self.peak_value = self.current_value
                 return
+
+            # ── Trailing stop check ──────────────────────────────
+            if self.config.get("dynamic_sltp", {}).get("enabled", False) and self._entry_vol is not None:
+                data = getattr(self, "price_data", None) or (df if (df := getattr(self, "_price_df", None)) else None)
+                if data is not None and self.pos_mgr.position is not None:
+                    trailing = self._sltp_engine.compute_trailing_stop(
+                        side=self.pos_mgr.position.side,
+                        entry_price=self.pos_mgr.position.entry_price,
+                        current_price=self.current_price,
+                        initial_sl=self.pos_mgr.position.stop_loss,
+                        current_sl=self.pos_mgr.position.stop_loss,
+                        take_profit=self.pos_mgr.position.take_profit,
+                        df=data,
+                    )
+                    if trailing.trailing_sl is not None:
+                        self.pos_mgr.update_stop_loss(float(trailing.trailing_sl))
+                        logger.info(
+                            "%s: trailing stop activated to %.4f (locked profit=%.2f%%)",
+                            self.name, trailing.trailing_sl, (trailing.locked_profit or 0) * 100,
+                        )
+
+                    # ── Post-entry adjustment ────────────────────────
+                    self._bars_at_entry += 1
+                    adjust = self._sltp_engine.post_entry_adjust(
+                        side=self.pos_mgr.position.side,
+                        entry_price=self.pos_mgr.position.entry_price,
+                        current_sl=self.pos_mgr.position.stop_loss,
+                        current_tp=self.pos_mgr.position.take_profit,
+                        df=data,
+                        vol=self._entry_vol,
+                        bars_since_entry=self._bars_at_entry,
+                    )
+                    if adjust.new_sl is not None:
+                        self.pos_mgr.update_stop_loss(float(adjust.new_sl))
+                        logger.info("%s: post-entry SL adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_sl)
+                    if adjust.new_tp is not None:
+                        self.pos_mgr.update_take_profit(float(adjust.new_tp))
+                        logger.info("%s: post-entry TP adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_tp)
+
             # Time stop check — force close if held beyond max_holding_days
             if max_hold is not None and self.pos_mgr.position is not None:
                 entry_str = str(self.pos_mgr.position.entry_date)
@@ -773,6 +878,16 @@ class AssetEngine:
         current_sl = self.sl_mult * geom.get("sl_mult", 1.0)
         current_tp = self.tp_mult * geom.get("tp_mult", 1.0)
 
+        meta_inference = None
+        if self._meta_label_model is not None and self._last_meta_proba is not None:
+            meta_inference = {
+                "meta_confidence": round(self._last_meta_proba, 4),
+                "meta_decision": "ENTER" if self._meta_label_model.should_enter(self._last_meta_proba) else "BLOCK",
+            }
+
+        remaining_frac = self.pos_mgr.get_remaining_fraction()
+        scale_out_active = self.pos_mgr._scale_out_active if hasattr(self.pos_mgr, '_scale_out_active') and self.pos_mgr._scale_out_active else False
+
         return {
             "asset": self.name,
             "current_value": round(self.current_value, 2),
@@ -802,6 +917,9 @@ class AssetEngine:
                 "window_id": self._last_stability.window_id if self._last_stability else None,
             },
             "exit_reasons": exit_reasons,
+            "meta_inference": meta_inference,
+            "scale_out_active": scale_out_active,
+            "remaining_fraction": round(remaining_frac, 4),
         }
 
     def _save_trade_journal(self, trade):

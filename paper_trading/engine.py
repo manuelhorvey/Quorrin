@@ -20,6 +20,8 @@ from paper_trading.data_fetcher import (  # noqa: F401
     safe_download,
 )
 from paper_trading.decision import PositionIntent
+from paper_trading.execution.paper_broker import PaperBroker
+from paper_trading.execution_bridge import ExecutionBridge
 from paper_trading.satellite import HighVolSatellite, SatelliteConfig
 from paper_trading.satellite_runner import (
     compute_btc_context,
@@ -29,8 +31,6 @@ from paper_trading.satellite_runner import (
 )
 from paper_trading.simulation_snapshot import SimulationStore, build_asset_snapshot
 from paper_trading.state_store import _SKIP_JOURNAL, EngineSnapshot, StateStore, sanitize  # noqa: F401
-from execution.paper_broker import PaperBroker
-from paper_trading.execution_bridge import ExecutionBridge
 from shared.execution_config import build_execution_configs
 from shared.registry import StrategyRegistry
 

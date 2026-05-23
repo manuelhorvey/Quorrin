@@ -1,16 +1,16 @@
-from typing import Optional, List, Dict
 from datetime import datetime
-from execution.broker_interface import BrokerInterface, Order
+
+from paper_trading.execution.broker_interface import BrokerInterface, Order
 
 
 class OrderManager:
     def __init__(self, broker: BrokerInterface):
         self.broker = broker
-        self.pending_orders: Dict[str, Order] = {}
-        self.filled_orders: List[Order] = []
-        self.cancelled_orders: List[Order] = []
+        self.pending_orders: dict[str, Order] = {}
+        self.filled_orders: list[Order] = []
+        self.cancelled_orders: list[Order] = []
 
-    def submit_market_order(self, asset: str, side: str, quantity: float) -> Optional[str]:
+    def submit_market_order(self, asset: str, side: str, quantity: float) -> str | None:
         order = Order(
             asset=asset, side=side, quantity=quantity,
             order_type="market", timestamp=datetime.now(),
@@ -22,7 +22,7 @@ class OrderManager:
 
     def submit_limit_order(
         self, asset: str, side: str, quantity: float, limit_price: float
-    ) -> Optional[str]:
+    ) -> str | None:
         order = Order(
             asset=asset, side=side, quantity=quantity,
             order_type="limit", limit_price=limit_price,
@@ -43,7 +43,7 @@ class OrderManager:
             self.cancelled_orders.append(order)
         return success
 
-    def check_pending_orders(self) -> List[Order]:
+    def check_pending_orders(self) -> list[Order]:
         filled = []
         for order_id, order in list(self.pending_orders.items()):
             status = self.broker.get_order_status(order_id)

@@ -1,7 +1,8 @@
-import pytest
-import pandas as pd
 import numpy as np
-from models.regime.regime_classifier import RegimeClassifier
+import pandas as pd
+import pytest
+
+from paper_trading.regime_classifier import RegimeClassifier
 
 
 class TestRegimeClassifier:

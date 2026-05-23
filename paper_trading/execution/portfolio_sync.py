@@ -1,6 +1,6 @@
-from typing import List, Dict, Optional
 from dataclasses import dataclass
-from execution.broker_interface import BrokerInterface, Position, Order
+
+from paper_trading.execution.broker_interface import BrokerInterface, Order
 
 
 @dataclass
@@ -16,7 +16,7 @@ class PortfolioSync:
         self.broker = broker
         self._last_sync = None
 
-    def get_current_weights(self, portfolio_value: float) -> Dict[str, float]:
+    def get_current_weights(self, portfolio_value: float) -> dict[str, float]:
         positions = self.broker.get_positions()
         weights = {}
         for pos in positions:
@@ -26,10 +26,10 @@ class PortfolioSync:
 
     def compute_rebalance_orders(
         self,
-        target_weights: Dict[str, float],
+        target_weights: dict[str, float],
         portfolio_value: float,
         drift_threshold: float = 0.05,
-    ) -> List[Order]:
+    ) -> list[Order]:
         current_weights = self.get_current_weights(portfolio_value)
         positions = {p.asset: p for p in self.broker.get_positions()}
         orders = []
@@ -59,7 +59,7 @@ class PortfolioSync:
 
         return orders
 
-    def sync_positions(self, expected_assets: List[str]) -> Dict[str, float]:
+    def sync_positions(self, expected_assets: list[str]) -> dict[str, float]:
         positions = self.broker.get_positions()
         pos_dict = {p.asset: p.quantity for p in positions}
         missing = [a for a in expected_assets if a not in pos_dict]

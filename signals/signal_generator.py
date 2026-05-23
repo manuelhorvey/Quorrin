@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from models.regime.regime_classifier import RegimeClassifier
+from paper_trading.regime_classifier import RegimeClassifier
 from models.hybrid_ensemble import HybridRegimeEnsemble
 
 class RegimeAwareSignalGenerator:

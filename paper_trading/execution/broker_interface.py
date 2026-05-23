@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, List
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,10 +9,10 @@ class Order:
     side: str  # buy or sell
     quantity: float
     order_type: str  # market, limit, stop
-    limit_price: Optional[float] = None
-    stop_price: Optional[float] = None
-    timestamp: Optional[datetime] = None
-    order_id: Optional[str] = None
+    limit_price: float | None = None
+    stop_price: float | None = None
+    timestamp: datetime | None = None
+    order_id: str | None = None
     status: str = "pending"
 
 
@@ -32,7 +31,7 @@ class AccountSummary:
     total_cash: float
     buying_power: float
     portfolio_value: float
-    positions: List[Position]
+    positions: list[Position]
 
 
 class BrokerInterface(ABC):
@@ -61,7 +60,7 @@ class BrokerInterface(ABC):
         ...
 
     @abstractmethod
-    def get_positions(self) -> List[Position]:
+    def get_positions(self) -> list[Position]:
         ...
 
     @abstractmethod

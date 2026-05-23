@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from models.regime.regime_classifier import RegimeClassifier
+from paper_trading.regime_classifier import RegimeClassifier
 
 class RegimeAudit:
     """

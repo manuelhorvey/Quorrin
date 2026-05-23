@@ -25,7 +25,7 @@ from features.contract import KNOWN_MACRO_COLUMNS
 from features.regime_features import generate_regime_features
 from features.structural_features import generate_structural_features
 from features.interaction_features import generate_interaction_features
-from models.regime.regime_classifier import RegimeClassifier
+from paper_trading.regime_classifier import RegimeClassifier
 from models.hybrid_ensemble import HybridRegimeEnsemble
 
 logger = logging.getLogger("quantforge.execution_surface.ensemble_freeze")

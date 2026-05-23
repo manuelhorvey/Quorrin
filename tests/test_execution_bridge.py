@@ -1,6 +1,5 @@
-import pytest
 
-from execution.paper_broker import PaperBroker
+from paper_trading.execution.paper_broker import PaperBroker
 from paper_trading.execution_bridge import ExecutionBridge
 from shared.execution_config import ExecutionConfig
 

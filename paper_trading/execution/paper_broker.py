@@ -1,11 +1,16 @@
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+
+import numpy as np
 import yfinance as yf
 
-from execution.broker_interface import BrokerInterface, Order, Position, AccountSummary
-from shared.execution_config import ExecutionConfig, compute_slippage_cost, compute_market_impact, DEFAULT_EXECUTION_CONFIGS
-import numpy as np
+from paper_trading.execution.broker_interface import AccountSummary, BrokerInterface, Order, Position
+from shared.execution_config import (
+    DEFAULT_EXECUTION_CONFIGS,
+    ExecutionConfig,
+    compute_market_impact,
+    compute_slippage_cost,
+)
 
 logger = logging.getLogger("quantforge.paper_broker")
 
@@ -19,19 +24,19 @@ class PaperBroker(BrokerInterface):
     def __init__(
         self,
         initial_capital: float = 100_000,
-        execution_configs: Optional[Dict[str, ExecutionConfig]] = None,
+        execution_configs: dict[str, ExecutionConfig] | None = None,
         fees: float = 0.0,
     ):
         self.initial_capital = initial_capital
         self.cash = initial_capital
         self.execution_configs = execution_configs or DEFAULT_EXECUTION_CONFIGS
         self.fees = fees
-        self._positions: Dict[str, Position] = {}
-        self._orders: Dict[str, Order] = {}
+        self._positions: dict[str, Position] = {}
+        self._orders: dict[str, Order] = {}
         self._next_order_id = 1
-        self._price_cache: Dict[str, float] = {}
-        self._returns_history: Dict[str, List[float]] = {}
-        self._last_price: Dict[str, float] = {}
+        self._price_cache: dict[str, float] = {}
+        self._returns_history: dict[str, list[float]] = {}
+        self._last_price: dict[str, float] = {}
 
     def connect(self) -> bool:
         return True
@@ -61,13 +66,13 @@ class PaperBroker(BrokerInterface):
             if prev_price > 0:
                 ret = current_price / prev_price - 1.0
                 self._returns_history.setdefault(asset, []).append(ret)
-                
+
                 # Prune history to avoid memory bloat, keep enough for a few windows
                 config = self._get_config(asset)
                 max_history = config.vol_window * 10
                 if len(self._returns_history[asset]) > max_history:
                     self._returns_history[asset] = self._returns_history[asset][-max_history:]
-        
+
         self._last_price[asset] = current_price
 
     def get_vol_zscore(self, asset: str) -> float:
@@ -75,16 +80,16 @@ class PaperBroker(BrokerInterface):
         config = self._get_config(asset)
         if len(history) < config.vol_window:
             return 1.0
-        
+
         recent = np.array(history[-config.vol_window:])
         full = np.array(history)
-        
+
         recent_std = np.std(recent)
         full_std = np.std(full)
-        
+
         if full_std < 1e-10:
             return 1.0
-            
+
         return float(recent_std / full_std)
 
     def place_order(self, order: Order) -> str:
@@ -96,11 +101,11 @@ class PaperBroker(BrokerInterface):
         self._update_vol_tracking(order.asset, price)
         vol_z = self.get_vol_zscore(order.asset)
         config = self._get_config(order.asset)
-        
+
         slippage = compute_slippage_cost(np.array([vol_z]), config)[0]
         impact = compute_market_impact(order.quantity * price, config)
         total_slippage = slippage + impact
-        
+
         fill_price = price * (1 + total_slippage) if order.side == "buy" else price * (1 - total_slippage)
         fill_qty = order.quantity
         cost = fill_price * fill_qty
@@ -134,7 +139,7 @@ class PaperBroker(BrokerInterface):
         order.status = "filled"
         order.timestamp = datetime.now()
         self._orders[order_id] = order
-        logger.debug("Order %s: %s %s %.4f @ %.2f (vol_z=%.2f, slippage=%.4f, impact=%.4f)", 
+        logger.debug("Order %s: %s %s %.4f @ %.2f (vol_z=%.2f, slippage=%.4f, impact=%.4f)",
                      order_id, order.side, order.asset, fill_qty, fill_price, vol_z, slippage, impact)
         return order_id
 
@@ -145,7 +150,7 @@ class PaperBroker(BrokerInterface):
         order = self._orders.get(order_id)
         return order.status if order else "unknown"
 
-    def get_positions(self) -> List[Position]:
+    def get_positions(self) -> list[Position]:
         return list(self._positions.values())
 
     def get_current_price(self, asset: str) -> float:

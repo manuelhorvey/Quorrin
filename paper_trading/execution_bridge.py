@@ -6,9 +6,8 @@ import logging
 
 import numpy as np
 
-from execution.broker_interface import Order
-from execution.order_manager import OrderManager
-from execution.paper_broker import PaperBroker
+from paper_trading.execution.order_manager import OrderManager
+from paper_trading.execution.paper_broker import PaperBroker
 from shared.execution_config import compute_market_impact, compute_slippage_cost
 
 logger = logging.getLogger("quantforge.execution_bridge")

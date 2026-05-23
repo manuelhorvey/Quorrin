@@ -1,5 +1,7 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal, Iterable
+from typing import Literal
+
 import pandas as pd
 
 
@@ -38,7 +40,7 @@ class FeatureContract:
 
     def validate_dataframe(self, df: pd.DataFrame) -> None:
         expected = list(self.features)
-        actual = list(df.columns[:len(expected)])
+        actual = list(df.columns[: len(expected)])
         if actual != expected:
             raise FeatureMismatchError(
                 f"{self.name}: expected columns {expected}, got {actual}. "
@@ -103,9 +105,17 @@ class FeatureContract:
 
 
 KNOWN_MACRO_COLUMNS: set[str] = {
-    "rate_diff", "2y_yield_delta_63", "dxy_mom_63", "dxy_mom_21",
-    "vix_ma21", "vix_delta_5", "us_jp_10y_spread", "ca_jp_10y_spread",
-    "ca_jp_spread_mom_21", "ca_jp_spread_mom_5", "real_yield_delta_63",
+    "rate_diff",
+    "2y_yield_delta_63",
+    "dxy_mom_63",
+    "dxy_mom_21",
+    "vix_ma21",
+    "vix_delta_5",
+    "us_jp_10y_spread",
+    "ca_jp_10y_spread",
+    "ca_jp_spread_mom_21",
+    "ca_jp_spread_mom_5",
+    "real_yield_delta_63",
     "breakeven_delta_63",
 }
 

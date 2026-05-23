@@ -16,6 +16,7 @@ Usage:
 
 import os
 import json
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from enum import IntEnum

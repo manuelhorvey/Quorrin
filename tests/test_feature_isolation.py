@@ -2,13 +2,12 @@ import pandas as pd
 import pytest
 
 from features.contract import (
+    KNOWN_MACRO_COLUMNS,
     FeatureContract,
     FeatureMismatchError,
-    KNOWN_MACRO_COLUMNS,
     validate_no_cross_asset_leakage,
 )
 from features.registry import FEATURE_REGISTRY
-
 
 ALL_SLUGS = [(c.contract_prefix or c.name) for c in FEATURE_REGISTRY.values()]
 
@@ -71,9 +70,7 @@ class TestValidateNoCrossAssetLeakage:
             vs_spy_windows=(),
             custom_features=("audjpy_lead_3",),
         )
-        df = pd.DataFrame(
-            {"vix_ma21": [1.0], "nzdjpy=x_mom_21": [0.01], "audjpy_lead_3": [0.02], "label": [0]}
-        )
+        df = pd.DataFrame({"vix_ma21": [1.0], "nzdjpy=x_mom_21": [0.01], "audjpy_lead_3": [0.02], "label": [0]})
         validate_no_cross_asset_leakage(df, contract, known_slugs=ALL_SLUGS)
 
     def test_custom_features_foreign_slug_still_raises(self):

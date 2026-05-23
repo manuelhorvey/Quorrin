@@ -8,10 +8,10 @@ import pandas as pd
 import pytz
 import xgboost as xgb
 
+from features.builder import build_features, compute_macro_derived, model_path
 from features.contract import validate_no_cross_asset_leakage
 from features.regime_features import generate_regime_features
 from features.registry import FEATURE_REGISTRY
-from features.builder import build_features, compute_macro_derived, model_path
 from models.regime.regime_classifier import RegimeClassifier
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
 from monitoring.validity_state_machine import (
@@ -142,10 +142,7 @@ class AssetEngine:
         if price <= 0:
             return cfg
         notional = (
-            self.current_value
-            * self.pos_mgr.position_size
-            * self.pos_mgr.exposure_multiplier
-            * position_size_scalar
+            self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * position_size_scalar
         )
         cfg["impact_bps"] = self.execution_bridge.estimate_impact_bps(self.ticker, notional)
         return cfg
@@ -223,9 +220,7 @@ class AssetEngine:
             broker_side = "buy" if side == "long" else "sell"
             notional = self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier
             qty = max(notional / entry_price, 1e-6)
-            fill_price, _, _ = self.execution_bridge.fill_price(
-                self.ticker, broker_side, qty, entry_price
-            )
+            fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, entry_price)
 
         intent = PositionIntent.from_price_and_vol(side, fill_price, entry_date, vol, sl_mult, tp_mult)
         self.pos_mgr.open(intent)
@@ -247,16 +242,14 @@ class AssetEngine:
             broker_side = "sell" if side == "long" else "buy"
             notional = self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier
             qty = max(notional / exit_price, 1e-6)
-            fill_price, _, _ = self.execution_bridge.fill_price(
-                self.ticker, broker_side, qty, exit_price
-            )
+            fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, exit_price)
 
         trade = self.pos_mgr.close(fill_price, exit_date, reason)
         if trade is None:
             return
         trade["asset"] = self.name
         trade["conf_at_entry"] = self.position.get("confidence") if self.position else None
-        
+
         try:
             macro_head = getattr(self.model, "macro_head", None) if self.model else None
             if macro_head is not None and macro_head.online_weight:
@@ -396,16 +389,13 @@ class AssetEngine:
             regime_features_df = generate_regime_features(df)
             regime_results = self.regime_classifier.classify(regime_features_df)
             current_regime = regime_results["regime"].iloc[-1]
-            pos_size = self._sizing_strategy.compute(
-                df["close"], sizing_cfg, regime=current_regime
-            )
+            pos_size = self._sizing_strategy.compute(df["close"], sizing_cfg, regime=current_regime)
         else:
             pos_size = self._sizing_strategy.compute(df["close"], sizing_cfg)
 
-        self._record_inference_proxies(proba, X, result.signal_type)
-
-        # Meta-model: train on accumulated trades if enough data
         result = self._signal_strategy.compute(proba, X.index, threshold, df["close"], pos_size)
+
+        self._record_inference_proxies(proba, X, result.signal_type)
         self.signal_data = result.signal_data
 
         latest = self.signal_data.iloc[-1]

@@ -156,8 +156,10 @@ Reference for `configs/paper_trading.yaml`. See [docs/PAPER_TRADING_RUNBOOK.md](
 | Meta-labeling | Per signal | Per asset | Trade skip | — |
 | Macro narrative | Weekly | Global | SL +10%, size −20% | `features/macro_narrative.py` |
 | Liquidity regime | Per signal | Per asset | SL +15/30%, size −15/30%, halt | `features/liquidity_regime.py` |
+| PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE | `monitoring/psi_monitor.py` |
 
-Multiplicative chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`
+Multiplicative chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`  
+Validity stacking: stability penalty + PSI penalty + halt penalties (additive, worst-wins at layer level)
 
 Full detail: [docs/GOVERNANCE_LAYER.md](docs/GOVERNANCE_LAYER.md)
 
@@ -191,6 +193,7 @@ Full detail: [docs/ARCHITECTURE_FOUNDATIONS.md](docs/ARCHITECTURE_FOUNDATIONS.md
 | **4** | Scale-out + trailing, probability-based SL/TP, shadow SL/TP analytics |
 | **5** | Macro narrative governance (weekly LLM overlay) |
 | **6** | Liquidity regime model (volume/Amihud proxy) |
+| **7** | PSI drift monitoring (fixed-width bin distribution shift detection) |
 
 Full detail: [docs/HARDENING_ROADMAP.md](docs/HARDENING_ROADMAP.md)
 

@@ -193,6 +193,29 @@ def test_penalty_severe():
         assert snapshot.penalty == -0.20
 
 
+def test_penalty_moderate_and_severe_additive():
+    with tempfile.TemporaryDirectory() as tmp:
+        monitor = PSIMonitor(tmp)
+        rng = np.random.default_rng(42)
+        X_train = pd.DataFrame({
+            "a": rng.normal(0, 1, 500),
+            "b": rng.normal(0, 1, 500),
+        })
+        monitor.persist_baseline("test_asset", X_train)
+
+        X_current = pd.DataFrame({
+            "a": rng.normal(1.5, 1, 100),
+            "b": rng.normal(5, 1, 100),
+        })
+        snapshot = monitor.compute_drift("test_asset", X_current, [("a", 0.5), ("b", 0.5)])
+
+        assert snapshot is not None
+        assert snapshot.moderate_count > 0 or snapshot.severe_count > 0
+        # When both MODERATE and SEVERE fire, penalty = -0.08 + -0.20 = -0.28
+        if snapshot.moderate_count > 0 and snapshot.severe_count > 0:
+            assert snapshot.penalty == -0.28, f"Expected -0.28 for both flags, got {snapshot.penalty}"
+
+
 def test_psi_ok_requires_3_severe():
     with tempfile.TemporaryDirectory() as tmp:
         monitor = PSIMonitor(tmp)

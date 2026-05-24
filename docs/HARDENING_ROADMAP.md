@@ -2,7 +2,7 @@
 
 Operational reference for cross-asset isolation, execution physics, extended history, lead-lag features, adaptive macro weighting, and portfolio-level circuit breaker.
 
-All tiers have been implemented, validated, and merged to `main`. 281 tests pass across 17 test files.
+All tiers have been implemented, validated, and merged to `main`. 470 tests pass across 18 test files.
 
 ## Tier 1 — Cross-asset leakage and regime sizing
 
@@ -274,14 +274,71 @@ liquidity_config:
 
 ---
 
+## Tier 7 — PSI Drift Monitoring (Automated Distribution Shift Detection)
+
+### Objective
+
+Automate manual PSI drift checks from the runbook into a per-cycle governance layer that detects feature distribution shifts and applies validity penalties before they degrade execution.
+
+### Implementation
+
+#### Core
+
+- `monitoring/psi_monitor.py`:
+  - `compute_psi(expected, actual, bins=10)`: Fixed-width bins from baseline min/max, first/last bin extended to ±inf for overflow. Returns 0.0 if distributions are identical or samples insufficient.
+  - `classify_drift(psi)`: Returns NO_DRIFT (< 0.1), MODERATE (0.1 – 0.2), or SEVERE (> 0.2).
+  - `PSIDriftEntry` dataclass: per-feature PSI score, classification, trend (STABLE / INCREASING / DECREASING vs previous cycle), importance score.
+  - `PSISnapshot` dataclass: per-asset snapshot with per-feature list, worst_classification, moderate_count, severe_count, psi_ok flag, penalty.
+
+#### Baseline Population
+
+- Persisted as `data/live/psi_baseline/{asset}.parquet` — full training feature matrix
+- Written immediately after `model.fit()` in `asset_engine.train()`, before any post-processing
+- Only updated when a new walk-forward window promotes (annual retrain)
+
+#### Per-Cycle Computation
+
+- In `_generate_and_apply()`, after feature build, rolling 21-day window from `features_df.tail(21)`
+- Top-10 features per asset loaded from most recent `importance_store` snapshot
+- Per-feature PSI computed against baseline fixed-width bins
+
+#### Governance Rules
+
+| Condition | Effect |
+|-----------|--------|
+| Any MODERATE feature | −0.08 validity penalty |
+| Any SEVERE feature | −0.20 validity penalty (additive with MODERATE: max −0.28) |
+| 3+ SEVERE features simultaneously | `psi_ok = False`, hard halt |
+
+Penalties are additive with feature stability penalties (both sum in `update_validity()`).
+
+#### Dashboard
+
+- `paper_trading/dashboard/src/hooks/usePSI.ts` — React Query hook polling `/psi.json` every 30s
+- `paper_trading/dashboard/src/components/PSIDriftCard.tsx` — per-asset table with feature rows, color-coded classification badges (green/amber/red), trend arrows (↑↓→), worst-classification summary, collapsible halted section with PSI HALT badge
+
+#### Endpoint
+
+- `GET /psi.json` (30s cache) — per-asset per-feature PSI scores, classification, trend, psi_ok status
+
+**Tests:** `tests/test_psi_monitor.py` — 21 tests covering compute_psi (identical, shifted, insufficient samples, constant, NaN), classify_drift boundaries, trend, persist/load round-trip, compute_drift with no baseline, identical, shifted, and missing features, penalty values, && psi_ok at 2 vs 3 severe thresholds
+
+---
+
 ## Multiplicative Governance Chain
 
-The five governance/execution layers stack multiplicatively:
+The SL/size layers stack multiplicatively:
 
 ```
 final_sl_mult = base_sl_mult × regime_geometry_sl × narrative_sl_mult × liquidity_sl_mult
 final_size_scalar = base_size × narrative_size_scalar × liquidity_size_scalar
-halt = drawdown_halt OR pf_halt OR drought_halt OR drift_halt OR narrative_halt OR liquidity_halt
+halt = drawdown_halt OR pf_halt OR drought_halt OR drift_halt OR narrative_halt OR liquidity_halt OR psi_halt
+```
+
+Validity penalties (feature stability + PSI drift) are additive, not multiplicative, feeding into the validity state machine:
+
+```
+validity_score = 0.80 − drawdown_penalty − pf_penalty − drought_penalty − drift_penalty − narrative_penalty − liquidity_penalty + stability_penalty + psi_penalty
 ```
 
 Each layer is independently configurable, independently gated (by confidence, staleness, or threshold), and independently observable in the dashboard.

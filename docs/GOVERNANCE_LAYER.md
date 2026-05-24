@@ -3,7 +3,7 @@
 Seven independent governance mechanisms operating at different frequencies and granularities.
 
 | Layer | Frequency | Scope | Effect |
-|---|---|---|---|
+|---|---|---|---|---|
 | Validity state machine | Per tick | Per asset | Exposure 0–100% |
 | Feature stability | Per retrain | Per asset | Validity penalty |
 | Meta-labeling | Per signal | Per asset | Trade skip |
@@ -11,6 +11,7 @@ Seven independent governance mechanisms operating at different frequencies and g
 | Shadow risk engine | Per tick | Per asset | Advisory |
 | Macro narrative | Weekly | Global | SL width, position size |
 | Liquidity regime | Per signal | Per asset | SL width, size, halt |
+| PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE |
 
 ## 1. Validity State Machine
 
@@ -96,13 +97,40 @@ Real-time liquidity proxy computed from daily OHLCV on every signal cycle:
 - **Dashboard**: LIQ THIN (yellow) / LIQ STRSD (red) badge in header with per-asset hover tooltip
 - **Config**: `configs/paper_trading.yaml` → `liquidity_config` section with threshold and pct params
 
+## 8. PSI Drift Monitoring (Per-Cycle)
+
+Automated distribution shift detection per feature per asset:
+
+- **Core** (`monitoring/psi_monitor.py`):
+  - `compute_psi()` — fixed-width bins from baseline min/max, first/last bin extended to ±inf for overflow
+  - `classify_drift(psi)` — NO_DRIFT (< 0.1), MODERATE (0.1 – 0.2), SEVERE (> 0.2)
+  - `PSIDriftEntry` dataclass per feature with `psi`, `classification`, `trend` (STABLE / INCREASING / DECREASING vs previous cycle), `importance_score`
+  - `PSISnapshot` dataclass per asset with per-feature list, worst_classification, moderate_count, severe_count, psi_ok, penalty
+- **Baseline**: Training window feature distribution persisted to `data/live/psi_baseline/{asset}.parquet` immediately after `model.fit()` — only updated on retrain
+- **Current window**: Rolling 21-day inference feature distribution, computed each cycle from `features_df.tail(21)`
+- **Feature scoping**: Only top-10 most important features per asset (from `importance_store`)
+- **Governance rules**:
+  - Any MODERATE feature → −0.08 validity penalty
+  - Any SEVERE feature → −0.20 validity penalty (penalties additive: max −0.28 combined)
+  - 3+ SEVERE features → `psi_ok = False`, hard halt on asset
+  - Trend arrow (↑↓→) on dashboard distinguishes data glitch (single SEVERE, STABLE trend) from genuine drift (SEVERE + INCREASING)
+- **Penalty accumulation**: PSI penalty is additive with feature stability penalty (both are separate terms in `update_validity()`) — worst-wins at each penalty type, summed across types
+- **Dashboard**: `PSIDriftCard.tsx` — per-asset table with color-coded feature rows, trend arrows, classification badges, worst-classification summary, collapsible halted section
+- **Endpoint**: `GET /psi.json` (30s cache)
+
 ## Multiplicative Governance Chain
 
-The governance layers stack multiplicatively on the existing SL chain:
+The SL layers stack multiplicatively on the existing SL chain:
 
 ```
 final_sl_mult = base_sl_mult × regime_geom_sl × narrative_sl_mult × liquidity_sl_mult
 final_size_scalar = min(narrative_size_scalar × liquidity_size_scalar, 0.30)
+```
+
+Validity penalties (feature stability + PSI drift) are additive and feed into the validity state machine, NOT into the SL/size chain:
+
+```
+validity_score = 0.80 − drawdown_penalty − pf_penalty − drought_penalty − drift_penalty − narrative_penalty − liquidity_penalty + stability_penalty + psi_penalty
 ```
 
 Each layer is independently configurable, independently gated (by confidence, staleness, or threshold), and independently observable in the dashboard.

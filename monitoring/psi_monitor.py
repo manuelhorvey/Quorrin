@@ -166,9 +166,9 @@ class PSIMonitor:
 
         penalty = 0.0
         if moderate_count > 0:
-            penalty = -0.08
+            penalty += -0.08
         if severe_count > 0:
-            penalty = -0.20
+            penalty += -0.20
 
         snapshot = PSISnapshot(
             asset=asset,

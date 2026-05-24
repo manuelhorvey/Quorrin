@@ -48,16 +48,18 @@ Operational procedures for the paper trading system. This document is for the pe
 **Confidence-based SL adjustment (optional):** When `confidence_sl_adjust > 0.0`, SL width tightens as meta-label confidence increases (p=0.9 → sl × (1.0 - adjust), p=0.1 → sl × (1.0 + adjust/2)). Default 0.0 (disabled).
 **Scale-Out Strategy:** For assets with scale-out enabled (EURAUD, NZDJPY, CADJPY, AUDJPY, USDCAD, GBPJPY, USDCHF, GBPUSD, EURCAD, DJI), profit-taking is split into 4 equal tiers (25% at 0.25x / 0.50x / 0.75x / 1.00x of original TP multiplier). The stop-loss is moved to breakeven after Tier 1 is filled (`activate_breakeven_after: 0`). Optionally, trailing stop activation can be triggered after a configurable tier (`trailing_after_tier`, default disabled) — see `ScaleOutEngine` in `paper_trading/scale_out.py`.
 
-**Dashboard features:** Per-asset scale-out tier progress visualization (filled vs pending tiers shown as color-coded blocks in AssetCard). SL/TP hit rate gauge bars (GREEN/YELLOW/RED thresholds) in the Trade Outcomes table.
+**Dashboard features:** Per-asset scale-out tier progress visualization (filled vs pending tiers shown as color-coded blocks in AssetCard). SL/TP hit rate gauge bars (GREEN/YELLOW/RED thresholds) in the Trade Outcomes table. PSI Drift panel with per-feature distribution shift scores, trend arrows, and color-coded classification badges.
 
 ### Governance Overlays
 
-The system applies two independent governance layers on top of the base SL/TP chain:
+The system applies three independent governance layers on top of the base SL/TP chain:
 
 - **Macro Narrative (weekly)**: FXStreet article → Claude LLM → geopol risk score + regime. SL widens +10% when geopolitics > 0.7. Size reduces -20% when risk_off. Human confirm step via dashboard.
 - **Liquidity Regime (per-tick)**: Volume z-score + Amihud ratio from daily OHLCV. THIN → SL +15%, size -15%. STRESSED → SL +30%, size -30%, halted.
+- **PSI Drift (per-cycle)**: Top-10 feature distribution shift detection vs training baseline. MODERATE → -0.08 validity penalty. SEVERE → -0.20 validity penalty. 3+ SEVERE → hard halt.
 
-Multiplicative chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`
+SL chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`  
+Validity stack: `score = base − penalties + stability_penalty + psi_penalty`
 
 ### Governance Config Reference
 
@@ -141,6 +143,7 @@ curl http://127.0.0.1:5000/ping
 - **SL/TP gauge bars** in Trade Outcomes: GREEN TP rate (≥25%), GREEN SL rate (≤50%), GREEN flip rate (≤15%)
 - **Narrative badge**: check overall_regime indicator (red/yellow/green/grey) and stale flag; check for **NARR PENDING** button or **NARR ERR** badge
 - **Liquidity badge**: check for **LIQ THIN** (yellow) or **LIQ STRSD** (red); hover for per-asset breakdown
+- **PSI Drift panel**: check for any MODERATE (amber) or SEVERE (red) feature classifications; note trend arrows — SEVERE + INCREASING arrow is a genuine drift signal, SEVERE + STABLE may be a data hiccup; look for **PSI HALT** badge on halted assets
 
 ### Log Check
 
@@ -256,31 +259,36 @@ If any asset shows `"regime": "STRESSED"`, investigate whether this correlates w
 - Feature drift (PSI > 0.25 on a key feature)
 - Data feed issue (stale macro data)
 
-### Drift Check (Manual PSI Monitoring)
+### Drift Check (PSI Monitoring)
 
-Compare current feature distributions against training period:
-```python
-import pandas as pd
-import numpy as np
+PSI drift is now **fully automated** — `monitoring/psi_monitor.py` computes per-feature PSI every cycle against the training baseline:
 
-# Load training features from last retrain
-train = pd.read_parquet('data/processed/training_features.parquet')
+```bash
+# Check automated drift status
+curl http://127.0.0.1:5000/psi.json | python3 -m json.tool
 
-# Load recent inference features
-from paper_trading.data_fetcher import fetch_live, fetch_ref
-from scripts.train_all_assets import load_macro_data
-macro = load_macro_data()
-df = fetch_live('XLF')
-ref = fetch_ref('SPY')
-
-# Replicate feature computation and compare distributions
-# Train vs inference: mean, std, PSI for each feature
+# Check per-asset summary in dashboard
+# Open http://localhost:5000 and find the PSI Drift panel
 ```
 
-**PSI thresholds:**
-- `< 0.10`: No drift
-- `0.10 - 0.25`: Monitor; log for retrain
-- `> 0.25`: Investigate; may trigger halt
+**What the automated system checks:**
+- Top-10 features per asset (from importance tracker)
+- Fixed-width 10-bin PSI against training distribution baseline
+- Trend direction (STABLE / INCREASING / DECREASING) per feature vs previous cycle
+- Penalty applied to validity score: MODERATE → −0.08, SEVERE → −0.20
+- Hard halt when 3+ features simultaneously SEVERE
+
+**PSI thresholds** (same as manual, now automated):
+| Classification | PSI | Dashboard Color |
+|---|---|---|
+| NO_DRIFT | < 0.10 | Green |
+| MODERATE | 0.10 – 0.20 | Amber |
+| SEVERE | > 0.20 | Red |
+
+**Trend interpretation:**
+- **INCREASING** (↑) — genuine drift signal; PSI is rising cycle over cycle
+- **STABLE** (→) — PSI unchanged from previous cycle; a SEVERE + STABLE reading may be a data glitch
+- **DECREASING** (↓) — PSI is falling; distribution returning toward baseline
 
 ### Model Retrain Check
 
@@ -308,7 +316,7 @@ for name in engine.assets:
 
 ## 3. Halt Condition Responses
 
-The system has five independent halt mechanisms:
+The system has six independent halt mechanisms:
 
 ### 3.1 Validity State Machine (Automatic)
 
@@ -447,7 +455,36 @@ Real-time liquidity regime computed from daily OHLCV volume and price data on ev
 - THIN regime: No action required. Monitor for progression to STRESSED.
 - STRESSED regime: Check the affected asset(s) — the engine halts execution for those assets and logs the liquidity event. Review whether this correlates with a macro event or is asset-specific.
 
-### 3.6 Data Feed Failure
+### 3.6 PSI Drift (Per-Cycle)
+
+Automated distribution shift detection per feature per asset against the training baseline:
+
+| Classification | PSI Range | Effect |
+|----------------|-----------|--------|
+| NO_DRIFT | < 0.1 | No action |
+| MODERATE | 0.1 – 0.2 | −0.08 validity penalty |
+| SEVERE | > 0.2 | −0.20 validity penalty |
+| 3+ SEVERE | any | Hard halt (`psi_ok = False`) |
+
+**Scoping:** Only top-10 features per asset (from importance tracker), computed on a rolling 21-day window.
+
+**Trend tracking:** Each feature's PSI trend (STABLE / INCREASING / DECREASING) is tracked against the previous cycle. A SEVERE + INCREASING combination is a genuine drift signal; SEVERE + STABLE may be a data glitch.
+
+**Dashboard indicators:**
+- **PSI Drift panel** — per-asset table with feature rows, color-coded classification badges (green/amber/red), trend arrows (↑↓→)
+- **PSI HALT** badge — shown on halted assets when `psi_ok = False` (3+ SEVERE features)
+
+**To check PSI drift status:**
+```bash
+curl http://127.0.0.1:5000/psi.json | python3 -m json.tool
+```
+
+**Response:**
+- MODERATE drift: No action required. Note the affected features.
+- SEVERE drift on 1-2 features: Monitor. Check if trend is INCREASING (genuine drift) or STABLE (possible data glitch).
+- SEVERE drift on 3+ features: Asset is halted by the engine. Investigate root cause — feature distribution shift may indicate a structural regime change or data pipeline issue.
+
+### 3.7 Data Feed Failure
 
 If yfinance returns empty or stale data for any ticker:
 

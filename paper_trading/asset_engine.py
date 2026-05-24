@@ -62,6 +62,8 @@ _STORE = StateStore(BASE)
 
 
 class AssetEngine:
+    _MIN_SIZE_SCALAR = 0.30
+
     def __init__(
         self,
         ticker,
@@ -264,7 +266,7 @@ class AssetEngine:
             return cfg
         notional = (
             self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * position_size_scalar
-            * self._narrative_size_scalar * self._liquidity_size_scalar
+            * max(self._narrative_size_scalar * self._liquidity_size_scalar, self._MIN_SIZE_SCALAR)
         )
         cfg["impact_bps"] = self.execution_bridge.estimate_impact_bps(self.ticker, notional)
         return cfg
@@ -357,7 +359,7 @@ class AssetEngine:
             notional = (
                 self.current_value * self.pos_mgr.position_size
                 * self.pos_mgr.exposure_multiplier
-                * self._narrative_size_scalar * self._liquidity_size_scalar
+                * max(self._narrative_size_scalar * self._liquidity_size_scalar, self._MIN_SIZE_SCALAR)
             )
             qty = max(notional / entry_price, 1e-6)
             fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, entry_price)

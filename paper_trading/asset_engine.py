@@ -24,6 +24,8 @@ from paper_trading.data_fetcher import fetch_history, fetch_live, fetch_ref, fla
 from paper_trading.decision import PositionIntent, TradeDecision
 from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
 from paper_trading.dynamic_sltp import build_dynamic_sltp_from_config
+from features.fxstreet_fetcher import get_active_narrative, is_narrative_stale
+from features.macro_narrative import narrative_governance_scalars as _narrative_scalars
 from paper_trading.position_manager import PositionManager
 from paper_trading.regime_classifier import RegimeClassifier
 from paper_trading.risk_governance import evaluate as _risk_evaluate
@@ -142,6 +144,49 @@ class AssetEngine:
         self._current_window_train_start = ""
         self._current_window_train_end = ""
         self._last_stability: StabilityResult | None = None
+        self._narrative_active = None
+        self._narrative_stale = False
+        self._narrative_sl_mult = 1.0
+        self._narrative_size_scalar = 1.0
+        self._load_narrative_state()
+
+    def _load_narrative_state(self) -> None:
+        try:
+            narr = get_active_narrative()
+            if narr is not None:
+                stale = is_narrative_stale(narr.week_start)
+                cfg = self.config.get("narrative_config", {})
+                scalars = _narrative_scalars(
+                    narr,
+                    geopol_sl_widen_pct=cfg.get("geopol_sl_widen_pct", 10.0),
+                    risk_off_size_reduce_pct=cfg.get("risk_off_size_reduce_pct", 20.0),
+                    min_confidence=cfg.get("min_confidence", 0.6),
+                    stale=stale,
+                )
+                self._narrative_active = narr
+                self._narrative_stale = stale
+                self._narrative_sl_mult = scalars["sl_mult"]
+                self._narrative_size_scalar = scalars["size_scalar"]
+        except Exception as e:
+            logger.debug("%s: no active narrative: %s", self.name, e)
+
+    def set_narrative_state(self, narr) -> None:
+        try:
+            stale = is_narrative_stale(narr.week_start)
+            cfg = self.config.get("narrative_config", {})
+            scalars = _narrative_scalars(
+                narr,
+                geopol_sl_widen_pct=cfg.get("geopol_sl_widen_pct", 10.0),
+                risk_off_size_reduce_pct=cfg.get("risk_off_size_reduce_pct", 20.0),
+                min_confidence=cfg.get("min_confidence", 0.6),
+                stale=stale,
+            )
+            self._narrative_active = narr
+            self._narrative_stale = stale
+            self._narrative_sl_mult = scalars["sl_mult"]
+            self._narrative_size_scalar = scalars["size_scalar"]
+        except Exception as e:
+            logger.error("%s: failed to set narrative state: %s", self.name, e)
 
     def _build_features(self, df, ref, macro):
         return build_features(df, macro, ref, self.contract)
@@ -155,6 +200,7 @@ class AssetEngine:
             return cfg
         notional = (
             self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * position_size_scalar
+            * self._narrative_size_scalar
         )
         cfg["impact_bps"] = self.execution_bridge.estimate_impact_bps(self.ticker, notional)
         return cfg
@@ -225,7 +271,7 @@ class AssetEngine:
         # Regime-conditional geometry selection (multipliers on base sl_mult/tp_mult)
         state = self.validity_sm.current_state.value if self.validity_sm else "YELLOW"
         geom = self.regime_geometry.get(state, {"sl_mult": 1.0, "tp_mult": 1.0})
-        sl_mult = self.sl_mult * geom.get("sl_mult", 1.0)
+        sl_mult = self.sl_mult * geom.get("sl_mult", 1.0) * self._narrative_sl_mult
         tp_mult = self.tp_mult * geom.get("tp_mult", 1.0)
 
         if self.regime_geometry and geom.get("sl_mult", 1.0) != 1.0:
@@ -244,7 +290,7 @@ class AssetEngine:
         fill_price = entry_price
         if self.execution_bridge is not None:
             broker_side = "buy" if side == "long" else "sell"
-            notional = self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier
+            notional = self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * self._narrative_size_scalar
             qty = max(notional / entry_price, 1e-6)
             fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, entry_price)
 
@@ -1070,6 +1116,8 @@ class AssetEngine:
             score -= 0.15
         if not halt["drift_ok"]:
             score -= 0.15
+        if not halt.get("narrative_ok", True):
+            score -= 0.10
 
         if self._last_stability is not None:
             penalty = self._last_stability.penalty
@@ -1121,6 +1169,17 @@ class AssetEngine:
         if drift > prob_drift_limit:
             reasons.append(f"Confidence drift: {drift:.3f} > {prob_drift_limit:.2f}")
             drift_ok = False
+
+        narrative_ok = True
+        if self._narrative_active is not None and not self._narrative_stale:
+            if self._narrative_sl_mult > 1.05 or self._narrative_size_scalar < 0.95:
+                narr = self._narrative_active
+                reasons.append(
+                    f"Narrative governance active: geopol={narr.geopol_risk_score:.2f} "
+                    f"regime={narr.overall_regime} sl={self._narrative_sl_mult:.2f}x "
+                    f"size={self._narrative_size_scalar:.2f}x"
+                )
+
         return {
             "halted": len(reasons) > 0,
             "reasons": reasons,
@@ -1128,4 +1187,5 @@ class AssetEngine:
             "monthly_pf_ok": mpf is None or pd.isna(mpf) or mpf >= hc["monthly_pf"],
             "drought_ok": drought_ok,
             "drift_ok": drift_ok,
+            "narrative_ok": narrative_ok,
         }

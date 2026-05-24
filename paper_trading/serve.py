@@ -7,6 +7,7 @@ from dataclasses import asdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paper_trading.config_manager import get_config
+from features.fxstreet_fetcher import confirm_pending_narrative, get_narrative_status
 from paper_trading.health_score import compute_all as _compute_health_all
 from paper_trading.health_score import get_latest as _get_health_latest
 from paper_trading.market_hours import is_market_closed
@@ -44,6 +45,7 @@ _CACHE_TTL: dict[str, float] = {
     "/risk.json": 30.0,
     "/shadow-actions": 30.0,
     "/health.json": 30.0,
+    "/narrative.json": 30.0,
 }
 
 
@@ -402,11 +404,36 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     self._send_json(json.dumps(signal, indent=2, default=str))
                 else:
                     self._send_json(json.dumps({"error": f"No health score for {asset}", "asset": asset}), status=404)
+            elif path == "/narrative.json":
+                status = get_narrative_status()
+                data = json.dumps(status, indent=2, default=str)
+                _cache_set("/narrative.json", data)
+                self._send_json(data)
             elif path == "/ping":
                 self._send_json(json.dumps({"status": "ok"}, indent=2))
             else:
                 self.send_response(404)
                 self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+            path = self.path
+            if path == "/narrative/confirm":
+                ok = confirm_pending_narrative()
+                if ok:
+                    self._send_json(json.dumps({"status": "confirmed", "message": "Narrative confirmed"}, indent=2))
+                else:
+                    self._send_json(
+                        json.dumps({"status": "error", "message": "No pending narrative to confirm"}, indent=2),
+                        status=400,
+                    )
+            else:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "not found"}).encode())
 
     class ReuseServer(socketserver.TCPServer):
         allow_reuse_address = True

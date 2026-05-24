@@ -4,7 +4,14 @@ rebalance: daily
 retrain_freq: annual
 retrain_window: 5
 research_mode: false
-portfolio_drawdown_limit: -0.15
+  portfolio_drawdown_limit: -0.15
+narrative_config:
+  enabled: true
+  fxstreet_url: "https://www.fxstreet.com/analysis"
+  geopol_sl_widen_pct: 10
+  risk_off_size_reduce_pct: 20
+  min_confidence: 0.6
+  auto_confirm_deadline_hour: 12
 vol_baselines:
   NZDJPY: 0.0055
   CADJPY: 0.0048

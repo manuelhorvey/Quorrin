@@ -6,6 +6,12 @@ from enum import Enum
 import pandas as pd
 import pytz
 
+from features.fxstreet_fetcher import (
+    confirm_pending_narrative,
+    get_narrative_status,
+    run_weekly_narrative_pipeline,
+)
+from features.macro_narrative import neutral_narrative
 from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
 
@@ -110,6 +116,7 @@ class PaperTradingEngine:
         self.execution_bridge = ExecutionBridge(self.broker)
 
         self._build_asset_registry()
+        self._init_narrative()
         self._init_satellite()
         self._restore_positions(saved_positions)
         self._sim_store = SimulationStore(BASE)
@@ -131,6 +138,41 @@ class PaperTradingEngine:
                 state_store=self.state_store,
                 execution_bridge=self.execution_bridge,
             )
+
+    def _init_narrative(self) -> None:
+        self._narrative_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        self._apply_active_narrative()
+
+    def _apply_active_narrative(self) -> None:
+        status = get_narrative_status()
+        active = status.get("active")
+        if active:
+            from features.macro_narrative import MacroNarrativeFeatures
+            narr = MacroNarrativeFeatures(**active)
+            for asset in self.assets.values():
+                asset.set_narrative_state(narr)
+
+    def _refresh_narrative(self) -> bool:
+        now = datetime.now(tz=ET)
+        is_monday = now.weekday() == 0
+        status = get_narrative_status()
+        stale = status.get("stale", True)
+        if not is_monday and not stale:
+            return False
+        if stale or (is_monday and status.get("needs_confirmation")):
+            api_key = self._narrative_api_key or None
+            ok = run_weekly_narrative_pipeline(api_key)
+            if ok:
+                deadline_hour = get_config().narrative_config.get("auto_confirm_deadline_hour", 12)
+                if now.hour >= deadline_hour or not api_key:
+                    confirm_pending_narrative()
+                    self._apply_active_narrative()
+                    logger.info("Narrative auto-confirmed for week")
+                else:
+                    logger.info("Narrative pending — awaiting confirmation (deadline %d:00 ET)", deadline_hour)
+            else:
+                logger.warning("Narrative refresh failed — carrying forward last week")
+        return True
 
     def _init_satellite(self) -> None:
         self.satellite = None
@@ -260,6 +302,9 @@ class PaperTradingEngine:
                 results[name] = signal
             except Exception as e:
                 results[name] = {"asset": name, "error": str(e)}
+
+        # Phase 3.5: Weekly narrative refresh
+        self._refresh_narrative()
 
         # Phase 4: Update validity-driven exposure multipliers
         for name, asset in self.assets.items():

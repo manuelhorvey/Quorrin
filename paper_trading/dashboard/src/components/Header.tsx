@@ -2,11 +2,39 @@ import { useEffect, useState } from 'react'
 import { Sun, Moon, RefreshCw, Calendar, Clock, TrendingUp, Pause } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { useSessionClock } from '../hooks/useSessionClock'
+import { useNarrative } from '../hooks/useNarrative'
 import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 
+function ConfirmButton() {
+  const [confirming, setConfirming] = useState(false)
+  const queryClient = useQueryClient()
+  return (
+    <button
+      type="button"
+      disabled={confirming}
+      onClick={async () => {
+        setConfirming(true)
+        try {
+          const resp = await fetch('/narrative/confirm', { method: 'POST' })
+          if (resp.ok) await queryClient.invalidateQueries({ queryKey: ['narrative'] })
+        } catch {
+          // silent
+        }
+        setConfirming(false)
+      }}
+      className="flex items-center gap-1 px-2 py-1 rounded-md border border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow text-2xs font-medium hover:bg-gov-yellow/20 transition-colors active:scale-95 disabled:opacity-50"
+      title="Confirm pending macro narrative"
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${confirming ? 'bg-muted' : 'bg-gov-yellow animate-pulse'}`} />
+      {confirming ? 'CONFIRMING...' : 'NARR PENDING'}
+    </button>
+  )
+}
+
 export default function Header() {
   const { dataUpdatedAt, isError, isFetching, data } = usePortfolioState()
+  const { data: narrative, refetch: refetchNarrative } = useNarrative()
   const { timeStr, dateStr, marketsOpen } = useSessionClock()
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
 
@@ -116,6 +144,35 @@ export default function Header() {
             <span className="text-muted">RUN</span>
             <span className="text-secondary">{daysRunning > 0 ? `${daysRunning}d` : '—'}</span>
           </div>
+
+          {narrative?.fetch_error && (
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-md border border-gov-red/25 bg-gov-red-muted text-gov-red text-2xs font-medium"
+              title={`Narrative fetch error: ${JSON.stringify(narrative.fetch_error)}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-gov-red" />
+              NARR ERR
+            </div>
+          )}
+
+          {narrative?.needs_confirmation && (
+            <ConfirmButton />
+          )}
+
+          {narrative?.active && !narrative.needs_confirmation && !narrative.fetch_error && (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-default/20 bg-panel text-2xs text-tertiary font-medium">
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                narrative.active.overall_regime === 'risk_off' ? 'bg-gov-red' :
+                narrative.active.overall_regime === 'geopol_tension' ? 'bg-gov-yellow' :
+                narrative.active.overall_regime === 'risk_on' ? 'bg-gov-green' :
+                'bg-muted'
+              }`} />
+              {String(narrative.active.overall_regime).replace(/_/g, ' ').toUpperCase()}
+              {narrative.stale && (
+                <span className="text-gov-yellow ml-1 text-[10px]">(STALE)</span>
+              )}
+            </div>
+          )}
 
           <button
             type="button"

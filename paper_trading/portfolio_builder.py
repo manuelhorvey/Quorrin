@@ -53,6 +53,9 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             halt = dict(halt_defaults)
             halt.update(user_halt)
             config = dict(spec.get("config", {}))
+            narrative_cfg = cfg.narrative_config
+            if narrative_cfg:
+                config["narrative_config"] = narrative_cfg
             if spec.get("regime_sizing"):
                 config["regime_sizing"] = True
                 config.setdefault("vol_scalar", True)

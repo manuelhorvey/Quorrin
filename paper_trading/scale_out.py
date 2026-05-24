@@ -75,10 +75,7 @@ class ScaleOutEngine:
         tp_total = abs(take_profit - entry_price)
         tiers = []
         for fraction, pct in self.tier_specs:
-            if side == "long":
-                price = entry_price + tp_total * pct
-            else:
-                price = entry_price - tp_total * pct
+            price = entry_price + tp_total * pct if side == "long" else entry_price - tp_total * pct
             tiers.append(ScaleOutTier(fraction=fraction, price=price))
         return ScaleOutPlan(tiers=tiers, entry_price=entry_price, remaining_fraction=1.0)
 

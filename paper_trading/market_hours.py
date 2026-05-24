@@ -18,6 +18,4 @@ def is_market_closed() -> bool:
     if now.weekday() >= 5:
         return True
     # Friday after 5pm ET (forex close)
-    if now.weekday() == 4 and now.hour >= 17:
-        return True
-    return False
+    return now.weekday() == 4 and now.hour >= 17

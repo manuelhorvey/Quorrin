@@ -54,8 +54,9 @@ select = ["I", "E", "F", "W", "UP", "N", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "paper_trading/__init__.py" = ["N999"]
+"paper_trading/execution/__init__.py" = ["N999"]
 # ML convention: X (uppercase) for feature matrices, y for targets
-"paper_trading/asset_engine.py" = ["N806"]
+"paper_trading/asset_engine.py" = ["N803", "N806"]
 "paper_trading/diagnostics.py" = ["N803", "N806"]
 "paper_trading/wrappers.py" = ["N803", "N806"]
 # Research scripts use uppercase X for ML feature matrix convention

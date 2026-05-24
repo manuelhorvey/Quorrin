@@ -188,10 +188,7 @@ class DynamicSLTPEngine:
         if move >= self.trailing_activation_mult:
             atr = self._compute_atr(df, self.atr_period)
             dist = atr * self.trailing_distance_mult
-            if side == "long":
-                new_sl = best - dist
-            else:
-                new_sl = best + dist
+            new_sl = best - dist if side == "long" else best + dist
             if new_sl is not None and self._is_tighter(new_sl, current_sl, side):
                 locked = (best - entry_price) / entry_price if side == "long" else (entry_price - best) / entry_price
                 return TrailingResult(

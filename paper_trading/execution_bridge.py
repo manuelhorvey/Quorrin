@@ -49,10 +49,7 @@ class ExecutionBridge:
         impact = float(compute_market_impact(quantity * mid_price, config))
         total = slippage + impact
 
-        if side == "buy":
-            fill = mid_price * (1 + total)
-        else:
-            fill = mid_price * (1 - total)
+        fill = mid_price * (1 + total) if side == "buy" else mid_price * (1 - total)
 
         logger.debug(
             "%s %s fill: mid=%.4f fill=%.4f slip=%.1fbps impact=%.1fbps vol_z=%.2f",

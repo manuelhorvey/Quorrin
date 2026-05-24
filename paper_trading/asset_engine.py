@@ -285,7 +285,9 @@ class AssetEngine:
         self._bars_at_entry = 0
         self._scale_out_plan = None
         if self._scale_out_engine is not None and intent.take_profit is not None:
-            self._scale_out_plan = self._scale_out_engine.build_plan(side, float(intent.entry_price), float(intent.take_profit))
+            self._scale_out_plan = self._scale_out_engine.build_plan(
+                side, float(intent.entry_price), float(intent.take_profit),
+            )
 
     def _close_position(self, exit_price, exit_date, reason):
         fill_price = exit_price
@@ -607,14 +609,18 @@ class AssetEngine:
             new_side = None
 
         # Meta-label filter — skip trades unlikely to hit TP before SL
-        if new_side and self._meta_label_model is not None and self.config.get("meta_labeling", {}).get("enabled", False):
-            if hasattr(self, "_last_meta_proba"):
-                if not self._meta_label_model.should_enter(self._last_meta_proba):
-                    logger.info(
-                        "%s: meta-label blocking trade (p(TP>SL)=%.2f < threshold=%.2f)",
-                        self.name, self._last_meta_proba, self._meta_label_model.threshold,
-                    )
-                    new_side = None
+        if (
+            new_side
+            and self._meta_label_model is not None
+            and self.config.get("meta_labeling", {}).get("enabled", False)
+            and hasattr(self, "_last_meta_proba")
+            and not self._meta_label_model.should_enter(self._last_meta_proba)
+        ):
+            logger.info(
+                "%s: meta-label blocking trade (p(TP>SL)=%.2f < threshold=%.2f)",
+                self.name, self._last_meta_proba, self._meta_label_model.threshold,
+            )
+            new_side = None
 
         if new_side != current_side:
             if self.pos_mgr.has_position():
@@ -752,10 +758,14 @@ class AssetEngine:
                     )
                     if adjust.new_sl is not None:
                         self.pos_mgr.update_stop_loss(float(adjust.new_sl))
-                        logger.info("%s: post-entry SL adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_sl)
+                        logger.info(
+                            "%s: post-entry SL adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_sl,
+                        )
                     if adjust.new_tp is not None:
                         self.pos_mgr.update_take_profit(float(adjust.new_tp))
-                        logger.info("%s: post-entry TP adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_tp)
+                        logger.info(
+                            "%s: post-entry TP adjusted: %s (new=%.4f)", self.name, adjust.reason, adjust.new_tp,
+                        )
 
             # Time stop check — force close if held beyond max_holding_days
             if max_hold is not None and self.pos_mgr.position is not None:
@@ -927,7 +937,11 @@ class AssetEngine:
             }
 
         remaining_frac = self.pos_mgr.get_remaining_fraction()
-        scale_out_active = self.pos_mgr._scale_out_active if hasattr(self.pos_mgr, '_scale_out_active') and self.pos_mgr._scale_out_active else False
+        scale_out_active = (
+            self.pos_mgr._scale_out_active
+            if hasattr(self.pos_mgr, '_scale_out_active') and self.pos_mgr._scale_out_active
+            else False
+        )
 
         return {
             "asset": self.name,

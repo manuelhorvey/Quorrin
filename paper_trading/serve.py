@@ -220,7 +220,10 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                     pf = build_paper_portfolio(cfg.halt)
                     data = json.dumps(
                         {
-                            "engine_status": {"initialized": True, "last_update": None, "start_time": None, "market_closed": is_market_closed()},
+                            "engine_status": {
+                                "initialized": True, "last_update": None, "start_time": None,
+                                "market_closed": is_market_closed(),
+                            },
                             "portfolio": {
                                 "total_value": 0,
                                 "total_return": 0,

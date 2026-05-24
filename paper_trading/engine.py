@@ -223,7 +223,6 @@ class PaperTradingEngine:
                 logger.error("%s: price/pnl refresh failed: %s", name, e)
 
         # Phase 2: Portfolio-level drawdown check
-        tc = sum(a.initial_capital for a in self.assets.values())
         mtm = sum(
             a.current_value if not pd.isna(a.current_value) else a.initial_capital
             for a in self.assets.values()
@@ -402,7 +401,10 @@ class PaperTradingEngine:
         # Track portfolio peak for drawdown
         if self.portfolio_peak_value is None or mtm_total > self.portfolio_peak_value:
             self.portfolio_peak_value = mtm_total
-        portfolio_dd = (mtm_total - self.portfolio_peak_value) / self.portfolio_peak_value if self.portfolio_peak_value else 0.0
+        portfolio_dd = (
+            (mtm_total - self.portfolio_peak_value) / self.portfolio_peak_value
+            if self.portfolio_peak_value else 0.0
+        )
 
         return {
             "total_value": round(mtm_total, 2),

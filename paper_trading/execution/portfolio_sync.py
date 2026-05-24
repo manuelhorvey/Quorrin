@@ -31,7 +31,6 @@ class PortfolioSync:
         drift_threshold: float = 0.05,
     ) -> list[Order]:
         current_weights = self.get_current_weights(portfolio_value)
-        positions = {p.asset: p for p in self.broker.get_positions()}
         orders = []
 
         for asset, target in target_weights.items():
@@ -62,5 +61,4 @@ class PortfolioSync:
     def sync_positions(self, expected_assets: list[str]) -> dict[str, float]:
         positions = self.broker.get_positions()
         pos_dict = {p.asset: p.quantity for p in positions}
-        missing = [a for a in expected_assets if a not in pos_dict]
         return {a: pos_dict.get(a, 0.0) for a in expected_assets}

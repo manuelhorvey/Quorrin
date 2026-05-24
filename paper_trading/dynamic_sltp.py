@@ -106,6 +106,11 @@ class DynamicSLTPEngine:
         self.max_sl_widen_pct = max_sl_widen_pct
         self.use_gap_protection = use_gap_protection
         self.calibration_scale = calibration_scale
+        self._best_price_seen: float | None = None
+
+    def reset_best_price(self, entry_price: float) -> None:
+        """Reset the best-price tracker at entry (start of a new position)."""
+        self._best_price_seen = entry_price
 
     # ── Public API ────────────────────────────────────────────────
 
@@ -182,10 +187,16 @@ class DynamicSLTPEngine:
         ATR multiple behind the best price seen.
         """
         if side == "long":
-            best = max(current_price, entry_price)
+            if self._best_price_seen is None:
+                self._best_price_seen = entry_price
+            self._best_price_seen = max(self._best_price_seen, current_price)
+            best = self._best_price_seen
             move = (best - entry_price) / (entry_price - initial_sl + 1e-9)
         else:
-            best = min(current_price, entry_price)
+            if self._best_price_seen is None:
+                self._best_price_seen = entry_price
+            self._best_price_seen = min(self._best_price_seen, current_price)
+            best = self._best_price_seen
             move = (entry_price - best) / (initial_sl - entry_price + 1e-9)
 
         if move >= self.trailing_activation_mult:

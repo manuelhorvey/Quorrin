@@ -55,11 +55,13 @@ class ScaleOutEngine:
         self,
         tiers: list[tuple[float, float]] | None = None,
         activate_breakeven_after: int = 0,
+        trailing_after_tier: int | None = None,
     ):
         if tiers is None:
             tiers = [(1 / 3, 0.50), (1 / 3, 1.00), (1 / 3, 1.50)]
         self.tier_specs = tiers
         self.activate_breakeven_after = activate_breakeven_after
+        self.trailing_after_tier = trailing_after_tier
 
         total = sum(f for f, _ in tiers)
         if abs(total - 1.0) > 1e-6:
@@ -132,6 +134,20 @@ class ScaleOutEngine:
                 }
             )
 
+        # Activate trailing on the remainder after a configurable tier index
+        if (
+            self.trailing_after_tier is not None
+            and not plan.breakeven_activated
+            and plan.remaining_fraction > 0
+            and n_filled > self.trailing_after_tier
+        ):
+            fills.append(
+                {
+                    "fraction": 0.0,
+                    "reason": "trailing_activated",
+                }
+            )
+
         return fills
 
     def remaining_targets(self, plan: ScaleOutPlan) -> list[float]:
@@ -153,6 +169,7 @@ def build_scale_out_from_config(asset_config: dict) -> ScaleOutEngine | None:
         return None
     tiers = so_cfg.get("tiers", [(1 / 3, 0.50), (1 / 3, 1.00), (1 / 3, 1.50)])
     activate_after = so_cfg.get("activate_breakeven_after", 0)
+    trailing_after = so_cfg.get("trailing_after_tier")
     parsed = []
     for t in tiers:
         if isinstance(t, dict):
@@ -162,4 +179,5 @@ def build_scale_out_from_config(asset_config: dict) -> ScaleOutEngine | None:
     return ScaleOutEngine(
         tiers=parsed,
         activate_breakeven_after=activate_after,
+        trailing_after_tier=trailing_after,
     )

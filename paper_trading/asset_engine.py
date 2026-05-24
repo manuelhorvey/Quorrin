@@ -283,6 +283,11 @@ class AssetEngine:
         }
         self._entry_vol = vol
         self._bars_at_entry = 0
+        self._initial_sl = (
+            float(sltp_result.stop_loss) if self.config.get("dynamic_sltp", {}).get("enabled", False) else None
+        )
+        if self._initial_sl is not None:
+            self._sltp_engine.reset_best_price(fill_price)
         self._scale_out_plan = None
         if self._scale_out_engine is not None and intent.take_profit is not None:
             self._scale_out_plan = self._scale_out_engine.build_plan(
@@ -716,6 +721,8 @@ class AssetEngine:
                     breakeven = so.get("breakeven_price")
                     if breakeven is not None:
                         self.pos_mgr.activate_breakeven_stop()
+                    if so.get("reason") == "trailing_activated":
+                        logger.info("%s: trailing activated by scale-out tier fill", self.name)
 
             hit = self.pos_mgr.check_sl_tp(self.current_price)
             if hit:
@@ -739,7 +746,7 @@ class AssetEngine:
                         side=self.pos_mgr.position.side,
                         entry_price=self.pos_mgr.position.entry_price,
                         current_price=self.current_price,
-                        initial_sl=self.pos_mgr.position.stop_loss,
+                        initial_sl=self._initial_sl or self.pos_mgr.position.stop_loss,
                         current_sl=self.pos_mgr.position.stop_loss,
                         take_profit=self.pos_mgr.position.take_profit,
                         df=data,

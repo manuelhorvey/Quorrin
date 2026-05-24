@@ -372,8 +372,13 @@ class PaperTradingEngine:
                 sat.deploy_capital(sat.max_capital)
                 logger.info("BTC satellite: deployed capital %.2f", sat.max_capital)
 
-            # Record daily return (compounds if position was already active)
+            # Record return for satellite contribution metrics. Live P&L is
+            # marked from entry capital so dashboard value follows BTC price.
             sat.record_return(current_return)
+            if sat.position_active and sat.entry_price is not None and sat.entry_price > 0:
+                entry_capital = sat._entry_capital or sat.max_capital or sat.current_value
+                sat.current_value = entry_capital * (current_price / sat.entry_price)
+                sat.peak_value = max(sat.peak_value, sat.current_value)
 
             # Check SL/TP exit (only if position active)
             exit_reason = sat.check_exit(current_price) if sat.position_active else None

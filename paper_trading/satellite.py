@@ -115,6 +115,7 @@ class HighVolSatellite:
         self.stop_price: float | None = None
         self.target_price: float | None = None
         self._last_exit_reason: str | None = None
+        self._entry_capital: float = 0.0
 
         # Rolling performance buffer
         self._daily_returns: list[float] = []
@@ -215,14 +216,11 @@ class HighVolSatellite:
     # ── P&L and Position Management ────────────────────────────────
 
     def record_return(self, daily_return: float) -> None:
-        """Record a daily return and update capital."""
+        """Record a daily return for contribution metrics."""
         self._daily_returns.append(daily_return)
         if len(self._daily_returns) > self._max_window:
             self._daily_returns = self._daily_returns[-self._max_window :]
 
-        # Update capital
-        if self.position_active:
-            self.current_value *= 1.0 + daily_return
         self.peak_value = max(self.peak_value, self.current_value)
 
     def open_position(self, entry_price: float, side: str = "long", vol: float | None = None) -> None:
@@ -255,6 +253,7 @@ class HighVolSatellite:
         self.position_entry = entry_price
         self.position_side = side
         self.current_value = self.max_capital
+        self._entry_capital = self.current_value
         self.entry_price = entry_price
         self.stop_price = entry_price * (1.0 - v * self.config.sl_mult)
         self.target_price = entry_price * (1.0 + v * self.config.tp_mult)

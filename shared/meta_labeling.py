@@ -58,7 +58,9 @@ def compute_vol_zscore(close: pd.Series, window: int = 21) -> float:
 
 
 def decision_from_confidence(
-    confidence: float, base_sl_mult: float = 1.0, base_tp_mult: float = 1.0,
+    confidence: float,
+    base_sl_mult: float = 1.0,
+    base_tp_mult: float = 1.0,
     full_threshold: float = META_CONFIDENCE_THRESHOLD_FULL,
     reduced_threshold: float = META_CONFIDENCE_THRESHOLD_REDUCED,
 ) -> MetaInferenceResult:

@@ -186,6 +186,8 @@ class PaperTradingEngine:
                 max_allocation_pct=btc_sat.get("max_allocation_pct", 0.05),
                 vol_target=btc_sat.get("vol_target", 0.40),
                 max_drawdown_pct=btc_sat.get("max_drawdown_pct", -0.25),
+                sl_mult=btc_sat.get("sl_mult", 0.58),
+                tp_mult=btc_sat.get("tp_mult", 1.51),
             )
             self.satellite = HighVolSatellite(
                 total_aum=CONFIG["capital"],
@@ -363,20 +365,26 @@ class PaperTradingEngine:
                 sat.deploy_capital(sat.max_capital)
                 logger.info("BTC satellite: deployed capital %.2f", sat.max_capital)
 
-            # Gate → position management
-            if decision.allowed and not sat.position_active:
-                sat.open_position(entry_price=current_price)
-            elif not decision.allowed and sat.position_active:
-                sat.close_position()
-
+            # Record daily return (compounds if position was already active)
             sat.record_return(current_return)
 
+            # Check SL/TP exit (only if position active)
+            exit_reason = sat.check_exit(current_price) if sat.position_active else None
+
+            # Gate → position management (only if not already exited via SL/TP)
+            if exit_reason is None:
+                if decision.allowed and not sat.position_active:
+                    sat.open_position(entry_price=current_price)
+                elif not decision.allowed and sat.position_active:
+                    sat.close_position(reason="GATE_CLOSED")
+
             logger.info(
-                "%s satellite: gate=%s, position=%s, value=%.2f",
+                "%s satellite: gate=%s, position=%s, value=%.2f%s",
                 sat.name,
                 "OPEN" if decision.allowed else "CLOSED",
                 "ACTIVE" if sat.position_active else "FLAT",
                 sat.current_value,
+                f", exit={exit_reason}" if exit_reason else "",
             )
 
             results["satellite"] = {
@@ -386,6 +394,10 @@ class PaperTradingEngine:
                 "position_active": sat.position_active,
                 "current_value": round(sat.current_value, 2),
                 "current_price": round(current_price, 2),
+                "entry_price": sat.entry_price,
+                "stop_price": sat.stop_price,
+                "target_price": sat.target_price,
+                "exit_reason": sat._last_exit_reason,
             }
         except Exception as e:
             logger.error("satellite gating failed: %s", e)
@@ -646,6 +658,10 @@ class PaperTradingEngine:
             "sharpe_contribution": s.sharpe_contribution,
             "position_active": s.position_active,
             "drawdown_pct": s.drawdown_pct,
+            "entry_price": s.entry_price,
+            "stop_price": s.stop_price,
+            "target_price": s.target_price,
+            "exit_reason": s.exit_reason,
         }
 
     def save_state(self):

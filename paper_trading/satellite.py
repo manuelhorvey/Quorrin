@@ -39,6 +39,10 @@ class SatelliteConfig:
     dxy_momentum_threshold: float = 0.02  # max DXY 21d momentum (appreciation)
     min_crisis_regime_gap_days: int = 5  # days since last CRISIS regime flag
 
+    # ── SL/TP multipliers (applied to entry price) ─────────────────
+    sl_mult: float = 0.58  # stop = entry * (1 - sl_mult)
+    tp_mult: float = 1.51  # target = entry * (1 + tp_mult)
+
     # ── Marginal contribution monitoring ───────────────────────────
     contribution_window_days: int = 63  # rolling window for ΔSharpe calc
     delta_sharpe_alert_threshold: float = -0.5  # soft alert trigger
@@ -71,6 +75,10 @@ class SatelliteSnapshot:
     delta_sharpe_63d: float
     position_active: bool
     drawdown_pct: float
+    entry_price: float | None = None
+    stop_price: float | None = None
+    target_price: float | None = None
+    exit_reason: str | None = None
 
 
 class HighVolSatellite:
@@ -103,6 +111,10 @@ class HighVolSatellite:
         self.position_active = False
         self.position_entry = 0.0
         self.position_side: str | None = None
+        self.entry_price: float | None = None
+        self.stop_price: float | None = None
+        self.target_price: float | None = None
+        self._last_exit_reason: str | None = None
 
         # Rolling performance buffer
         self._daily_returns: list[float] = []
@@ -214,7 +226,7 @@ class HighVolSatellite:
         self.peak_value = max(self.peak_value, self.current_value)
 
     def open_position(self, entry_price: float, side: str = "long") -> None:
-        """Open a position in the satellite."""
+        """Open a position in the satellite with SL/TP levels."""
         if not self.gate_is_open():
             logger.warning("%s satellite: gate closed, blocking position open", self.name)
             return
@@ -223,12 +235,65 @@ class HighVolSatellite:
         self.position_entry = entry_price
         self.position_side = side
         self.current_value = self.max_capital
+        self.entry_price = entry_price
+        self.stop_price = entry_price * (1.0 - self.config.sl_mult)
+        self.target_price = entry_price * (1.0 + self.config.tp_mult)
+        self._last_exit_reason = None
+        logger.info(
+            "%s satellite: SL=%.2f (-%.1f%%), TP=%.2f (+%.1f%%)",
+            self.name,
+            self.stop_price,
+            self.config.sl_mult * 100,
+            self.target_price,
+            self.config.tp_mult * 100,
+        )
 
-    def close_position(self) -> None:
-        """Close the current position."""
+    def close_position(self, price: float | None = None, reason: str = "MANUAL") -> None:
+        """Close the current position with optional exit price and reason."""
+        if price is not None and self.entry_price is not None and self.entry_price > 0:
+            pnl_pct = (price / self.entry_price - 1.0) * 100
+            logger.info(
+                "%s satellite: closed at %.2f, reason=%s, pnl=%.2f%%",
+                self.name,
+                price,
+                reason,
+                pnl_pct,
+            )
         self.position_active = False
         self.position_entry = 0.0
         self.position_side = None
+        self.entry_price = None
+        self.stop_price = None
+        self.target_price = None
+        self._last_exit_reason = reason
+
+    def check_exit(self, current_price: float) -> str | None:
+        """Check if SL or TP is breached and close position if so.
+
+        Returns the exit reason string (``"SL_HIT"`` or ``"TP_HIT"``) or ``None``.
+        Must be called *after* ``record_return`` for the day.
+        """
+        if not self.position_active or self.stop_price is None or self.target_price is None:
+            return None
+        if current_price <= self.stop_price:
+            logger.warning(
+                "%s satellite: SL hit at %.2f (stop=%.2f)",
+                self.name,
+                current_price,
+                self.stop_price,
+            )
+            self.close_position(price=current_price, reason="SL_HIT")
+            return "SL_HIT"
+        if current_price >= self.target_price:
+            logger.info(
+                "%s satellite: TP hit at %.2f (target=%.2f)",
+                self.name,
+                current_price,
+                self.target_price,
+            )
+            self.close_position(price=current_price, reason="TP_HIT")
+            return "TP_HIT"
+        return None
 
     def deploy_capital(self, amount: float) -> None:
         """Allocate capital to the satellite (capped at max)."""
@@ -339,4 +404,8 @@ class HighVolSatellite:
             delta_sharpe_63d=0.0,  # computed externally with core context
             position_active=self.position_active,
             drawdown_pct=round(self.drawdown_pct * 100, 2),
+            entry_price=self.entry_price,
+            stop_price=self.stop_price,
+            target_price=self.target_price,
+            exit_reason=self._last_exit_reason,
         )

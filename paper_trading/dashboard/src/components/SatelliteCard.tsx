@@ -75,6 +75,50 @@ export default function SatelliteCard() {
         <span className={posColor}>{sat.position_active ? 'POSITION ACTIVE' : 'NO POSITION'}</span>
       </div>
 
+      {sat.position_active ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-2xs mt-1 pt-1 border-t border-default/30">
+          <div className="flex justify-between">
+            <span className="text-tertiary">Entry</span>
+            <span className="font-mono text-primary">
+              ${sat.entry_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-tertiary">Exit</span>
+            <span className="font-mono text-gov-yellow">{sat.exit_reason ?? '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-tertiary">SL</span>
+            <span className="font-mono text-gov-red">
+              ${sat.stop_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-tertiary">TP</span>
+            <span className="font-mono text-gov-green">
+              ${sat.target_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-2xs mt-1 pt-1 border-t border-default/30">
+          <div className="flex justify-between">
+            <span className="text-tertiary">SL</span>
+            <span className="font-mono text-tertiary">—</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-tertiary">TP</span>
+            <span className="font-mono text-tertiary">—</span>
+          </div>
+          {sat.exit_reason && (
+            <div className="flex justify-between col-span-2">
+              <span className="text-tertiary">Last exit</span>
+              <span className="font-mono text-gov-yellow">{sat.exit_reason}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {!sat.gate_open && sat.gate_reasons.length > 0 && (
         <div className="mt-1.5 pt-1.5 border-t border-default/30">
           <div className="text-2xs text-tertiary mb-0.5 font-medium">GATE BLOCKED:</div>

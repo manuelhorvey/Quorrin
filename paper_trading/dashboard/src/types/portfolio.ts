@@ -157,6 +157,10 @@ export interface SatelliteState {
   sharpe_contribution: number | null
   position_active: boolean
   drawdown_pct: number
+  entry_price: number | null
+  stop_price: number | null
+  target_price: number | null
+  exit_reason: string | null
 }
 
 export interface EngineStatus {

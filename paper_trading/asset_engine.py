@@ -23,6 +23,7 @@ from features.regime_features import generate_regime_features
 from features.registry import FEATURE_REGISTRY
 from labels.meta_labels import MetaLabelModel
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
+from monitoring.psi_monitor import PSIMonitor, PSISnapshot
 from monitoring.validity_state_machine import (
     ValidityStateMachine as _ValidityStateMachine,
 )
@@ -139,6 +140,7 @@ class AssetEngine:
             self.state_store = _STORE
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self._importance_store = ImportanceStore(base_dir)
+        self._psi_monitor = PSIMonitor(base_dir)
         self.regime_classifier = RegimeClassifier()
         if self.config.get("regime_sizing"):
             self._sizing_strategy.regime_aware = True
@@ -154,6 +156,7 @@ class AssetEngine:
         self._current_window_train_start = ""
         self._current_window_train_end = ""
         self._last_stability: StabilityResult | None = None
+        self._last_psi_drift: PSISnapshot | None = None
         self._narrative_active = None
         self._narrative_stale = False
         self._narrative_sl_mult = 1.0
@@ -521,6 +524,12 @@ class AssetEngine:
         with open(self.model_path, "wb") as f:
             pickle.dump(model, f)
 
+        # Persist PSI baseline from training feature distribution
+        try:
+            self._psi_monitor.persist_baseline(self.name, X)
+        except Exception as e:
+            logger.warning("%s: failed to persist PSI baseline: %s", self.name, e)
+
         # Train meta-label model
         if self.config.get("meta_labeling", {}).get("enabled", False):
             self._meta_label_model = MetaLabelModel(
@@ -591,6 +600,17 @@ class AssetEngine:
         X = features_df[self.features]
         if len(X) == 0:
             raise ValueError(f"No valid feature rows after building features for {self.name}")
+
+        # PSI drift: rolling 21d distribution vs training baseline
+        try:
+            latest_df, _ = self._importance_store.get_latest_two_snapshots(self.name)
+            if latest_df is not None and not latest_df.empty:
+                top10 = latest_df[latest_df["rank"] <= 10]
+                top_features = [(r["feature"], r["importance_score"]) for r in top10.to_dict("records")]
+                X_current = X.tail(21)
+                self._last_psi_drift = self._psi_monitor.compute_drift(self.name, X_current, top_features)
+        except Exception as e:
+            logger.debug("%s: PSI drift skipped: %s", self.name, e)
 
         proba = self._model_iface.predict(self.model, X)
         if proba.shape[1] < 3:
@@ -1173,6 +1193,18 @@ class AssetEngine:
             "scale_out_active": scale_out_active,
             "remaining_fraction": round(remaining_frac, 4),
             "scale_out_tiers": scale_out_tiers,
+            "psi_drift": {
+                "per_feature": [
+                    {"feature": e.feature, "psi": e.psi, "classification": e.classification,
+                     "trend": e.trend, "importance_score": e.importance_score}
+                    for e in (self._last_psi_drift.per_feature if self._last_psi_drift else [])
+                ],
+                "worst_classification": self._last_psi_drift.worst_classification if self._last_psi_drift else "NO_DRIFT",
+                "moderate_count": self._last_psi_drift.moderate_count if self._last_psi_drift else 0,
+                "severe_count": self._last_psi_drift.severe_count if self._last_psi_drift else 0,
+                "psi_ok": self._last_psi_drift.psi_ok if self._last_psi_drift else True,
+                "penalty": self._last_psi_drift.penalty if self._last_psi_drift else 0.0,
+            },
         }
 
     def _save_trade_journal(self, trade):
@@ -1218,12 +1250,30 @@ class AssetEngine:
                 )
                 score += penalty
 
+        if self._last_psi_drift is not None and self._last_psi_drift.penalty < 0:
+            psi_p = self._last_psi_drift.penalty
+            logger.info(
+                "%s PSI drift penalty: %.3f (worst=%s, moderate=%d, severe=%d)",
+                self.name,
+                psi_p,
+                self._last_psi_drift.worst_classification,
+                self._last_psi_drift.moderate_count,
+                self._last_psi_drift.severe_count,
+            )
+            score += psi_p
+
         score = max(0.0, min(1.0, score))
         result = self.validity_sm.transition(score, pd.Timestamp.now())
         result["feature_stability"] = {
             "jaccard_top_10": self._last_stability.jaccard_top_10 if self._last_stability else None,
             "spearman_rank_corr": self._last_stability.spearman_rank_corr if self._last_stability else None,
             "penalty_applied": self._last_stability.penalty if self._last_stability else 0.0,
+        }
+        result["psi_drift"] = {
+            "worst_classification": self._last_psi_drift.worst_classification if self._last_psi_drift else "NO_DRIFT",
+            "moderate_count": self._last_psi_drift.moderate_count if self._last_psi_drift else 0,
+            "severe_count": self._last_psi_drift.severe_count if self._last_psi_drift else 0,
+            "penalty_applied": self._last_psi_drift.penalty if self._last_psi_drift else 0.0,
         }
         return result
 
@@ -1284,6 +1334,14 @@ class AssetEngine:
                 f"sl={self._liquidity_sl_mult:.2f}x size={self._liquidity_size_scalar:.2f}x"
             )
 
+        psi_ok = True
+        if self._last_psi_drift is not None and not self._last_psi_drift.psi_ok:
+            reasons.append(
+                f"PSI drift SEVERE on {self._last_psi_drift.severe_count} features "
+                f"(worst={self._last_psi_drift.worst_classification})"
+            )
+            psi_ok = False
+
         return {
             "halted": len(reasons) > 0,
             "reasons": reasons,
@@ -1293,6 +1351,7 @@ class AssetEngine:
             "drift_ok": drift_ok,
             "narrative_ok": narrative_ok,
             "liquidity_ok": liquidity_ok,
+            "psi_ok": psi_ok,
         }
 
     def set_capital_base(self, new_base: float) -> None:

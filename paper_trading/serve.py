@@ -49,6 +49,7 @@ _CACHE_TTL: dict[str, float] = {
     "/liquidity.json": 30.0,
     "/governance.json": 30.0,
     "/risk-parity.json": 30.0,
+    "/psi.json": 30.0,
 }
 
 
@@ -467,6 +468,25 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         }
                 data = json.dumps(regimes, indent=2, default=str)
                 _cache_set("/liquidity.json", data)
+                self._send_json(data)
+            elif path == "/psi.json":
+                snapshot = _STORE.load_snapshot()
+                psi_data = {}
+                if snapshot and snapshot.assets:
+                    for name, asset in sorted(snapshot.assets.items()):
+                        metrics = asset.get("metrics", {})
+                        psi = metrics.get("psi_drift", {})
+                        if psi and psi.get("per_feature"):
+                            psi_data[name] = {
+                                "per_feature": psi["per_feature"],
+                                "worst_classification": psi.get("worst_classification", "NO_DRIFT"),
+                                "moderate_count": psi.get("moderate_count", 0),
+                                "severe_count": psi.get("severe_count", 0),
+                                "psi_ok": psi.get("psi_ok", True),
+                                "penalty": psi.get("penalty", 0.0),
+                            }
+                data = json.dumps(psi_data, indent=2, default=str)
+                _cache_set("/psi.json", data)
                 self._send_json(data)
             elif path == "/ping":
                 self._send_json(json.dumps({"status": "ok"}, indent=2))

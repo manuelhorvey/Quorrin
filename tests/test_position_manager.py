@@ -170,3 +170,65 @@ class TestPositionManager:
         trade = pm.close(exit_price, "2026-06-10", "invalid")
         assert trade is None
         assert pm.has_position()
+
+
+class TestPartialClose:
+    @pytest.fixture
+    def pm(self):
+        return PositionManager(initial_capital=10000, position_size=0.95)
+
+    def test_partial_close_half(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        trade = pm.partial_close(0.5, 110.0, "2026-06-10", "tp_partial")
+        assert trade is not None
+        assert trade["fraction"] == 0.5
+        assert trade["pnl"] > 0
+
+    def test_partial_close_zero_fraction_returns_none(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        trade = pm.partial_close(0.0, 110.0, "2026-06-10", "tp_partial")
+        assert trade is None
+
+    def test_partial_close_full_fraction_returns_trade(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        trade = pm.partial_close(1.0, 110.0, "2026-06-10", "tp_partial")
+        assert trade is not None
+        assert trade["fraction"] == 1.0
+        assert pm._remaining_fraction == pytest.approx(0.0)
+
+    def test_partial_close_excess_fraction_returns_none(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        trade = pm.partial_close(1.5, 110.0, "2026-06-10", "tp_partial")
+        assert trade is None
+
+    def test_partial_close_no_position_returns_none(self, pm):
+        trade = pm.partial_close(0.5, 110.0, "2026-06-10", "tp_partial")
+        assert trade is None
+
+    def test_activate_breakeven_then_check_sl_hits(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        pm.activate_breakeven_stop()
+        result = pm.check_sl_tp(99.9)
+        assert result is not None
+        reason, price = result
+        assert reason == "breakeven"
+        assert price == 100.0
+
+    def test_breakeven_only_used_when_position_is_open(self, pm):
+        intent = PositionIntent(side="long", entry_price=100.0, entry_date="2026-06-01",
+                                stop_loss=95.0, take_profit=110.0, vol=0.02)
+        pm.open(intent)
+        pm.activate_breakeven_stop()
+        pm.close(110.0, "2026-06-10", "tp")
+        result = pm.check_sl_tp(99.9)
+        assert result is None

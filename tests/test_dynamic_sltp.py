@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import assume, given, strategies as st
 
 from paper_trading.dynamic_sltp import (
     DynamicSLTPEngine,
@@ -514,3 +515,191 @@ class TestBestPriceTracking:
         engine.compute_trailing_stop("long", 100.0, 104.0, initial_sl=97.0, current_sl=97.0, take_profit=110.0, df=df)
         engine.compute_trailing_stop("long", 100.0, 103.0, initial_sl=97.0, current_sl=97.0, take_profit=110.0, df=df)
         assert engine._best_price_seen == 105.0
+
+
+class TestTrailingActivationRace:
+    @pytest.fixture
+    def df(self):
+        np.random.seed(42)
+        prices = 100 + np.cumsum(np.random.randn(50) * 0.5)
+        return pd.DataFrame({"close": prices, "high": prices * 1.01, "low": prices * 0.99})
+
+    def test_trailing_activates_on_gap_through(self, df):
+        engine = DynamicSLTPEngine(
+            method="trailing", trailing_activation_mult=1.5, trailing_distance_mult=2.0, atr_period=14
+        )
+        result = engine.compute_barriers(100.0, "long", df, sl_mult=1.0, tp_mult=1.0)
+        engine.reset_best_price(100.0)
+        trail = engine.compute_trailing_stop("long", 100.0, 108.0, result.stop_loss, result.stop_loss, result.take_profit, df=df)
+        assert trail.activated
+        assert trail.trailing_sl is not None
+
+    def test_trailing_does_not_activate_below_threshold(self, df):
+        engine = DynamicSLTPEngine(
+            method="trailing", trailing_activation_mult=2.0, trailing_distance_mult=2.0, atr_period=14
+        )
+        result = engine.compute_barriers(100.0, "long", df, sl_mult=1.0, tp_mult=1.0)
+        engine.reset_best_price(100.0)
+        trail = engine.compute_trailing_stop("long", 100.0, 101.5, result.stop_loss, result.stop_loss, result.take_profit, df=df)
+        assert not trail.activated
+        assert trail.trailing_sl is None
+
+    def test_trailing_only_tightens_not_widens(self, df):
+        engine = DynamicSLTPEngine(
+            method="trailing", trailing_activation_mult=1.0, trailing_distance_mult=3.0, atr_period=14
+        )
+        result = engine.compute_barriers(100.0, "long", df, sl_mult=1.0, tp_mult=1.0)
+        engine.reset_best_price(100.0)
+        t1 = engine.compute_trailing_stop("long", 100.0, 103.0, result.stop_loss, result.stop_loss, result.take_profit, df=df)
+        t2 = engine.compute_trailing_stop("long", 100.0, 102.0, result.stop_loss, t1.trailing_sl or result.stop_loss, result.take_profit, df=df)
+        if t1.activated and t2.activated:
+            assert (t2.trailing_sl is None) or (t2.trailing_sl >= t1.trailing_sl)
+
+
+class TestPostEntryAdjustBoundaries:
+    @pytest.fixture
+    def engine(self):
+        return DynamicSLTPEngine(post_adjust_interval_bars=3, max_sl_widen_pct=0.0)
+
+    @pytest.fixture
+    def df(self):
+        np.random.seed(42)
+        prices = 100 + np.cumsum(np.random.randn(50) * 0.5)
+        return pd.DataFrame({"close": prices, "high": prices * 1.01, "low": prices * 0.99})
+
+    def test_no_adjust_before_min_bars(self, engine, df):
+        adj = engine.post_entry_adjust("long", 100.0, 98.0, 105.0, df, vol=0.02, bars_since_entry=1)
+        assert adj.new_sl is None
+        assert adj.new_tp is None
+
+    def test_vol_drop_tightens_sl(self, engine, df):
+        engine = DynamicSLTPEngine(post_adjust_interval_bars=0, max_sl_widen_pct=0.0)
+        adj = engine.post_entry_adjust("long", 100.0, 98.0, 105.0, df, vol=0.05, bars_since_entry=10)
+        assert adj.new_sl is not None
+        assert "vol_dropped" in (adj.reason or "")
+
+    def test_no_widen_when_disabled(self, engine, df):
+        engine.max_sl_widen_pct = 0.0
+        adj = engine.post_entry_adjust("long", 100.0, 98.0, 105.0, df, vol=0.01, bars_since_entry=10)
+        if adj.new_sl is not None:
+            assert adj.new_sl >= 98.0
+
+
+class TestComputeTrailingStopEdgeCases:
+    @pytest.fixture
+    def engine(self):
+        return DynamicSLTPEngine(trailing_activation_mult=1.5, trailing_distance_mult=2.0)
+
+    @pytest.fixture
+    def df(self):
+        np.random.seed(42)
+        prices = 100 + np.cumsum(np.random.randn(50) * 0.5)
+        return pd.DataFrame({"close": prices, "high": prices * 1.01, "low": prices * 0.99})
+
+    def test_no_best_price_init_uses_entry(self, engine, df):
+        engine._best_price_seen = None
+        result = engine.compute_trailing_stop("long", 100.0, 102.0, initial_sl=98.0, current_sl=98.0, take_profit=110.0, df=df)
+        assert engine._best_price_seen == 102.0
+
+    def test_short_side_best_price_tracks_min(self, engine, df):
+        engine.reset_best_price(100.0)
+        engine.compute_trailing_stop("short", 100.0, 97.0, initial_sl=103.0, current_sl=103.0, take_profit=90.0, df=df)
+        engine.compute_trailing_stop("short", 100.0, 96.0, initial_sl=103.0, current_sl=103.0, take_profit=90.0, df=df)
+        assert engine._best_price_seen == 96.0
+
+    def test_short_trailing_activates(self, engine, df):
+        engine.reset_best_price(100.0)
+        trail = engine.compute_trailing_stop("short", 100.0, 95.0, initial_sl=103.0, current_sl=103.0, take_profit=90.0, df=df)
+        if trail.activated:
+            assert trail.trailing_sl is not None
+            assert trail.trailing_sl < 103.0
+
+
+class TestConfidenceFactorBoundary:
+    def test_factor_at_threshold_returns_one(self):
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.3)
+        factor = engine._confidence_sl_factor(0.5)
+        assert factor == 1.0
+
+    def test_factor_at_max_returns_one_minus_adjust(self):
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.3)
+        factor = engine._confidence_sl_factor(1.0)
+        assert factor == pytest.approx(0.70)
+
+    def test_factor_at_zero_adjust(self):
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.0)
+        factor = engine._confidence_sl_factor(0.8)
+        assert factor == 1.0
+
+    def test_factor_clamped_below_threshold(self):
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.3)
+        factor = engine._confidence_sl_factor(0.3)
+        assert factor == 1.0
+
+    def test_factor_monotonic(self):
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.3)
+        f1 = engine._confidence_sl_factor(0.6)
+        f2 = engine._confidence_sl_factor(0.8)
+        assert f2 <= f1
+
+
+class TestGapProtection:
+    @pytest.fixture
+    def df_short(self):
+        prices = np.array([100.0] * 10)
+        return pd.DataFrame({"close": prices, "high": prices * 1.005, "low": prices * 0.995, "volume": 1_000_000})
+
+    def test_gap_protection_with_insufficient_data(self):
+        df = pd.DataFrame({"close": [100], "high": [101], "low": [99]})
+        engine = DynamicSLTPEngine(use_gap_protection=True)
+        result = engine.compute_barriers(100.0, "long", df, sl_mult=1.0, tp_mult=1.0)
+        assert result.stop_loss < 100.0
+        assert result.take_profit > 100.0
+
+
+class TestCalibrationEdgeCases:
+    def test_calibrate_with_zero_vol_does_not_crash(self):
+        df = pd.DataFrame({"close": [100], "high": [101], "low": [99]})
+        engine = DynamicSLTPEngine(atr_period=14)
+        engine.calibrate(df)
+        assert engine.atr_mult_sl > 0
+
+    def test_calibrate_with_constant_prices(self):
+        prices = np.full(50, 100.0)
+        df = pd.DataFrame({"close": prices, "high": prices * 1.001, "low": prices * 0.999})
+        engine = DynamicSLTPEngine(atr_period=14)
+        engine.calibrate(df)
+        assert engine.atr_mult_sl > 0
+
+
+class TestHypothesisDynamicSLTP:
+    @given(
+        entry=st.floats(min_value=10.0, max_value=1000.0),
+        vol=st.floats(min_value=0.001, max_value=0.1),
+        sl_mult=st.floats(min_value=0.5, max_value=3.0),
+        tp_mult=st.floats(min_value=0.5, max_value=5.0),
+        side=st.sampled_from(["long", "short"]),
+    )
+    def test_sl_on_correct_side_of_entry(self, entry, vol, sl_mult, tp_mult, side):
+        engine = DynamicSLTPEngine(method="vol_ewm", min_rr_ratio=0.1)
+        result = engine.compute_barriers(entry, side, pd.DataFrame(), sl_mult=sl_mult, tp_mult=tp_mult, vol=vol)
+        if side == "long":
+            assert result.stop_loss < entry < result.take_profit
+        else:
+            assert result.stop_loss > entry > result.take_profit
+
+    @given(
+        entry=st.floats(min_value=10.0, max_value=1000.0),
+        conf=st.floats(min_value=0.5, max_value=1.0),
+        side=st.sampled_from(["long", "short"]),
+    )
+    def test_confidence_adjust_never_reverses_sl_side(self, entry, conf, side):
+        np.random.seed(42)
+        prices = 100 + np.cumsum(np.random.randn(20) * 0.5)
+        df = pd.DataFrame({"close": prices, "high": prices * 1.01, "low": prices * 0.99})
+        engine = DynamicSLTPEngine(confidence_sl_adjust=0.3)
+        result = engine.compute_barriers(entry, side, df, sl_mult=1.0, tp_mult=1.0, meta_confidence=conf)
+        if side == "long":
+            assert result.stop_loss < entry
+        else:
+            assert result.stop_loss > entry

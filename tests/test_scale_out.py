@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import assume, given, strategies as st
 
 from paper_trading.scale_out import (
     ScaleOutEngine,
@@ -331,3 +332,93 @@ class TestBuildFromConfig:
         )
         assert engine is not None
         assert len(engine.tier_specs) == 3
+
+
+class TestEdgeCases:
+    def test_zero_position_size_no_fill_pnl(self):
+        engine = ScaleOutEngine(tiers=[(1.0, 1.0)])
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        fills = engine.check_tiers(plan, "long", current_price=110.0, current_value=10000.0, position_size=0.0, exposure_mult=1.0)
+        assert fills[0]["pnl"] == 0.0
+
+    def test_zero_exposure_mult_no_fill_pnl(self):
+        engine = ScaleOutEngine(tiers=[(1.0, 1.0)])
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        fills = engine.check_tiers(plan, "long", current_price=110.0, current_value=10000.0, position_size=1.0, exposure_mult=0.0)
+        assert fills[0]["pnl"] == 0.0
+
+    def test_all_tiers_fill_then_no_remaining(self):
+        engine = ScaleOutEngine(tiers=[(0.5, 0.5), (0.5, 1.0)])
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        engine.check_tiers(plan, "long", current_price=110.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        assert plan.remaining_fraction == pytest.approx(0.0)
+        assert engine.remaining_targets(plan) == []
+
+    def test_partial_fill_then_price_reverses_no_additional_fills(self):
+        engine = ScaleOutEngine(tiers=[(0.5, 0.5), (0.5, 1.0)], activate_breakeven_after=99)
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        f1 = engine.check_tiers(plan, "long", current_price=105.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        assert len(f1) == 1
+        assert plan.remaining_fraction == pytest.approx(0.5)
+        f2 = engine.check_tiers(plan, "long", current_price=102.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        assert len(f2) == 0
+        assert plan.remaining_fraction == pytest.approx(0.5)
+
+    def test_tier_1_and_2_fill_same_bar_breakeven_activates(self):
+        engine = ScaleOutEngine(tiers=[(0.25, 0.25), (0.25, 0.5), (0.25, 0.75), (0.25, 1.0)], activate_breakeven_after=99)
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        fills = engine.check_tiers(plan, "long", current_price=106.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        assert len(fills) == 2
+        assert plan.tiers[0].filled
+        assert plan.tiers[1].filled
+        assert not plan.tiers[2].filled
+        assert plan.remaining_fraction == pytest.approx(0.5)
+
+    def test_breakeven_race_tier1_fills_exactly_at_price(self):
+        engine = ScaleOutEngine(tiers=[(0.5, 0.5), (0.5, 1.0)], activate_breakeven_after=0)
+        plan = engine.build_plan("long", entry_price=100.0, take_profit=110.0)
+        fills = engine.check_tiers(plan, "long", current_price=105.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        reasons = [f["reason"] for f in fills]
+        assert "scale_out_tier_1" in reasons
+        assert "breakeven_stop_activated" in reasons
+
+    def test_breakeven_race_tier1_and_2_same_bar_short(self):
+        engine = ScaleOutEngine(tiers=[(0.5, 0.5), (0.5, 1.0)], activate_breakeven_after=99)
+        plan = engine.build_plan("short", entry_price=100.0, take_profit=90.0)
+        fills = engine.check_tiers(plan, "short", current_price=89.0, current_value=10000.0, position_size=1.0, exposure_mult=1.0)
+        reasons = [f["reason"] for f in fills]
+        assert "scale_out_tier_1" in reasons
+        assert "scale_out_tier_2" in reasons
+
+
+class TestHypothesisScaleOut:
+    @given(
+        entry=st.floats(min_value=10.0, max_value=1000.0),
+        tp_pct=st.floats(min_value=0.01, max_value=0.5),
+        side=st.sampled_from(["long", "short"]),
+    )
+    def test_build_plan_prices_are_monotonic(self, entry, tp_pct, side):
+        tiers = [(0.25, 0.25), (0.25, 0.50), (0.25, 0.75), (0.25, 1.0)]
+        engine = ScaleOutEngine(tiers=tiers)
+        target = entry * (1 + tp_pct) if side == "long" else entry * (1 - tp_pct)
+        plan = engine.build_plan(side, entry_price=entry, take_profit=target)
+        assert len(plan.tiers) == 4
+        assert plan.remaining_fraction == 1.0
+        prices = [t.price for t in plan.tiers]
+        if side == "long":
+            assert all(prices[i] <= prices[i + 1] for i in range(len(prices) - 1))
+        else:
+            assert all(prices[i] >= prices[i + 1] for i in range(len(prices) - 1))
+        assert all(t.filled is False for t in plan.tiers)
+
+    @given(
+        entry=st.floats(min_value=10.0, max_value=1000.0),
+        tp_pct=st.floats(min_value=0.01, max_value=0.5),
+    )
+    def test_default_tiers_always_valid(self, entry, tp_pct):
+        engine = ScaleOutEngine()
+        plan = engine.build_plan("long", entry_price=entry, take_profit=entry * (1 + tp_pct))
+        assert abs(sum(t.fraction for t in plan.tiers) - 1.0) < 1e-6
+        assert plan.remaining_fraction == pytest.approx(1.0)
+        assert all(not t.filled for t in plan.tiers)
+        assert all(t.price > entry for t in plan.tiers)

@@ -4,6 +4,9 @@ rebalance: daily
 retrain_freq: annual
 retrain_window: 5
 research_mode: false
+meta_labeling:
+  confidence_threshold: 0.40
+  threshold_reduced: 0.40
 portfolio_drawdown_limit: -0.15
 narrative_config:
   enabled: true

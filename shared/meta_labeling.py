@@ -58,7 +58,9 @@ def compute_vol_zscore(close: pd.Series, window: int = 21) -> float:
 
 
 def decision_from_confidence(
-    confidence: float, base_sl_mult: float = 1.0, base_tp_mult: float = 1.0
+    confidence: float, base_sl_mult: float = 1.0, base_tp_mult: float = 1.0,
+    full_threshold: float = META_CONFIDENCE_THRESHOLD_FULL,
+    reduced_threshold: float = META_CONFIDENCE_THRESHOLD_REDUCED,
 ) -> MetaInferenceResult:
     """Convert meta-model confidence into execution decision with geometry adjustments.
 
@@ -70,11 +72,13 @@ def decision_from_confidence(
         confidence: predicted probability of winning trade [0, 1]
         base_sl_mult: base stop-loss multiplier before adjustment
         base_tp_mult: base take-profit multiplier before adjustment
+        full_threshold: confidence threshold for FULL entry (default: 0.55)
+        reduced_threshold: confidence threshold for REDUCED entry (default: 0.40)
 
     Returns:
         MetaInferenceResult with scale_factor, sl_adjust, tp_adjust
     """
-    if confidence >= META_CONFIDENCE_THRESHOLD_FULL:
+    if confidence >= full_threshold:
         return MetaInferenceResult(
             meta_confidence=round(confidence, 4),
             meta_decision="FULL",
@@ -82,7 +86,7 @@ def decision_from_confidence(
             sl_adjust=1.0,
             tp_adjust=1.0,
         )
-    elif confidence >= META_CONFIDENCE_THRESHOLD_REDUCED:
+    elif confidence >= reduced_threshold:
         # Tighter: reduce SL by 20%, bring TP closer by 20%
         return MetaInferenceResult(
             meta_confidence=round(confidence, 4),

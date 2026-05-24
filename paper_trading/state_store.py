@@ -24,6 +24,7 @@ class EngineSnapshot:
     halt_conditions: dict | None = None
     risk_signals: dict | None = None
     shadow_actions: dict | None = None
+    risk_parity: dict | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "EngineSnapshot":
@@ -37,6 +38,7 @@ class EngineSnapshot:
             halt_conditions=d.get("halt_conditions"),
             risk_signals=d.get("risk_signals"),
             shadow_actions=d.get("shadow_actions"),
+            risk_parity=d.get("risk_parity"),
         )
 
 

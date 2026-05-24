@@ -48,6 +48,7 @@ _CACHE_TTL: dict[str, float] = {
     "/narrative.json": 30.0,
     "/liquidity.json": 30.0,
     "/governance.json": 30.0,
+    "/risk-parity.json": 30.0,
 }
 
 
@@ -442,6 +443,12 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         }
                 data = json.dumps(governance, indent=2, default=str)
                 _cache_set("/governance.json", data)
+                self._send_json(data)
+            elif path == "/risk-parity.json":
+                snapshot = _STORE.load_snapshot()
+                rp = getattr(snapshot, "risk_parity", None) if snapshot else None
+                data = json.dumps(rp or {}, indent=2, default=str)
+                _cache_set("/risk-parity.json", data)
                 self._send_json(data)
             elif path == "/narrative.json":
                 status = get_narrative_status()

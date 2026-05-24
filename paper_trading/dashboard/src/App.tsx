@@ -14,6 +14,7 @@ import GovernancePanel from './components/GovernancePanel'
 import TradeOutcomes from './components/TradeOutcomes'
 import GovernanceStateCards from './components/GovernanceStateCards'
 import HitRateDrift from './components/HitRateDrift'
+import RiskParityPanel from './components/RiskParityPanel'
 import EngineLogs from './components/EngineLogs'
 import Footer from './components/Footer'
 import LoadingScreen from './components/ui/LoadingScreen'
@@ -43,6 +44,8 @@ export default function App() {
         <GovernancePanel />
 
         <GovernanceStateCards />
+
+        <RiskParityPanel />
 
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-5">
           <div className="xl:col-span-3 min-w-0">

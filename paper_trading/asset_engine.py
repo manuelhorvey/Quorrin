@@ -90,6 +90,7 @@ class AssetEngine:
         self.allocation = allocation
         engine_cfg = get_config()
         self.initial_capital = initial_capital if initial_capital is not None else engine_cfg.capital * allocation
+        self.capital_base = self.initial_capital
         self.halt_config = halt_config or dict(engine_cfg.halt)
         self.config = config or {}
         self.expected_prob_conf = expected_prob_conf
@@ -265,8 +266,12 @@ class AssetEngine:
         price = float(close.iloc[-1]) if len(close) else 0.0
         if price <= 0:
             return cfg
+        effective_capital = self.capital_base
+        if self.initial_capital > 0:
+            growth = self.current_value / self.initial_capital
+            effective_capital = self.capital_base * growth
         notional = (
-            self.current_value
+            effective_capital
             * self.pos_mgr.position_size
             * self.pos_mgr.exposure_multiplier
             * position_size_scalar
@@ -360,8 +365,12 @@ class AssetEngine:
         fill_price = entry_price
         if self.execution_bridge is not None:
             broker_side = "buy" if side == "long" else "sell"
+            effective_capital = self.capital_base
+            if self.initial_capital > 0:
+                growth = self.current_value / self.initial_capital
+                effective_capital = self.capital_base * growth
             notional = (
-                self.current_value
+                effective_capital
                 * self.pos_mgr.position_size
                 * self.pos_mgr.exposure_multiplier
                 * max(self._narrative_size_scalar * self._liquidity_size_scalar, self._MIN_SIZE_SCALAR)
@@ -1285,3 +1294,15 @@ class AssetEngine:
             "narrative_ok": narrative_ok,
             "liquidity_ok": liquidity_ok,
         }
+
+    def set_capital_base(self, new_base: float) -> None:
+        """Update the capital allocated to this asset on a rebalance.
+
+        Adjusts current_value to reflect the new capital (conceptual cash transfer).
+        The difference is recorded as a capital adjustment (not a trade PnL).
+        """
+        old_base = self.capital_base
+        self.capital_base = new_base
+        delta = new_base - old_base
+        self.current_value = self.current_value + delta
+        self.pos_mgr.current_value = self.pos_mgr.current_value + delta

@@ -37,6 +37,7 @@ from paper_trading.satellite_runner import (
 )
 from paper_trading.simulation_snapshot import SimulationStore, build_asset_snapshot
 from paper_trading.state_store import _SKIP_JOURNAL, EngineSnapshot, StateStore, sanitize  # noqa: F401
+from portfolio.risk_parity import compute_equal_risk_weights
 from shared.execution_config import build_execution_configs
 from shared.registry import StrategyRegistry
 
@@ -119,6 +120,8 @@ class PaperTradingEngine:
         self._init_satellite()
         self._restore_positions(saved_positions)
         self._sim_store = SimulationStore(BASE)
+        self._rebalance_last_day: datetime | None = None
+        self._rebalance_weights: dict[str, float] = {}
 
     def _build_asset_registry(self) -> None:
         _reg = StrategyRegistry.get_instance()
@@ -306,6 +309,10 @@ class PaperTradingEngine:
         # Phase 3.5: Weekly narrative refresh + liquidity regime refresh
         self._refresh_narrative()
 
+        # Phase 3.75: Periodic risk-parity portfolio rebalance
+        if self._should_rebalance():
+            self._rebalance_portfolio()
+
         # Phase 4: Update validity-driven exposure multipliers
         for name, asset in self.assets.items():
             validity = asset.update_validity()
@@ -380,7 +387,101 @@ class PaperTradingEngine:
                 return True
         return False
 
-    def get_state(self):
+    def _should_rebalance(self) -> bool:
+        """Check if the portfolio should be rebalanced.
+
+        Rebalance once per week on Monday (same cadence as narrative refresh),
+        but only if there are enough assets with price data.
+        """
+        want = getattr(self, "_rebalance_dow", None)
+        if want is None:
+            self._rebalance_dow = datetime.now(tz=ET).weekday()
+        if self._rebalance_last_day is None or self._rebalance_last_day != datetime.now(tz=ET).date():
+            self._rebalance_last_day = datetime.now(tz=ET).date()
+            return True
+        return False
+
+    def _collect_daily_returns(self, window: int = 252) -> pd.DataFrame:
+        """Collect daily returns for all assets that have price data.
+
+        Returns a DataFrame with columns=asset names, index=dates,
+        values=daily returns.  Only includes assets with ``current_price``.
+        """
+        price_data: dict[str, pd.Series] = {}
+        for name, asset in self.assets.items():
+            px = asset.current_price
+            if px is None or px <= 0:
+                continue
+            try:
+                hist = fetch_history(asset.ticker, period=f"{window + 60}d", interval="1d")
+                if hist is not None and "close" in hist.columns and len(hist) >= window:
+                    price_data[name] = hist["close"]
+            except Exception:
+                continue
+        if not price_data:
+            return pd.DataFrame()
+        df = pd.DataFrame(price_data)
+        returns = df.pct_change().dropna()
+        return returns.iloc[-window:] if len(returns) > window else returns
+
+    def _rebalance_portfolio(self) -> None:
+        """Compute risk-parity weights and reallocate capital across assets.
+
+        Uses governance-adjusted volatility: each asset's raw vol is scaled
+        by 1/combined_size_scalar so that assets with tighter governance
+        constraints receive lower risk parity weight.
+        """
+        window = 252
+        returns = self._collect_daily_returns(window)
+        if returns.empty or len(returns.columns) < 2:
+            logger.info("Risk parity skipped — insufficient price data")
+            return
+
+        # Compute governance-adjusted vols per asset
+        total_value = sum(
+            a.current_value if not pd.isna(a.current_value) else a.initial_capital
+            for a in self.assets.values()
+        )
+
+        adjusted = returns.copy()
+        for col in adjusted.columns:
+            if col not in self.assets:
+                continue
+            asset = self.assets[col]
+            combined_size = max(
+                asset._narrative_size_scalar * asset._liquidity_size_scalar,
+                AssetEngine._MIN_SIZE_SCALAR,
+            )
+            vol_scale = 1.0 / combined_size if combined_size > 0 else 1.0
+            adjusted[col] = adjusted[col] * vol_scale
+
+        try:
+            weights = compute_equal_risk_weights(adjusted)
+        except Exception as e:
+            logger.error("Risk parity optimization failed: %s", e)
+            return
+
+        if not weights:
+            return
+
+        # Normalize to available assets only
+        total_w = sum(weights.get(n, 0.0) for n in self.assets)
+        if total_w <= 0:
+            return
+
+        # Save weights for dashboard exposure
+        self._rebalance_weights = {n: weights.get(n, 0.0) / total_w for n in self.assets}
+
+        # Apply target capital to each asset
+        for name, asset in self.assets.items():
+            target = total_value * self._rebalance_weights[name]
+            asset.set_capital_base(target)
+
+        logger.info(
+            "Risk parity rebalanced %d assets — weights: %s",
+            len(self.assets),
+            {n: f"{w:.3f}" for n, w in self._rebalance_weights.items()},
+        )
         ad = {}
         overall_validity = 0.0
         any_halted = False
@@ -419,11 +520,27 @@ class PaperTradingEngine:
                 "narrative_stale": asset._narrative_stale,
                 "regime_geometry": asset.regime_geometry,
             }
+        total_value = sum(
+            a.current_value if not pd.isna(a.current_value) else a.initial_capital
+            for a in self.assets.values()
+        )
+        rp_weights = {}
+        rp_allocations = {}
+        if self._rebalance_weights:
+            for name, asset in self.assets.items():
+                w = self._rebalance_weights.get(name, 0.0)
+                rp_weights[name] = round(w, 4)
+                rp_allocations[name] = round(asset.capital_base, 2)
         return {
             "portfolio": self._compute_portfolio_summary(overall_validity, any_halted),
             "assets": ad,
             "satellite": self._satellite_snapshot(),
             "halt_conditions": HALT,
+            "risk_parity": {
+                "weights": rp_weights,
+                "capital_allocations": rp_allocations,
+                "total_value": round(total_value, 2),
+            },
         }
 
     def _compute_portfolio_summary(self, overall_validity: float, any_halted: bool) -> dict:

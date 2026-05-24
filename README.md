@@ -199,7 +199,8 @@ The system maintains a **13-asset continuously evaluated simulation portfolio** 
 * **Cash buffer**: ~3% retained as dynamic risk slack.
 * **SL/TP values**: sl=0.30 universal base (per-regime sweep optimum), TP varies by asset (sweep-derived per-regime, mid-range shown). Model-validity adjustments: YELLOW → TP × 0.85, RED → TP × 0.70.
 * **Dynamic SL/TP ATR Calibration**: ATR-based dynamic barriers auto-calibrated at startup to EWM vol using `calibration_scale: 1.2` (expanding barriers by 20% to optimize TP rates).
-* **Scale-Out Strategy**: For assets with scale-out enabled (EURAUD, NZDJPY, CADJPY, AUDJPY, USDCAD, GBPJPY, USDCHF, GBPUSD, EURCAD, DJI), position profit-taking is split into 4 equal tiers (25% at 0.25x / 0.50x / 0.75x / 1.00x of original TP). Stop-loss is moved to breakeven after Tier 1 realizes.
+* **Confidence-based SL adjustment (optional)**: `confidence_sl_adjust > 0.0` tightens SL at high meta-confidence (p=0.9 → sl × (1.0 - adjust)), widens at low confidence (p=0.1 → sl × (1.0 + adjust/2)). Default 0.0 (disabled).
+* **Scale-Out Strategy**: For assets with scale-out enabled (EURAUD, NZDJPY, CADJPY, AUDJPY, USDCAD, GBPJPY, USDCHF, GBPUSD, EURCAD, DJI), position profit-taking is split into 4 equal tiers (25% at 0.25x / 0.50x / 0.75x / 1.00x of original TP). Stop-loss is moved to breakeven after Tier 1 realizes. Trailing stop activation can optionally trigger after a configurable tier (`trailing_after_tier` in `ScaleOutEngine`).
 * **Stop-loss** = vol × sl_mult, **take-profit** = vol × tp_mult. Training labels in `features/registry.py` must match runtime multipliers — enforced by `PaperTradingEngine.initialize()`.
 
 ### 4.1 BTC Satellite Bucket
@@ -411,7 +412,10 @@ paper_trading/
 ├── position_manager.py    # Position lifecycle (open, close, SL/TP, PnL)
 ├── execution_bridge.py    # PaperBroker fill prices + impact estimates for AssetEngine
 ├── decision.py            # TradeDecision / PositionIntent
-├── state_store.py         # Crash-safe snapshot persistence
+├── state_store.py          # Crash-safe snapshot persistence
+├── dynamic_sltp.py         # DynamicSLTPEngine — ATR-calibrated SL/TP, trailing stop, confidence adjustment
+├── scale_out.py            # ScaleOutEngine — 4-tier profit-taking, breakeven, trailing activation
+├── tracer.py               # Trade/decision tracer with shadow SL/TP comparison
 ├── simulation_snapshot.py # Deterministic replay snapshots
 ├── monitor.py             # HTTP observability + dashboard serve
 ├── serve.py               # REST API layer
@@ -465,6 +469,8 @@ React + TypeScript + Tailwind + react-query frontend in `paper_trading/dashboard
 - **SignalsTable** — real-time asset name search filter.
 - **FeatureCards** — landing page mockups lazy-loaded via `React.lazy()` + `Suspense` (separate 11 KB chunk, never loaded in main dashboard).
 - **Theme** — dark/light toggle persisted to localStorage; inline `<script>` in `index.html` prevents theme flash on load.
+- **Scale-out tier visualization** — per-asset tier progress blocks (filled vs pending) in AssetCard when a position has active scale-out tiers.
+- **SL/TP hit rate gauges** — color-coded gauge bars (GREEN/YELLOW/RED) for TP, SL, and flip rates in the Trade Outcomes table.
 
 ### 10.7 Key Configuration
 
@@ -504,6 +510,12 @@ See **[docs/HARDENING_ROADMAP.md](docs/HARDENING_ROADMAP.md)** for full procedur
 | **3A** | Extended history backfill (2000+) — Sharpe 6.26, 0% ruin at 5000 paths |
 | **3B** | Lead-lag matrix (205 relationships) — DJI→FX, GC→USDJPY/USDCHF edges live |
 | **3C** | Adaptive macro expert weight on trade close (NZDJPY; ADR-022) |
+| **4A** | Scale-out + trailing stop — `trailing_after_tier` config, cross-bar best-price tracking, trailing activation wired to tier fills |
+| **4B** | Probability-based SL/TP via meta-label confidence — `confidence_sl_adjust` parameter biases SL width toward prediction reliability |
+| **4C** | Shadow SL/TP drift analytics — tracer logs runtime barrier deviations; shadow memory tracks drift history per asset |
+| **4D** | Dashboard polish — scale-out tier visualization, SL/TP hit rate gauge bars |
+
+See **[docs/HARDENING_ROADMAP.md](docs/HARDENING_ROADMAP.md)** for full details.
 
 ---
 
@@ -886,6 +898,10 @@ R --> A
 * **Dashboard UX**: TradeFeed pagination, SignalsTable search filter, lazy-loaded FeatureCards, refetch indicator spinner
 * **Configurable refresh interval** via `QUANTFORGE_REFRESH_INTERVAL` env var (default 300s)
 * **281 tests** across 19 test files — zero regressions
+* **DynamicSLTPEngine** — ATR-calibrated SL/TP with trailing stop, cross-bar best-price tracking, post-entry adjustment, and optional confidence-based SL width (`confidence_sl_adjust`)
+* **ScaleOutEngine** — 4-tier scale-out with configurable trailing activation after tier fill (`trailing_after_tier`); breakeven trigger independent of trailing
+* **Shadow SL/TP drift analytics** — `shadow_compare_sltp()` logs runtime barrier deviations in bps; shadow memory profiles track mean/max drift history per asset; wired into trailing stop and post-entry adjustment paths
+* **Dashboard: scale-out tier visualization** — filled vs pending tier blocks in AssetCard; **SL/TP hit rate gauges** — color-coded bars (GREEN/YELLOW/RED) in Trade Outcomes table
 
 ---
 

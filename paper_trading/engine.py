@@ -11,7 +11,6 @@ from features.fxstreet_fetcher import (
     get_narrative_status,
     run_weekly_narrative_pipeline,
 )
-from features.macro_narrative import neutral_narrative
 from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
 
@@ -303,7 +302,7 @@ class PaperTradingEngine:
             except Exception as e:
                 results[name] = {"asset": name, "error": str(e)}
 
-        # Phase 3.5: Weekly narrative refresh
+        # Phase 3.5: Weekly narrative refresh + liquidity regime refresh
         self._refresh_narrative()
 
         # Phase 4: Update validity-driven exposure multipliers
@@ -398,6 +397,9 @@ class PaperTradingEngine:
                 "meta_decision": meta_inf.get("meta_decision"),
                 "feature_stability_jaccard": feat_stab.get("jaccard_top_10"),
                 "feature_stability_spearman": feat_stab.get("spearman_rank_corr"),
+                "liquidity_regime": asset._liquidity_regime,
+                "liquidity_sl_mult": asset._liquidity_sl_mult,
+                "liquidity_size_scalar": asset._liquidity_size_scalar,
             }
         return {
             "portfolio": self._compute_portfolio_summary(overall_validity, any_halted),

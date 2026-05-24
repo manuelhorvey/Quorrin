@@ -10,6 +10,15 @@ import xgboost as xgb
 
 from features.builder import build_features, compute_macro_derived, model_path
 from features.contract import validate_no_cross_asset_leakage
+from features.fxstreet_fetcher import get_active_narrative, is_narrative_stale
+from features.liquidity_regime import (
+    classify_liquidity_regime,
+    compute_liquidity_features,
+)
+from features.liquidity_regime import (
+    liquidity_governance_scalars as _liquidity_scalars,
+)
+from features.macro_narrative import narrative_governance_scalars as _narrative_scalars
 from features.regime_features import generate_regime_features
 from features.registry import FEATURE_REGISTRY
 from labels.meta_labels import MetaLabelModel
@@ -24,8 +33,6 @@ from paper_trading.data_fetcher import fetch_history, fetch_live, fetch_ref, fla
 from paper_trading.decision import PositionIntent, TradeDecision
 from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
 from paper_trading.dynamic_sltp import build_dynamic_sltp_from_config
-from features.fxstreet_fetcher import get_active_narrative, is_narrative_stale
-from features.macro_narrative import narrative_governance_scalars as _narrative_scalars
 from paper_trading.position_manager import PositionManager
 from paper_trading.regime_classifier import RegimeClassifier
 from paper_trading.risk_governance import evaluate as _risk_evaluate
@@ -149,6 +156,12 @@ class AssetEngine:
         self._narrative_sl_mult = 1.0
         self._narrative_size_scalar = 1.0
         self._load_narrative_state()
+        self._liquidity_regime = "NORMAL"
+        self._liquidity_sl_mult = 1.0
+        self._liquidity_size_scalar = 1.0
+        self._liquidity_halted = False
+        self._liquidity_features: dict | None = None
+        self._load_liquidity_state()
 
     def _load_narrative_state(self) -> None:
         try:
@@ -188,6 +201,57 @@ class AssetEngine:
         except Exception as e:
             logger.error("%s: failed to set narrative state: %s", self.name, e)
 
+    def _load_liquidity_state(self) -> None:
+        if not self.config.get("liquidity_config", {}).get("enabled", True):
+            return
+        try:
+            if self.price_data is not None and len(self.price_data) > 22:
+                self._refresh_liquidity(self.price_data)
+        except Exception as e:
+            logger.debug("%s: no liquidity state on init: %s", self.name, e)
+
+    def _refresh_liquidity(self, df) -> None:
+        cfg = self.config.get("liquidity_config", {})
+        if not cfg.get("enabled", True):
+            self._liquidity_regime = "NORMAL"
+            self._liquidity_sl_mult = 1.0
+            self._liquidity_size_scalar = 1.0
+            self._liquidity_halted = False
+            self._liquidity_features = None
+            return
+        window = cfg.get("regime_window", 21)
+        features = compute_liquidity_features(df, window=window)
+        self._liquidity_features = features
+        regime = classify_liquidity_regime(
+            features,
+            vol_thin_threshold=cfg.get("volume_z_thin_threshold", -1.5),
+            vol_stressed_threshold=cfg.get("volume_z_stressed_threshold", -2.5),
+            amihud_high_threshold=cfg.get("amihud_high_threshold", 1.5),
+            amihud_stressed_threshold=cfg.get("amihud_stressed_threshold", 3.0),
+        )
+        self._liquidity_regime = regime
+        scalars = _liquidity_scalars(
+            regime,
+            features=features,
+            thin_sl_widen_pct=cfg.get("thin_sl_widen_pct", 15.0),
+            thin_size_reduce_pct=cfg.get("thin_size_reduce_pct", 15.0),
+            stressed_sl_widen_pct=cfg.get("stressed_sl_widen_pct", 30.0),
+            stressed_size_reduce_pct=cfg.get("stressed_size_reduce_pct", 30.0),
+        )
+        self._liquidity_sl_mult = scalars["sl_mult"]
+        self._liquidity_size_scalar = scalars["size_scalar"]
+        self._liquidity_halted = scalars["halted"]
+        if regime != "NORMAL":
+            logger.info(
+                "%s: liquidity regime=%s vol_z=%.2f amihud_z=%.2f sl=%.2fx size=%.2fx%s",
+                self.name, regime,
+                features.get("volume_z", 0),
+                features.get("amihud_z", 0),
+                self._liquidity_sl_mult,
+                self._liquidity_size_scalar,
+                " HALTED" if self._liquidity_halted else "",
+            )
+
     def _build_features(self, df, ref, macro):
         return build_features(df, macro, ref, self.contract)
 
@@ -200,7 +264,7 @@ class AssetEngine:
             return cfg
         notional = (
             self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * position_size_scalar
-            * self._narrative_size_scalar
+            * self._narrative_size_scalar * self._liquidity_size_scalar
         )
         cfg["impact_bps"] = self.execution_bridge.estimate_impact_bps(self.ticker, notional)
         return cfg
@@ -271,7 +335,7 @@ class AssetEngine:
         # Regime-conditional geometry selection (multipliers on base sl_mult/tp_mult)
         state = self.validity_sm.current_state.value if self.validity_sm else "YELLOW"
         geom = self.regime_geometry.get(state, {"sl_mult": 1.0, "tp_mult": 1.0})
-        sl_mult = self.sl_mult * geom.get("sl_mult", 1.0) * self._narrative_sl_mult
+        sl_mult = self.sl_mult * geom.get("sl_mult", 1.0) * self._narrative_sl_mult * self._liquidity_sl_mult
         tp_mult = self.tp_mult * geom.get("tp_mult", 1.0)
 
         if self.regime_geometry and geom.get("sl_mult", 1.0) != 1.0:
@@ -290,7 +354,11 @@ class AssetEngine:
         fill_price = entry_price
         if self.execution_bridge is not None:
             broker_side = "buy" if side == "long" else "sell"
-            notional = self.current_value * self.pos_mgr.position_size * self.pos_mgr.exposure_multiplier * self._narrative_size_scalar
+            notional = (
+                self.current_value * self.pos_mgr.position_size
+                * self.pos_mgr.exposure_multiplier
+                * self._narrative_size_scalar * self._liquidity_size_scalar
+            )
             qty = max(notional / entry_price, 1e-6)
             fill_price, _, _ = self.execution_bridge.fill_price(self.ticker, broker_side, qty, entry_price)
 
@@ -495,6 +563,7 @@ class AssetEngine:
             df.loc[df.index[-1], "close"] = self.current_price
 
         self.price_data = df
+        self._refresh_liquidity(df)
         df["close"] = df["close"].ffill()
         ref = fetch_ref("SPY")
         macro = self._feature_pipeline.macro_derived(
@@ -1118,6 +1187,8 @@ class AssetEngine:
             score -= 0.15
         if not halt.get("narrative_ok", True):
             score -= 0.10
+        if not halt.get("liquidity_ok", True):
+            score -= 0.10
 
         if self._last_stability is not None:
             penalty = self._last_stability.penalty
@@ -1171,14 +1242,29 @@ class AssetEngine:
             drift_ok = False
 
         narrative_ok = True
-        if self._narrative_active is not None and not self._narrative_stale:
-            if self._narrative_sl_mult > 1.05 or self._narrative_size_scalar < 0.95:
-                narr = self._narrative_active
-                reasons.append(
-                    f"Narrative governance active: geopol={narr.geopol_risk_score:.2f} "
-                    f"regime={narr.overall_regime} sl={self._narrative_sl_mult:.2f}x "
-                    f"size={self._narrative_size_scalar:.2f}x"
-                )
+        if self._narrative_active is not None and not self._narrative_stale and (
+            self._narrative_sl_mult > 1.05 or self._narrative_size_scalar < 0.95
+        ):
+            narr = self._narrative_active
+            reasons.append(
+                f"Narrative governance active: geopol={narr.geopol_risk_score:.2f} "
+                f"regime={narr.overall_regime} sl={self._narrative_sl_mult:.2f}x "
+                f"size={self._narrative_size_scalar:.2f}x"
+            )
+
+        liquidity_ok = True
+        if self._liquidity_halted:
+            reasons.append(
+                f"Liquidity STRESSED: regime={self._liquidity_regime} "
+                f"vol_z={self._liquidity_features.get('volume_z', 0):.2f} "
+                f"amihud_z={self._liquidity_features.get('amihud_z', 0):.2f}"
+            )
+            liquidity_ok = False
+        elif self._liquidity_regime != "NORMAL":
+            reasons.append(
+                f"Liquidity governance active: regime={self._liquidity_regime} "
+                f"sl={self._liquidity_sl_mult:.2f}x size={self._liquidity_size_scalar:.2f}x"
+            )
 
         return {
             "halted": len(reasons) > 0,
@@ -1188,4 +1274,5 @@ class AssetEngine:
             "drought_ok": drought_ok,
             "drift_ok": drift_ok,
             "narrative_ok": narrative_ok,
+            "liquidity_ok": liquidity_ok,
         }

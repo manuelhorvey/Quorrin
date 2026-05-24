@@ -6,8 +6,8 @@ from dataclasses import asdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from paper_trading.config_manager import get_config
 from features.fxstreet_fetcher import confirm_pending_narrative, get_narrative_status
+from paper_trading.config_manager import get_config
 from paper_trading.health_score import compute_all as _compute_health_all
 from paper_trading.health_score import get_latest as _get_health_latest
 from paper_trading.market_hours import is_market_closed
@@ -46,6 +46,7 @@ _CACHE_TTL: dict[str, float] = {
     "/shadow-actions": 30.0,
     "/health.json": 30.0,
     "/narrative.json": 30.0,
+    "/liquidity.json": 30.0,
 }
 
 
@@ -408,6 +409,19 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 status = get_narrative_status()
                 data = json.dumps(status, indent=2, default=str)
                 _cache_set("/narrative.json", data)
+                self._send_json(data)
+            elif path == "/liquidity.json":
+                snapshot = _STORE.load_snapshot()
+                regimes = {}
+                if snapshot and snapshot.assets:
+                    for name, asset in sorted(snapshot.assets.items()):
+                        regimes[name] = {
+                            "regime": asset.get("liquidity_regime", "NORMAL"),
+                            "sl_mult": asset.get("liquidity_sl_mult", 1.0),
+                            "size_scalar": asset.get("liquidity_size_scalar", 1.0),
+                        }
+                data = json.dumps(regimes, indent=2, default=str)
+                _cache_set("/liquidity.json", data)
                 self._send_json(data)
             elif path == "/ping":
                 self._send_json(json.dumps({"status": "ok"}, indent=2))

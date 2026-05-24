@@ -38,6 +38,7 @@ class EngineConfig:
     execution_defaults: dict = field(default_factory=dict)
     portfolio_drawdown_limit: float = -0.15
     narrative_config: dict = field(default_factory=dict)
+    liquidity_config: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "EngineConfig":
@@ -61,6 +62,7 @@ class EngineConfig:
             execution_defaults=data.get("execution_defaults", {}),
             portfolio_drawdown_limit=data.get("portfolio_drawdown_limit", -0.15),
             narrative_config=data.get("narrative_config", {}),
+            liquidity_config=data.get("liquidity_config", {}),
         )
 
     def to_dict(self) -> dict:
@@ -79,6 +81,7 @@ class EngineConfig:
             "execution_defaults": self.execution_defaults,
             "portfolio_drawdown_limit": self.portfolio_drawdown_limit,
             "narrative_config": self.narrative_config,
+            "liquidity_config": self.liquidity_config,
         }
 
 

@@ -3,6 +3,7 @@ import { Sun, Moon, RefreshCw, Calendar, Clock, TrendingUp, Pause } from 'lucide
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { useSessionClock } from '../hooks/useSessionClock'
 import { useNarrative } from '../hooks/useNarrative'
+import { useLiquidity } from '../hooks/useLiquidity'
 import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 
@@ -35,6 +36,7 @@ function ConfirmButton() {
 export default function Header() {
   const { dataUpdatedAt, isError, isFetching, data } = usePortfolioState()
   const { data: narrative, refetch: refetchNarrative } = useNarrative()
+  const { data: liquidity } = useLiquidity()
   const { timeStr, dateStr, marketsOpen } = useSessionClock()
   const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light')
 
@@ -171,6 +173,24 @@ export default function Header() {
               {narrative.stale && (
                 <span className="text-gov-yellow ml-1 text-[10px]">(STALE)</span>
               )}
+            </div>
+          )}
+
+          {liquidity && Object.values(liquidity).some(l => l.regime !== 'NORMAL') && (
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-md border border-default/20 bg-panel text-2xs text-tertiary font-medium"
+              title={Object.entries(liquidity)
+                .filter(([, l]) => l.regime !== 'NORMAL')
+                .map(([a, l]) => `${a}: ${l.regime} sl=${l.sl_mult.toFixed(2)}x size=${l.size_scalar.toFixed(2)}x`)
+                .join(' | ')}
+            >
+              {Object.values(liquidity).some(l => l.regime === 'STRESSED') ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-gov-red" />
+              ) : (
+                <span className="w-1.5 h-1.5 rounded-full bg-gov-yellow" />
+              )}
+              LIQ&nbsp;
+              {Object.values(liquidity).some(l => l.regime === 'STRESSED') ? 'STRSD' : 'THIN'}
             </div>
           )}
 

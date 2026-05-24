@@ -56,6 +56,9 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             narrative_cfg = cfg.narrative_config
             if narrative_cfg:
                 config["narrative_config"] = narrative_cfg
+            liquidity_cfg = cfg.liquidity_config
+            if liquidity_cfg:
+                config["liquidity_config"] = liquidity_cfg
             if spec.get("regime_sizing"):
                 config["regime_sizing"] = True
                 config.setdefault("vol_scalar", True)

@@ -86,7 +86,7 @@ export FRED_API_KEY=your_key
 # Dashboard: http://localhost:5000
 ```
 
-**Rebuild frontend after changes:** `(cd paper_trading/dashboard && yarn build)`
+**Rebuild frontend after UI changes:** `(cd paper_trading/dashboard && yarn build)` — 24 components, sortable DataTable, Recharts charts, anchor nav
 **Run tests:** `pytest tests/ -q --tb=short`
 
 ### Environment
@@ -229,7 +229,7 @@ Full detail: [docs/SURVIVAL_SIMULATION.md](docs/SURVIVAL_SIMULATION.md)
 ## 12. INFRASTRUCTURE
 
 - Stateless inference, stateful execution with crash-safe snapshots
-- Local HTTP observability dashboard (React + Vite + Tailwind + react-query)
+- Local HTTP observability dashboard (React + Vite + Tailwind + react-query) — sortable tables, sticky anchor nav, real-time session clock, governance state visualization with animated status indicators
 - In-memory TTL cache with per-endpoint expiry (5-30s), gzip compression
 - Configurable refresh interval via `QUANTFORGE_REFRESH_INTERVAL`
 - JSONL decision tracing

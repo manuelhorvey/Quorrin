@@ -661,7 +661,7 @@ class AssetEngine:
             prob_short=round(float(latest["prob_short"]), 4),
             prob_neutral=round(float(latest["prob_neutral"]), 4),
             close_price=round(float(latest["close"]), 4),
-            timestamp=str(latest.name.date()),
+            timestamp=str(datetime.now(tz=ET).date()),
             position_size=float(pos_size),
         )
 
@@ -723,7 +723,7 @@ class AssetEngine:
             _regime = diag.analyze_regime_context(df["close"])
             _report = diag.build_shadow_report(
                 asset=self.name,
-                timestamp=str(latest.name.date()),
+                timestamp=str(datetime.now(tz=ET).date()),
                 signal_match=_sig_div["match"],
                 signal_divergence=_sig_div,
                 model_divergence=_mod_div,
@@ -892,8 +892,6 @@ class AssetEngine:
             hit = self.pos_mgr.check_sl_tp(self.current_price)
             if hit:
                 last_bar = str(datetime.now(tz=ET).date())
-                if self.signal_data is not None and len(self.signal_data) > 0:
-                    last_bar = str(self.signal_data.index[-1].date())
 
                 logger.info(
                     "%s: SL/TP HIT: %s at %s (Current: %s)", self.name, hit[0].upper(), hit[1], self.current_price
@@ -1004,7 +1002,7 @@ class AssetEngine:
 
         close = self.signal_data["close"]
         today_close = float(close.iloc[-1])
-        last_bar = str(self.signal_data.index[-1].date())
+        last_bar = str(datetime.now(tz=ET).date())
 
         if self.trades and self.trades[-1]["date"] == last_bar:
             return

@@ -394,3 +394,44 @@ class TestUpdatePnl:
         engine.update_pnl()
         assert engine.position is None
         assert engine.current_value > engine.initial_capital
+
+
+class TestStopOutCooldown:
+    @pytest.fixture
+    def engine(self):
+        return AssetEngine(
+            "NZDJPY=X",
+            "NZDJPY",
+            FEATURE_REGISTRY["NZDJPY=X"],
+            PAPER_PORTFOLIO["NZDJPY"]["alloc"],
+            journal_path=_SKIP_JOURNAL,
+        )
+
+    def test_recently_stopped_out_blocks_same_direction(self, engine):
+        engine._record_stop_out("short")
+        assert engine._recently_stopped_out("short") is True
+
+    def test_recently_stopped_out_allows_opposite_direction(self, engine):
+        engine._record_stop_out("short")
+        assert engine._recently_stopped_out("long") is False
+
+    def test_cooldown_active_after_sl_hit_in_update_pnl(self, engine):
+        import pandas as pd
+
+        engine.signal_data = pd.DataFrame(
+            {"close": [100, 99], "signal": [0, 0], "position_size": [1.0, 1.0]},
+            index=pd.date_range("2026-05-01", periods=2, freq="D"),
+        )
+        engine.position = {
+            "side": "long",
+            "entry": 100.0,
+            "sl": 99.0,
+            "tp": 110.0,
+            "entry_date": "2026-05-01",
+            "vol": 0.02,
+        }
+        engine.current_price = 99.0
+        engine.update_pnl()
+        assert engine.position is None
+        assert engine._recently_stopped_out("long") is True
+        assert engine._last_stop_out_side == "long"

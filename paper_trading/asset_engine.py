@@ -168,6 +168,8 @@ class AssetEngine:
         self._liquidity_halted = False
         self._liquidity_features: dict | None = None
         self._load_liquidity_state()
+        self._last_stop_out_side: str | None = None
+        self._last_stop_out_date: pd.Timestamp | None = None
 
     def _load_narrative_state(self) -> None:
         try:
@@ -463,6 +465,18 @@ class AssetEngine:
         self.trade_log = list(self.pos_mgr.trade_log)
         self._save_trade_journal(trade)
         _record_exit_outcome(self.name, reason)
+
+    def _record_stop_out(self, side: str) -> None:
+        self._last_stop_out_side = side
+        self._last_stop_out_date = pd.Timestamp.now(tz="UTC").normalize()
+
+    def _recently_stopped_out(self, side: str) -> bool:
+        if self._last_stop_out_side != side:
+            return False
+        if self._last_stop_out_date is None:
+            return False
+        today = pd.Timestamp.now(tz="UTC").normalize()
+        return self._last_stop_out_date >= today
 
     def refresh_price(self):
         # 1. Try absolute real-time price first
@@ -800,9 +814,15 @@ class AssetEngine:
             if self.pos_mgr.has_position():
                 self._close_position(decision.close_price, today, "signal_flip")
             if new_side:
-                self._open_position(new_side, decision.close_price, today, df)
-                if self.position is not None:
-                    self.position["confidence"] = decision.confidence
+                if self._recently_stopped_out(new_side):
+                    logger.debug(
+                        "%s: skipping %s entry — stopped out same direction today",
+                        self.name, new_side,
+                    )
+                else:
+                    self._open_position(new_side, decision.close_price, today, df)
+                    if self.position is not None:
+                        self.position["confidence"] = decision.confidence
 
         self.prob_history.append(
             {
@@ -896,6 +916,8 @@ class AssetEngine:
                 logger.info(
                     "%s: SL/TP HIT: %s at %s (Current: %s)", self.name, hit[0].upper(), hit[1], self.current_price
                 )
+                if self.pos_mgr.position is not None:
+                    self._record_stop_out(self.pos_mgr.position.side)
                 self._close_position(hit[1], last_bar, hit[0])
                 if self.current_value > self.peak_value:
                     self.peak_value = self.current_value

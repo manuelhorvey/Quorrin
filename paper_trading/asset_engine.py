@@ -817,7 +817,8 @@ class AssetEngine:
                 if self._recently_stopped_out(new_side):
                     logger.debug(
                         "%s: skipping %s entry — stopped out same direction today",
-                        self.name, new_side,
+                        self.name,
+                        new_side,
                     )
                 else:
                     self._open_position(new_side, decision.close_price, today, df)

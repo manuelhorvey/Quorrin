@@ -208,7 +208,7 @@ portfolio_circuit_breaker: force-closed by portfolio-level drawdown limit (-15%)
 drawdown: -0.08               # halt if drawdown <= -8%
 monthly_pf: 0.70              # halt if monthly profit factor < 0.70
 signal_drought: 30            # halt if no signal in 30 days
-prob_drift: 0.15              # halt if |mean_conf - 0.45| > 0.15
+prob_drift: 0.25              # halt if |mean_conf - 0.45| > 0.25 (requires ≥3 signals)
 ```
 
 **Portfolio-level circuit breaker:**

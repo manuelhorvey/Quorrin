@@ -99,7 +99,7 @@ Per-asset:
 drawdown: -0.08       # Per-asset drawdown limit
 monthly_pf: 0.70      # Minimum monthly profit factor
 signal_drought: 30    # Max days without a signal
-prob_drift: 0.15       # Max confidence drift from expected baseline
+prob_drift: 0.25       # Max confidence drift from expected baseline (skipped if < 3 signals)
 ```
 
 Portfolio-level:
@@ -372,8 +372,8 @@ Defined in `configs/paper_trading.yaml` per asset. The `check_halt_conditions()`
 |-----------|---------|----------|
 | Drawdown | Per-asset limit breached | Stop engine for that asset |
 | Monthly PF | Below 0.70 for trailing month | Investigate model degradation |
-| Signal drought | No signal for 30 days | (Reserved — not yet implemented) |
-| Prob drift | Confidence drift > 0.15 | (Reserved — not yet implemented) |
+| Signal drought | No signal for 30 days | Reduces validity score by -0.15. Checks `last_signal_date` vs `datetime.now()`. |
+| Prob drift | Confidence drift > 0.25 | Reduces validity score by -0.15. Requires ≥3 signals to measure. |
 
 **When an asset halts:**
 1. The engine continues running for non-halted assets

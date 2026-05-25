@@ -83,7 +83,7 @@ git clone https://github.com/user/quantforge.git && cd quantforge
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export FRED_API_KEY=your_key
-./monitor_all                              # start engine + dashboard
+./monitor_all                              # build frontend + start engine + dashboard
 # Dashboard: http://localhost:5000
 ```
 

@@ -49,11 +49,11 @@ graph TD
     end
 
     subgraph Execution_Layer [Paper Trading Engine]
-        K1 --> L[AssetEngine x6]
-        L --> L1[BTC, GC=F, EURAUD, NZDJPY, CADJPY, USDCAD]
-        L1 --> L2[Live inference every 30 min]
-        L2 --> L3[Vol-scaled sizing + SL/TP]
-        L3 --> L4[PnL tracking: state.json]
+        K1 --> L[AssetEngine x13 + BTC satellite]
+        L --> L1[13 core assets + BTC satellite bucket]
+        L1 --> L2[Live inference every 5 min]
+        L2 --> L3[Vol-scaled sizing + SL/TP + scale-out]
+        L3 --> L4[PnL tracking: state.json + trade_journal.parquet]
     end
 
     subgraph UI_Layer [Web Dashboard]
@@ -90,30 +90,21 @@ Features are computed independently per module and concatenated by common index.
 | interaction | Regime contrast, entropy, transition risk | Research only |
 | macro (loader) | rate_diff, dxy_mom, yield_slope, yield_delta | Macro expert head |
 
-### Model Layer (`models/`)
+### Model Layer (`quantforge/`, `shared/model.py`)
 
-**HybridRegimeEnsemble** (`models/hybrid_ensemble.py`)
-- Global backbone: XGBoost (max_depth=2, lr=0.03, 100 trees) — trained on all features
-- Regime-specific experts: Separate XGBoost (max_depth=3) per regime — trained on regime-conditional data
-- Macro expert head: XGBoost (max_depth=2, heavy regularization) — trained on macro features only
-- Blend: `regime_blend = 0.4 * global + 0.6 * expert`, then `final = 0.45 * macro + 0.55 * regime_blend`
-- Recency-weighted training samples (linear decay 1.0 → 0.5)
-- Regime-weighted sample weights (TREND=1.0, RANGE=0.8, VOLATILE=0.6, NEUTRAL=0.5)
+**Standard XGBoost** per asset (`shared/model.py:StandardModel`)
+- `xgboost.XGBClassifier` with `n_estimators=300, max_depth=2, learning_rate=0.02`
+- 3-class softprob: BUY / HOLD / SELL
+- Optional macro expert head (`HybridEnsemble`) with adaptive blend weight
+- Training via `shared/strategies/` abstract base classes
+- Walk-forward validated per asset (5yr train / 1yr test / 1yr step, bootstrap gate p<0.10)
 
 **RegimeClassifier** (`models/regime/regime_classifier.py`)
 - TREND score: KER × 1.3 × 0.45 + (ADX / 45) × 0.55
 - RANGE score: (1 - KER × 1.8) × 0.35 + (1 - ADX / 30) × 0.35 + (1 - compression) × 2.0 × 0.3
-- VOLATILE gate: vol_zscore > 1.35 OR compression > 1.45 (structural priority, overwrites probabilistic)
-- NEUTRAL: softmax confidence < 0.45 (catch-all)
+- VOLATILE gate: vol_zscore > 1.35 OR compression > 1.45 (overwrites probabilistic)
+- NEUTRAL: softmax confidence < 0.45
 - Smoothing: 10-bar rolling mode with persistence lock
-
-### Signal Layer (`signals/`)
-
-**RegimeAwareSignalGenerator**
-- Receives blended probabilities from the ensemble (3-class: BUY/NEUTRAL/SELL)
-- Applies confidence threshold (0.475 research, 0.45 engine)
-- Returns: signal direction, confidence, regime context
-- Stateless — regime routing happens in the ensemble, not here
 
 ### Risk & Monitoring (`risk/`, `monitoring/`)
 
@@ -140,23 +131,34 @@ Features are computed independently per module and concatenated by common index.
 - Updates live state (history.parquet, state.json)
 
 **PaperTradingEngine** (orchestrator)
-- Manages 6 AssetEngine instances (BTC, GC=F, EURAUD, NZDJPY, CADJPY, USDCAD)
-- Two label architectures: tb20 (triple-barrier) and fwd60 (60-day forward return)
-- Collects per-asset state into portfolio view
+- Manages 13 AssetEngine instances + BTC satellite
+- Label architectures: tb20 (triple-barrier) for FX/equities, fwd60 (60-day forward return) for GC
+- 7-layer governance: validity state machine, narrative, liquidity, PSI drift, drawdown, signal drought, confidence drift
+- SL/TP chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`
+- Scale-out: 4-tier profit-taking for 10 of 13 assets
+- Dynamic SL/TP calibration at startup (ATR-based, calibration_scale=1.2)
 - Runs every 300s (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)
-- Exposes state via JSON for dashboard
+- Exposes state via JSON for dashboard, persists to Parquet/JSON
 
-**REST API** (`paper_trading/serve.py`)
+**HTTP Server** (`paper_trading/serve.py`)
 - Zero-dependency stdlib `http.server`-based REST API
 - In-memory TTL cache per endpoint (5-30s), gzip compression for large responses
 - `/ping` health endpoint, paginated `/trades.json?limit=N&offset=M`
-- Auto-refresh every 30 seconds (frontend react-query `refetchInterval`)
+- Endpoints: `/state.json`, `/trades.json`, `/equity_history.json`, `/governance.json`, `/liquidity.json`, `/narrative.json`, `/psi.json`, `/risk-parity.json`, `/volatility.json`, `/health.json`, `/logs`
 
 **Dashboard** (`paper_trading/dashboard/` — React + Vite + Tailwind + react-query)
 - Full dark/light theme with localStorage persistence
-- TradeFeed with pagination (prev/next), SignalsTable with asset name search
-- Lazy-loaded FeatureCards on landing page (separate chunk, never loaded in main dashboard)
-- Live/Delayed/Disconnected status badge with refetch spinner
+- TradeFeed with pagination, SignalsTable with asset name search, sortable columns
+- GovernanceStateCards with halted status, validity state badges, animated RED pulse
+- Scale-out tier visualization per asset (filled vs pending blocks)
+- PSI Drift panel with feature-level distribution shift, trend arrows, color-coded badges
+- RiskParityPanel with governance-colored allocation bars
+- AlertFeed with governance halt/state-change/PSI-SEVERE events, dismissible
+- ConnectionStatus bar monitoring 5 endpoints (Live/Degraded/Offline)
+- Satellite card showing entry/SL/TP prices, exit reason history
+- Lazy-loaded FeatureCards on landing page
+- Zod schema validation on all API responses
+- SessionStorage-persisted sort state and alert history
 
 ### Validation (`backtests/`)
 
@@ -198,13 +200,14 @@ graph TD
 
 ```mermaid
 graph TD
-    T1[yfinance 30 min] --> T2[Feature computation live]
+    T1[yfinance 5 min] --> T2[Feature computation live]
     T3[Load model pickle] --> T4[Inference XGBoost]
     T2 & T4 --> T5[Signal + Confidence > 0.45?]
-    T5 --> T6[Validity state machine check]
-    T6 --> T7[Position management entry/SL/TP]
-    T7 --> T8[Update state.json]
-    T8 --> T9[Dashboard]
+    T5 --> T6[Governance layer: 7 conditions]
+    T6 --> T7[Validity state machine check]
+    T7 --> T8[Position management: entry/SL/TP/scale-out]
+    T8 --> T9[Update state.json + trade_journal.parquet]
+    T9 --> T10[Dashboard + telemetry]
 ```
 
 ---
@@ -214,7 +217,8 @@ graph TD
 | Action | Command/File |
 |--------|-------------|
 | Run walk-forward research | `python equity/walk_forward_xlf.py` |
-| Start paper trading + dashboard | `./monitor_all` |
+| Start paper trading + dashboard | `./monitor_all` (rebuilds frontend, starts engine + HTTP server) |
+| Wipe state & restart fresh | `rm -rf data/live/ && ./monitor_all` |
 | Dashboard URL | `http://127.0.0.1:5000` |
 | Run tests | `make test` |
 | Run full test suite with coverage | `make test-cov` |

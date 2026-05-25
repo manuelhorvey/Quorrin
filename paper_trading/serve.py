@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import sys
@@ -15,6 +16,7 @@ from paper_trading.market_hours import is_market_closed
 from paper_trading.portfolio_builder import build_paper_portfolio
 from paper_trading.risk_governance import get_latest as _get_risk_latest
 from paper_trading.state_store import StateStore
+from paper_trading.weekly_review import compute_weekly_review
 
 _STORE = StateStore(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_PORT = 5000
@@ -51,6 +53,7 @@ _CACHE_TTL: dict[str, float] = {
     "/governance.json": 30.0,
     "/risk-parity.json": 30.0,
     "/psi.json": 30.0,
+    "/weekly-review.json": 30.0,
 }
 
 
@@ -511,6 +514,10 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 data = json.dumps(psi_data, indent=2, default=str)
                 _cache_set("/psi.json", data)
                 self._send_json(data)
+            elif path == "/weekly-review.json":
+                data = json.dumps(compute_weekly_review(_STORE), indent=2, default=str)
+                _cache_set("/weekly-review.json", data)
+                self._send_json(data)
             elif path == "/ping":
                 self._send_json(json.dumps({"status": "ok"}, indent=2))
             else:
@@ -521,7 +528,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
                 self.rfile.read(length)
-            path = self.path
+            path = self.path.split("?")[0]
             if path == "/narrative/confirm":
                 ok = confirm_pending_narrative()
                 if ok:
@@ -531,6 +538,21 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                         json.dumps({"status": "error", "message": "No pending narrative to confirm"}, indent=2),
                         status=400,
                     )
+            elif path == "/weekly-review/acknowledge":
+                now = datetime.datetime.now().isoformat()
+                entry = {"acknowledged_at": now}
+                rlp = _STORE.review_log_path
+                existing = []
+                if os.path.exists(rlp):
+                    try:
+                        with open(rlp) as f:
+                            existing = json.load(f)
+                    except Exception:
+                        existing = []
+                existing.append(entry)
+                with open(rlp, "w") as f:
+                    json.dump(existing, f, indent=2)
+                self._send_json(json.dumps({"status": "ok", "acknowledged_at": now}, indent=2))
             else:
                 self.send_response(404)
                 self.send_header("Content-Type", "application/json")

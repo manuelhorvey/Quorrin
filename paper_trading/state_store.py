@@ -63,6 +63,7 @@ class StateStore:
         self.trade_journal_path = os.path.join(self.live_dir, "trade_journal.parquet")
         self.confidence_bucket_path = os.path.join(self.live_dir, "confidence_buckets.parquet")
         self.equity_history_path = os.path.join(self.live_dir, "equity_history.json")
+        self.review_log_path = os.path.join(self.live_dir, "review_log.json")
         self.cache_dir = os.path.join(self.live_dir, "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
         os.makedirs(self.live_dir, exist_ok=True)
@@ -110,6 +111,22 @@ class StateStore:
         except Exception:
             pass
         return []
+
+    def read_trades_since(self, date: str) -> pd.DataFrame:
+        columns = ["asset", "side", "entry", "exit", "return", "bars", "reason", "entry_date", "exit_date"]
+        if not os.path.exists(self.trade_journal_path):
+            return pd.DataFrame(columns=columns)
+        try:
+            df = pd.read_parquet(self.trade_journal_path)
+            if df.empty:
+                return pd.DataFrame(columns=columns)
+            missing = [c for c in columns if c not in df.columns]
+            if missing:
+                for c in missing:
+                    df[c] = None
+            return df[df["exit_date"] >= date].copy()
+        except Exception:
+            return pd.DataFrame(columns=columns)
 
     def append_confidence_bucket(self, bucket: dict) -> None:
         df = pd.DataFrame([bucket])

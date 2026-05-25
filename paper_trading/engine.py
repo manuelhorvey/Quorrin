@@ -598,6 +598,8 @@ class PaperTradingEngine:
                 "narrative_regime": asset._narrative_active.overall_regime if asset._narrative_active else None,
                 "narrative_stale": asset._narrative_stale,
                 "regime_geometry": asset.regime_geometry,
+                "stop_out_last_side": getattr(asset, "_last_stop_out_side", None),
+                "stop_out_last_date": (str(d) if (d := getattr(asset, "_last_stop_out_date", None)) else None),
             }
         total_value = sum(a.mtm_value for a in self.assets.values())
         rp_weights = {}

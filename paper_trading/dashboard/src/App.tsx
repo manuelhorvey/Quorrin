@@ -23,6 +23,8 @@ import Footer from './components/Footer'
 import LoadingScreen from './components/ui/LoadingScreen'
 import ErrorScreen from './components/ui/ErrorScreen'
 import ErrorBoundary from './components/ErrorBoundary'
+import WeeklyReviewPopup from './components/WeeklyReviewPopup'
+import { useLastReview } from './hooks/useLastReview'
 
 const NAV_SECTIONS = [
   { id: 'portfolio', label: 'Portfolio' },
@@ -163,6 +165,14 @@ export default function App() {
       </main>
 
       <Footer />
+
+      <WeeklyReviewPopupWrapper />
     </div>
   )
+}
+
+function WeeklyReviewPopupWrapper() {
+  const controls = useLastReview()
+  if (!controls.show) return null
+  return <WeeklyReviewPopup controls={controls} />
 }

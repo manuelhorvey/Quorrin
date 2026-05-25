@@ -118,6 +118,77 @@ export const SystemHealthSchema = z.object({
   n_critical: z.number(),
 })
 
+export const WeeklyReviewSummarySchema = z.object({
+  n_trades: z.number(),
+  total_pnl: z.number(),
+  total_return_pct: z.number(),
+  win_rate: z.number(),
+  tp_rate: z.number(),
+  sl_rate: z.number(),
+  signal_flip_rate: z.number(),
+  profit_factor: z.number().nullable(),
+  avg_r: z.number(),
+  best_r_multiple: z.number(),
+  worst_r_multiple: z.number(),
+})
+
+export const WeeklyReviewByAssetSchema = z.object({
+  asset: z.string(),
+  n_trades: z.number(),
+  win_rate: z.number(),
+  tp_rate: z.number(),
+  sl_rate: z.number(),
+  avg_r: z.number(),
+  profit_factor: z.number().nullable(),
+  pnl: z.number(),
+})
+
+export const WeeklyReviewExitBreakdownSchema = z.object({
+  tp: z.number(),
+  sl: z.number(),
+  signal_flip: z.number(),
+  other: z.number(),
+})
+
+export const WeeklyReviewStopOutSchema = z.object({
+  stop_out_cooldowns_triggered: z.number(),
+  estimated_churn_prevented: z.number(),
+  assets_in_cooldown: z.array(z.string()),
+})
+
+export const WeeklyReviewGovernanceSchema = z.object({
+  halted_assets: z.array(z.string()),
+  most_common_validity: z.string(),
+})
+
+export const WeeklyReviewRegimeCorrelationSchema = z.object({
+  regime: z.string(),
+  n_trades: z.number(),
+  win_rate: z.number(),
+  sl_rate: z.number(),
+})
+
+export const WeeklyReviewVsPriorSchema = z.object({
+  pnl_change: z.number(),
+  win_rate_change: z.number(),
+  sl_rate_change: z.number(),
+  tp_rate_change: z.number(),
+})
+
+export const WeeklyReviewSchema = z.object({
+  week_label: z.string(),
+  generated_at: z.string(),
+  summary: WeeklyReviewSummarySchema,
+  by_asset: z.array(WeeklyReviewByAssetSchema),
+  top_winners: z.array(z.record(z.string(), z.unknown())),
+  top_losers: z.array(z.record(z.string(), z.unknown())),
+  exit_reason_breakdown: WeeklyReviewExitBreakdownSchema,
+  stop_out_cooldowns: WeeklyReviewStopOutSchema,
+  governance_summary: WeeklyReviewGovernanceSchema,
+  regime_correlation: z.array(WeeklyReviewRegimeCorrelationSchema),
+  vs_prior_week: WeeklyReviewVsPriorSchema.nullable(),
+})
+
 export const HealthResponseSchema = z.object({
   assets: z.record(z.string(), AssetHealthSchema),
   system_health: SystemHealthSchema,

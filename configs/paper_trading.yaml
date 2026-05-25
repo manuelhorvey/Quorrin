@@ -141,7 +141,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -191,7 +191,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -231,7 +231,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -285,7 +285,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -334,7 +334,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -383,7 +383,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -431,7 +431,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -480,7 +480,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -519,7 +519,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -567,7 +567,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -614,7 +614,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -652,7 +652,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30
@@ -702,7 +702,7 @@ assets:
       drawdown: -0.08
       monthly_pf: 0.7
       signal_drought: 30
-      prob_drift: 0.15
+      prob_drift: 0.25
     config:
       min_confidence: 50
       max_holding_days: 30

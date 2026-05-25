@@ -1319,7 +1319,9 @@ class AssetEngine:
                 reasons.append(f"Signal drought: {days_since}d > {drought_days}d")
                 drought_ok = False
         drift_ok = True
-        prob_drift_limit = hc.get("prob_drift", 0.15)
+        if len(self.prob_history) < 3:
+            pass  # not enough signals to measure drift — skip
+        prob_drift_limit = hc.get("prob_drift", 0.25)
         metrics = self.get_metrics()
         mean_conf = metrics.get("mean_confidence", 0) / 100
         if pd.isna(mean_conf):

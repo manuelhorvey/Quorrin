@@ -88,7 +88,10 @@ export default function AlertFeed() {
     }
     if (newAlerts.length > 0) {
       setAlerts(prev => {
-        const combined = [...newAlerts, ...prev]
+        const existing = new Set(prev.map(a => `${a.asset}:${a.type}`))
+        const unique = newAlerts.filter(a => !existing.has(`${a.asset}:${a.type}`))
+        if (unique.length === 0) return prev
+        const combined = [...unique, ...prev]
         saveAlerts(combined)
         return combined
       })
@@ -112,7 +115,10 @@ export default function AlertFeed() {
     }
     if (newAlerts.length > 0) {
       setAlerts(prev => {
-        const combined = [...newAlerts, ...prev]
+        const existing = new Set(prev.map(a => `${a.asset}:${a.type}`))
+        const unique = newAlerts.filter(a => !existing.has(`${a.asset}:${a.type}`))
+        if (unique.length === 0) return prev
+        const combined = [...unique, ...prev]
         saveAlerts(combined)
         return combined
       })

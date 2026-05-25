@@ -51,12 +51,17 @@ Operational procedures for the paper trading system. This document is for the pe
 **Dashboard features:** Per-asset scale-out tier progress visualization (filled vs pending tiers shown as color-coded blocks in AssetCard). SL/TP hit rate gauge bars (GREEN/YELLOW/RED thresholds) in the Trade Outcomes table. PSI Drift panel with per-feature distribution shift scores, trend arrows, and color-coded classification badges. **Satellite card** shows entry price, stop price, target price when position active; SL/TP show `—` when flat; last exit reason (SL_HIT/TP_HIT/GATE_CLOSED) is displayed after each exit.
 
 **Dashboard UI (post-polish):**
-- **Anchor nav** — sticky horizontal nav bar below header (Portfolio/Signals/Trades/Governance/Risk/Charts). Click to jump, highlights current section on scroll.
-- **Sortable tables** — click any column header to sort ascending/descending. Sort state persists in `localStorage` per table. Signals table defaults to confidence descending; Trades defaults to exit date descending.
+- **Anchor nav** — sticky horizontal nav bar below header (Portfolio/Signals/Trades/Governance/Risk/Charts). Click to jump, highlights current section on scroll via `IntersectionObserver`.
+- **Sortable tables** — click any column header to sort ascending/descending. Sort state persists in `sessionStorage` per table (per-tab, cleared on tab close). Signals table defaults to confidence descending; Trades defaults to exit date descending.
 - **Trend indicators** — portfolio metric cards show up/down arrows with Return and Realized P&L. Card trend color matches direction.
 - **Governance row accents** — each governance row has a 3px left-border strip colored by premature-stop classification (GREEN/YELLOW/RED/INIT). RED rows have an animated pulse ring.
 - **Data-fetching opacity** — the main content area dims to 0.7 opacity during background refetches (zero-JS CSS transition via `data-fetching` attribute).
 - **Empty state differentiation** — "no results" from a search filter shows a `SearchSlash` icon; genuinely empty sections show an `Inbox` icon.
+- **ConnectionStatus bar** — header bar monitors 5 endpoints (`/ping`, `/state.json`, `/narrative.json`, `/governance.json`, `/risk_parity.json`). Shows **Live** (green, all OK), **Degraded** (yellow, 1–2 failing), **Offline** (red, 3+ failing). Hover tooltip lists per-endpoint status.
+- **AlertFeed** — captures governance halt/state-change and PSI-SEVERE events in real time. Persisted in `sessionStorage`. Dismissible per-event with severity badge.
+- **RiskParityPanel** — bar chart of target allocations colored by governance state (RED/YELLOW/GREEN). Equal-weight reference line. Total allocation footer.
+- **GovernanceStateCards** — per-asset governance summary with halted left-border accent, validity state badge, status tooltips.
+- **Zod validation** — every API response is validated against a Zod schema at fetch time. Mismatches are logged to console and surface as a panel-level error fallback instead of silent NaN/undefined propagation.
 
 ### Governance Overlays
 
@@ -153,7 +158,11 @@ curl http://127.0.0.1:5000/ping
 - **Narrative badge**: check overall_regime indicator (red/yellow/green/grey) and stale flag; check for **NARR PENDING** button or **NARR ERR** badge
 - **Liquidity badge**: check for **LIQ THIN** (yellow) or **LIQ STRSD** (red); hover for per-asset breakdown
 - **Governance rows**: left-border accent strips show per-asset premature-stop classification at a glance (green=good, yellow=caution, red=critical)
-- **PSI Drift panel**: check for any MODERATE (amber) or SEVERE (red) feature classifications; note trend arrows — SEVERE + INCREASING arrow is a genuine drift signal, SEVERE + STABLE may be a data hiccup; look for **PSI HALT** badge on halted assets
+- **PSI Drift panel**: check for any MODERATE (amber) or SEVERE (red) feature classifications; note trend arrows — SEVERE + INCREASING arrow (red ↑) is a genuine drift signal, SEVERE + STABLE may be a data hiccup; look for **PSI HALT** badge on halted assets
+- **ConnectionStatus bar**: verify header bar shows **Live** (green). If **Degraded** (yellow), hover to identify which endpoints are failing. If **Offline** (red), the dashboard has lost contact with the backend.
+- **AlertFeed**: check the alert tray (below nav) for governance halts, state changes, or PSI-SEVERE events that may require attention. Dismiss acknowledged alerts.
+- **RiskParityPanel**: verify target allocations sum to ~100%. Bars colored by governance state. Cross-reference halted assets against the Governance panel.
+- **GovernanceStateCards**: check per-asset halted status (red left-border), validity state badge, and status tooltips.
 
 ### Log Check
 

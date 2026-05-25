@@ -342,3 +342,61 @@ validity_score = 0.80 − drawdown_penalty − pf_penalty − drought_penalty �
 ```
 
 Each layer is independently configurable, independently gated (by confidence, staleness, or threshold), and independently observable in the dashboard.
+
+---
+
+## Tier 8 — Dashboard Operations Hardening (rc.6)
+
+### Objective
+
+Harden the React dashboard against silent failures, re-render cascades, stale data, and poor UX during edge cases (loading, error, empty, closed-market).
+
+### Implementation
+
+#### Runtime Type Safety
+
+- `paper_trading/dashboard/src/lib/schemas.ts` — Zod schemas for all 8 API endpoints (`PortfolioStateSchema`, `NarrativeStateSchema`, `LiquidityStateSchema`, `PSIStateSchema`, `GovernanceStateSchema`, `GovernanceHistorySchema`, `RiskParityDataSchema`, `ClosedTradesSchema`). Every hook uses `.safeParse()` on fetch response — invalid server shapes surface as logged errors + user-visible fallback, not silent NaN/undefined.
+- `paper_trading/dashboard/src/App.tsx` — Each major panel wrapped in a per-component `<ErrorBoundary>` with panel-style `<PanelFallback>` component (title + description + icon). One bad endpoint no longer takes down the entire dashboard.
+
+#### Re-render Prevention
+
+- `paper_trading/dashboard/src/hooks/useMarketClosed.ts` — Changed from `usePortfolioState()` subscription (re-renders on every state.json poll) to `useQueryClient.getQueryData()` selector pattern. Reads cached data without subscribing to the query observer.
+- `paper_trading/dashboard/src/hooks/usePortfolioState.ts` — Added `retry: false`, top-level shape check in queryFn.
+
+#### Cache Strategy
+
+| Endpoint | staleTime | Notes |
+|----------|-----------|-------|
+| `narrative.json` | 300s | Weekly data, no need for fast polls |
+| `psi.json` | 60s | Drift changes slowly |
+| `liquidity.json` | 60s | Regime is stable intraday |
+| `governance.json` | 25s | Only affects visual badges |
+| `state.json` | 0 | Default — portfolio updates every cycle |
+| `closed_trades.json` | 40s | Changes only on exit |
+| `risk_parity.json` | 60s | Rebalance is rare |
+| `governance_history.json` | 300s | Historical, append-only |
+
+Global: `refetchOnWindowFocus: true`, `gcTime: 300_000`.
+
+#### New Dashboard Components
+
+- `paper_trading/dashboard/src/components/ConnectionStatus.tsx` — Header bar monitoring 5 endpoints (`/ping`, `/state.json`, `/narrative.json`, `/governance.json`, `/risk_parity.json`). Shows **Live** (green, all 5 OK), **Degraded** (yellow, 1–2 failing), **Offline** (red, 3+ failing). Hover tooltip lists per-endpoint status.
+- `paper_trading/dashboard/src/components/AlertFeed.tsx` — Captures governance halt/state-change events and PSI-SEVERE events from real-time query data. Persisted in `sessionStorage`. Each alert is dismissible. Shows event type, asset, timestamp, severity badge.
+- `paper_trading/dashboard/src/components/ui/PanelFallback.tsx` — Reusable error fallback with icon, title, description. Used by all per-component ErrorBoundaries.
+- `paper_trading/dashboard/src/components/sections/AnchorNav.tsx` — Sticky horizontal nav below header (Portfolio / Signals / Trades / Governance / Risk / Charts). Uses `IntersectionObserver` to track which section is active. Click scrolls to section.
+- `paper_trading/dashboard/src/components/ui/DataTable.tsx` — Sort persistence changed from `localStorage` to `sessionStorage` (per-tab sort state, not persistent across sessions).
+- `paper_trading/dashboard/src/components/GovernanceStateCards.tsx` — Per-asset governance summary cards. Red 3px left-border on halted assets. Validity state badge (GREEN/YELLOW/RED/INIT). Tooltips on FLOOR/HALTED status text.
+- `paper_trading/dashboard/src/components/RiskParityPanel.tsx` — Bar chart of risk parity allocations. Bars colored by governance state (RED/YELLOW/GREEN). Equal-weight reference line. Total allocation footer.
+
+#### Safe Formatting Utilities
+
+- `paper_trading/dashboard/src/utils/format.ts` — `safeToFixed(val, digits)` returns `"—"` for null/NaN/Infinity; `formatHeldDuration(seconds)` returns `"3d 4h"` or `"45m"`; `formatTimeAgo(isoString)` returns relative time; `formatPct(val)` returns signed percentage.
+
+#### Skeleton & Error States
+
+Components that previously returned `null` while loading now show skeleton loaders: `GovernanceStateCards`, `PSIDriftCard`, `RiskParityPanel`, `GovernancePanel`.
+
+#### Governance Colors Aligned to Spec
+
+- `paper_trading/dashboard/src/index.css` — `--color-gov-green: #22c55e`, `--color-gov-yellow: #eab308`, `--color-gov-red: #ef4444`.
+- `paper_trading/dashboard/tailwind.config.js` — `gov-green`, `gov-yellow`, `gov-red` mapped to same hex values.

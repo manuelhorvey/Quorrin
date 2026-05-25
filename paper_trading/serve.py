@@ -273,6 +273,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 def _sig(t):
                     return (
                         t.get("asset"),
+                        t.get("entry_date"),
                         t.get("exit_date"),
                         t.get("reason"),
                         round(t.get("entry", 0), 4),
@@ -299,6 +300,16 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                                     seen.add(s)
                                     deduped.append(t)
                         deduped = sorted(deduped, key=lambda x: x.get("exit_date", ""), reverse=True)
+
+                # Secondary dedup: same asset + entry_date + exit_date + reason = duplicate
+                seen2 = set()
+                final = []
+                for t in deduped:
+                    k = (t.get("asset"), t.get("entry_date"), t.get("exit_date"), t.get("reason"))
+                    if k not in seen2:
+                        seen2.add(k)
+                        final.append(t)
+                deduped = final
 
                 data = json.dumps(deduped[offset : offset + limit], default=str)
                 _cache_set("/trades.json", data)

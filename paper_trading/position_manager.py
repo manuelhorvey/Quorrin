@@ -55,9 +55,9 @@ class PositionManager:
         pnl = self.current_value * ret * self.position_size * self.exposure_multiplier * fraction
 
         try:
-            bars = (pd.Timestamp(exit_date) - pd.Timestamp(self.position.entry_date)).days
+            bars = max(1, (pd.Timestamp(exit_date) - pd.Timestamp(self.position.entry_date)).days)
         except Exception:
-            bars = 0
+            bars = 1
 
         risk_pct = (
             abs(entry - self.position.stop_loss) / entry if self.position and self.position.stop_loss != entry else 0.0

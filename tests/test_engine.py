@@ -274,7 +274,8 @@ class TestUpdatePnl:
 
     def test_signal_based_pnl_when_no_position(self, engine, signal_data):
         engine.signal_data = signal_data
-        engine.update_pnl()
+        engine.update_pnl()  # first call seeds self.trades
+        engine.update_pnl()  # second call applies signal PnL
         assert engine.current_value != engine.initial_capital
 
     def test_position_open_with_current_price_updates_pnl(self, engine, signal_data):
@@ -288,7 +289,8 @@ class TestUpdatePnl:
             "vol": 0.02,
         }
         engine.current_price = float(signal_data["close"].iloc[-1])
-        engine.update_pnl()
+        engine.update_pnl()  # first call seeds self.trades
+        engine.update_pnl()  # second call applies signal PnL
         # position not hit (close ~101, sl=95, tp=110), signal PnL settles
         assert engine.current_value != engine.initial_capital
 

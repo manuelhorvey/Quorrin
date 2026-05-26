@@ -170,6 +170,7 @@ class AssetEngine:
         self._load_liquidity_state()
         self._last_stop_out_side: str | None = None
         self._last_stop_out_date: pd.Timestamp | None = None
+        self._initial_settlement_done: bool = False
 
     def _load_narrative_state(self) -> None:
         try:
@@ -1031,7 +1032,10 @@ class AssetEngine:
 
         if self.trades and self.trades[-1]["date"] == last_bar:
             return
-        # (Existing daily pnl logic continues...)
+        # Skip settlement on first cycle — no prior live signal to settle.
+        if not self._initial_settlement_done:
+            self._initial_settlement_done = True
+            return
         sig = self.signal_data["signal"].iloc[-2]
         direction = 1 if sig == 2 else (-1 if sig == 0 else 0)
         pos_size = (

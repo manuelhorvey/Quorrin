@@ -38,7 +38,8 @@ class TestUpdatePnlDeterministic:
         prices = [100, 101, 102, 103, 104]
         signals = [2, 2, 2, 2, 2]
         engine.signal_data = self._make_signal_data(prices, signals)
-        engine.update_pnl()
+        engine.update_pnl()  # first call seeds _initial_settlement_done
+        engine.update_pnl()  # second call applies signal PnL
         assert engine.current_value > engine.initial_capital
         assert len(engine.trades) == 1
 
@@ -47,7 +48,8 @@ class TestUpdatePnlDeterministic:
         prices = [100, 102, 104, 106, 108]
         signals = [2, 2, 2, 0, 0]
         engine.signal_data = self._make_signal_data(prices, signals)
-        engine.update_pnl()
+        engine.update_pnl()  # first call seeds _initial_settlement_done
+        engine.update_pnl()  # second call applies signal PnL
         assert len(engine.trades) == 1
         assert engine.trades[0]["direction"] == -1
 
@@ -65,10 +67,11 @@ class TestUpdatePnlDeterministic:
         prices = [100, 105, 110]
         signals = [2, 2, 2]
         engine.signal_data = self._make_signal_data(prices, signals)
-        engine.update_pnl()
-        cv_after_first = engine.current_value
-        engine.update_pnl()
-        assert engine.current_value == cv_after_first
+        engine.update_pnl()  # seeds _initial_settlement_done
+        engine.update_pnl()  # applies signal PnL
+        cv_after_settle = engine.current_value
+        engine.update_pnl()  # should be idempotent (same-day guard)
+        assert engine.current_value == cv_after_settle
 
 
 class TestPositionManagerDeterministic:

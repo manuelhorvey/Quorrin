@@ -213,7 +213,7 @@ assets:
         enabled: false
   NZDJPY:
     ticker: NZDJPY=X
-    allocation: 0.11
+    allocation: 0.07
     sl_mult: 0.3
     tp_mult: 1.75
     regime_sizing: true
@@ -263,7 +263,7 @@ assets:
         activate_breakeven_after: 0
   CADJPY:
     ticker: CADJPY=X
-    allocation: 0.09
+    allocation: 0.07
     sl_mult: 0.3
     tp_mult: 1.25
     regime_sizing: true

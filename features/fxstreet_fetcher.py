@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 
 import requests
@@ -27,7 +28,7 @@ NARRATIVE_PENDING = os.path.join(NARRATIVE_DIR, "narrative_pending.json")
 NARRATIVE_ACTIVE = os.path.join(NARRATIVE_DIR, "narrative_active.json")
 NARRATIVE_ERROR = os.path.join(NARRATIVE_DIR, "narrative_error.json")
 LLM_SYSTEM_PROMPT = (
-    "You are a macro analyst. Extract structured data from this FX market Week Ahead summary. "
+    "You are a macro analyst. Extract structured data from this FX market commentary. "
     "Return ONLY valid JSON matching this exact schema:\n"
     '{\n  "usd_strength_narrative": 0.0-1.0,\n  "geopol_risk_score": 0.0-1.0,\n'
     '  "fed_hawkishness": 0.0-1.0,\n  "rbnz_hawkishness": 0.0-1.0,\n'
@@ -51,28 +52,48 @@ def fetch_fxstreet_article() -> str | None:
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        articles = soup.find_all("a", href=True, string=re.compile(r"Week ahead", re.I))
-        if not articles:
-            articles = soup.find_all("a", href=True, string=re.compile(r"Weekly (outlook|forecast)", re.I))
-        if articles:
-            href = articles[0]["href"]
+
+        # Strategy 1: find full article by link title, attempt to scrape
+        articles = soup.find_all("a", href=True, string=re.compile(r"Week (ahead|ly)", re.I))
+        # Strategy 2: look for "weekly forecast" links on the analysis page itself
+        analysis_links = soup.find_all("a", href=True, string=re.compile(r"Weekly [Ff]orecast", re.I))
+        candidates = articles or analysis_links
+        for link in candidates:
+            href = link["href"]
             if href.startswith("/"):
                 href = "https://www.fxstreet.com" + href
-            article_resp = requests.get(href, headers=headers, timeout=15)
-            article_resp.raise_for_status()
-            article_soup = BeautifulSoup(article_resp.text, "html.parser")
-            content = article_soup.find("div", class_=re.compile(r"article-content|entry-content|post-content"))
-            if content:
-                for tag in content.find_all(["script", "style", "nav", "footer"]):
-                    tag.decompose()
-                return content.get_text(separator="\n", strip=True)
+            try:
+                article_resp = requests.get(href, headers=headers, timeout=15)
+                article_resp.raise_for_status()
+                article_soup = BeautifulSoup(article_resp.text, "html.parser")
+                body = article_soup.find("div", class_=re.compile(r"article-content|entry-content|post-content|fxs_contentView"))
+                if body:
+                    for tag in body.find_all(["script", "style", "nav", "footer"]):
+                        tag.decompose()
+                    text = body.get_text(separator="\n", strip=True)
+                    if len(text) > 200:
+                        return text
+            except Exception:
+                continue
+
+        # Strategy 3: concatenate article preview snippets from the listing page
+        parts = []
+        for div in soup.find_all("div", class_=re.compile(r"fxs_entryPlain_txt|fxs_entryFeatured")):
+            text = div.get_text(separator="\n", strip=True)
+            if text and len(text) > 30:
+                parts.append(text)
+        if parts:
+            combined = "\n\n".join(parts)
+            logger.info("FXStreet: using %d listing snippets (%d chars)", len(parts), len(combined))
+            return combined
+
         return None
     except Exception as e:
         logger.error("Failed to fetch FXStreet: %s", e)
         return None
 
 
-def call_llm(text: str, api_key: str, model: str = "deepseek-v4-flash-free") -> dict | None:
+def call_llm(text: str, api_key: str, model: str = "deepseek-v4-flash-free", retries: int = 2) -> dict | None:
     url = "https://opencode.ai/zen/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -80,25 +101,29 @@ def call_llm(text: str, api_key: str, model: str = "deepseek-v4-flash-free") -> 
     }
     payload = {
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
+        "reasoning_effort": "low",
         "messages": [
             {"role": "system", "content": LLM_SYSTEM_PROMPT},
             {"role": "user", "content": text},
         ],
     }
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
-        body = resp.json()
-        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
-        json_match = re.search(r"\{.*\}", content, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        logger.error("LLM response contained no JSON: %s", content[:200])
-        return None
-    except Exception as e:
-        logger.error("LLM call failed: %s", e)
-        return None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
+            resp.raise_for_status()
+            body = resp.json()
+            content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            logger.warning("LLM attempt %d: no JSON in response (len=%d)", attempt + 1, len(content))
+        except Exception as e:
+            logger.warning("LLM attempt %d failed: %s", attempt + 1, e)
+        if attempt < retries:
+            time.sleep(2 ** attempt)
+    logger.error("LLM call failed after %d attempts", retries + 1)
+    return None
 
 
 def run_weekly_narrative_pipeline(api_key: str | None = None) -> bool:
@@ -115,14 +140,16 @@ def run_weekly_narrative_pipeline(api_key: str | None = None) -> bool:
     if api_key:
         llm_result = call_llm(text, api_key)
         if llm_result is None:
-            _write_error("llm_failed", "LLM call returned no result")
-            logger.warning("LLM extraction failed — narrative not updated")
-            return False
-        llm_result["narrative_version"] = f"{week_start}_{content_hash}"
-        features = MacroNarrativeFeatures(
-            week_start=week_start,
-            **{k: v for k, v in llm_result.items() if k in MacroNarrativeFeatures.__dataclass_fields__},
-        )
+            _write_error("llm_failed", "LLM call returned no result — using neutral fallback")
+            logger.warning("LLM extraction failed — falling back to neutral narrative")
+            features = neutral_narrative(week_start)
+            features.narrative_version = f"{week_start}_{content_hash}_fallback"
+        else:
+            llm_result["narrative_version"] = f"{week_start}_{content_hash}"
+            features = MacroNarrativeFeatures(
+                week_start=week_start,
+                **{k: v for k, v in llm_result.items() if k in MacroNarrativeFeatures.__dataclass_fields__},
+            )
     else:
         logger.info("No API key set — writing neutral fallback narrative for %s", week_start)
         features = neutral_narrative(week_start)

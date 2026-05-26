@@ -26,7 +26,7 @@ from paper_trading.data_fetcher import (  # noqa: F401
     norm_index,
     safe_download,
 )
-from paper_trading.decision import PositionIntent
+from paper_trading.decision import PositionIntent, PositionSide
 from paper_trading.execution.paper_broker import PaperBroker
 from paper_trading.execution_bridge import ExecutionBridge
 from paper_trading.market_hours import is_market_closed
@@ -180,7 +180,7 @@ class PaperTradingEngine:
         pos_dict = pos_data.get("position")
         if pos_dict:
             intent = PositionIntent(
-                side=pos_dict["side"],
+                side=PositionSide(pos_dict["side"]),
                 entry_price=pos_dict["entry"],
                 entry_date=pos_dict["entry_date"],
                 stop_loss=pos_dict["sl"],

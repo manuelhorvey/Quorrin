@@ -19,7 +19,7 @@ from paper_trading.asset_pnl_controller import AssetPnlController
 from paper_trading.asset_training_pipeline import AssetTrainingPipeline
 from paper_trading.config_manager import get_config
 from paper_trading.data_fetcher import flatten, safe_download
-from paper_trading.decision import PositionIntent, TradeDecision
+from paper_trading.decision import PositionIntent, PositionSide, SignalType, TradeDecision
 from paper_trading.dynamic_sltp import build_dynamic_sltp_from_config
 from paper_trading.position_manager import PositionManager
 from paper_trading.regime_classifier import RegimeClassifier
@@ -390,7 +390,11 @@ class AssetEngine:
     def _apply_decision(self, decision: TradeDecision, df):
         today = decision.timestamp
         current_side = self.pos_mgr.current_side()
-        new_side = "long" if decision.signal == "BUY" else ("short" if decision.signal == "SELL" else None)
+        new_side = (
+            PositionSide.LONG if decision.signal == SignalType.BUY
+            else PositionSide.SHORT if decision.signal == SignalType.SELL
+            else None
+        )
 
         # Minimum confidence gate — skip low-confidence entries
         min_conf = self.config.get("min_confidence", 0.0)
@@ -478,7 +482,7 @@ class AssetEngine:
     def _ensure_position_synced(self):
         if self.position is not None and not self.pos_mgr.has_position():
             intent = PositionIntent(
-                side=self.position["side"],
+                side=PositionSide(self.position["side"]),
                 entry_price=self.position["entry"],
                 entry_date=self.position.get("entry_date", ""),
                 stop_loss=self.position["sl"],

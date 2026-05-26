@@ -1,4 +1,28 @@
 from dataclasses import dataclass
+from enum import Enum
+
+
+class SignalType(str, Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    FLAT = "FLAT"
+
+
+class PositionSide(str, Enum):
+    LONG = "long"
+    SHORT = "short"
+
+
+class ValidityState(str, Enum):
+    GREEN = "GREEN"
+    YELLOW = "YELLOW"
+    RED = "RED"
+
+
+class LiquidityRegime(str, Enum):
+    NORMAL = "NORMAL"
+    THIN = "THIN"
+    STRESSED = "STRESSED"
 
 
 @dataclass
@@ -9,7 +33,7 @@ class TradeDecision:
     """
 
     asset: str
-    signal: str
+    signal: SignalType
     label: int
     confidence: float
     prob_long: float
@@ -27,7 +51,7 @@ class PositionIntent:
     Concrete entry, stop-loss, take-profit, and vol.
     """
 
-    side: str
+    side: PositionSide
     entry_price: float
     entry_date: str
     stop_loss: float
@@ -36,9 +60,9 @@ class PositionIntent:
 
     @classmethod
     def from_price_and_vol(
-        cls, side: str, entry_price: float, entry_date: str, vol: float, sl_mult: float = 1.0, tp_mult: float = 2.5
+        cls, side: PositionSide, entry_price: float, entry_date: str, vol: float, sl_mult: float = 1.0, tp_mult: float = 2.5
     ) -> "PositionIntent":
-        if side == "long":
+        if side == PositionSide.LONG:
             sl = entry_price * (1 - vol * sl_mult)
             tp = entry_price * (1 + vol * tp_mult)
         else:

@@ -12,7 +12,7 @@ from features.registry import FEATURE_REGISTRY
 from paper_trading import diagnostics as diag
 from paper_trading import wrappers as _w
 from paper_trading.data_fetcher import fetch_live, fetch_ref
-from paper_trading.decision import TradeDecision
+from paper_trading.decision import SignalType, TradeDecision
 from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
 from paper_trading.risk_governance import evaluate as _risk_evaluate
 from paper_trading.shadow_actions import compute_shadow_actions as _compute_shadow
@@ -111,7 +111,7 @@ class AssetInferencePipeline:
 
         decision = TradeDecision(
             asset=asset.name,
-            signal=result.signal_type,
+            signal=SignalType(result.signal_type),
             label=result.label,
             confidence=result.confidence_pct,
             prob_long=round(float(latest["prob_long"]), 4),

@@ -65,7 +65,7 @@ def analyze_model_distribution(
         if asset not in _distribution_history:
             _distribution_history[asset] = []
         _distribution_history[asset].append(entry)
-        if len(_distribution_history[asset]) > window * 2:
+        if len(_distribution_history[asset]) > window:
             _distribution_history[asset] = _distribution_history[asset][-window:]
         hist = _distribution_history[asset]
 

@@ -102,6 +102,7 @@ select = ["I", "E", "F", "W", "UP", "N", "SIM"]
 "paper_trading/asset_engine.py" = ["N803", "N806"]
 "paper_trading/asset_inference_pipeline.py" = ["N803", "N806"]
 "paper_trading/asset_training_pipeline.py" = ["N803", "N806"]
+"paper_trading/serve_handler.py" = ["N802"]
 "paper_trading/diagnostics.py" = ["N803", "N806"]
 "paper_trading/wrappers.py" = ["N803", "N806"]
 # ML convention: X (uppercase) for feature matrices, y for targets

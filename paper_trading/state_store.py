@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 
@@ -57,7 +58,7 @@ def sanitize(obj):
 
 
 class StateStore:
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, snapshot_cache_ttl: float = 1.0):
         self.base_dir = base_dir
         self.live_dir = os.path.join(base_dir, "data", "live")
         self.state_path = os.path.join(self.live_dir, "state.json")
@@ -67,10 +68,13 @@ class StateStore:
         self.review_log_path = os.path.join(self.live_dir, "review_log.json")
         self.trade_outcomes_path = os.path.join(self.live_dir, "trade_outcomes.json")
         self.cache_dir = os.path.join(self.live_dir, "cache")
+        self._snapshot_cache = None
+        self._snapshot_cache_ttl = snapshot_cache_ttl
         os.makedirs(self.cache_dir, exist_ok=True)
         os.makedirs(self.live_dir, exist_ok=True)
 
     def save_snapshot(self, snapshot: EngineSnapshot) -> None:
+        self._snapshot_cache = (snapshot, time.monotonic())
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         tmp_path = self.state_path + ".tmp"
         data = sanitize(asdict(snapshot))
@@ -81,12 +85,19 @@ class StateStore:
         os.replace(tmp_path, self.state_path)
 
     def load_snapshot(self) -> EngineSnapshot | None:
+        if self._snapshot_cache is not None:
+            cached, expiry = self._snapshot_cache
+            if time.monotonic() < expiry:
+                return cached
+            self._snapshot_cache = None
         if not os.path.exists(self.state_path):
             return None
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
-            return EngineSnapshot.from_dict(data)
+            snapshot = EngineSnapshot.from_dict(data)
+            self._snapshot_cache = (snapshot, time.monotonic() + self._snapshot_cache_ttl)
+            return snapshot
         except Exception as e:
             logger.warning("Failed to load state snapshot: %s", e)
             return None

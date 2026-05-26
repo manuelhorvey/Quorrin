@@ -140,15 +140,27 @@ def train_sandbox_model(
     if len(X_train) < 200:
         X_train, y_train = X, y
 
-    split = int(len(X_train) * 0.8)
+    y_vals = set(y_train.unique())
+    if y_vals != {0, 1, 2}:
+        logger.warning("  %s: training labels only %s — need all 3 classes, skipping", ticker, sorted(y_vals))
+        return None
+    from sklearn.model_selection import train_test_split
+    min_class_count = y_train.value_counts().min()
+    strat = y_train if min_class_count >= 2 else None
+    X_tr, X_ev, y_tr, y_ev = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=42, stratify=strat,
+    )
+    if set(y_tr.unique()) != {0, 1, 2}:
+        logger.warning("  %s: train split has only classes %s — skipping", ticker, sorted(set(y_tr.unique())))
+        return None
     model = xgb.XGBClassifier(
         n_estimators=300, max_depth=2, learning_rate=0.02,
         objective="multi:softprob", num_class=3,
         random_state=42, n_jobs=1, tree_method="hist", verbosity=0,
     )
     model.fit(
-        X_train.iloc[:split], y_train.iloc[:split],
-        eval_set=[(X_train.iloc[split:], y_train.iloc[split:])],
+        X_tr, y_tr,
+        eval_set=[(X_ev, y_ev)],
         verbose=False,
     )
 
@@ -520,15 +532,28 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
             if len(X_train_hist) < 200:
                 logger.info("  %s %d: insufficient train data (%d), skipping", name, ty, len(X_train_hist))
                 continue
-            split = int(len(X_train_hist) * 0.8)
+            from sklearn.model_selection import train_test_split
+            y_vals = set(y_train_hist.unique())
+            if y_vals != {0, 1, 2}:
+                logger.info("  %s %d: skipping — train labels only %s, need all 3 classes", name, ty, sorted(y_vals))
+                continue
+            min_class_count = y_train_hist.value_counts().min()
+            strat = y_train_hist if min_class_count >= 2 else None
+            X_tr, X_ev, y_tr, y_ev = train_test_split(
+                X_train_hist, y_train_hist, test_size=0.2, random_state=42, stratify=strat,
+            )
+            # After-split guard: training must have all 3 classes for multi:softprob
+            if set(y_tr.unique()) != {0, 1, 2}:
+                logger.info("  %s %d: skipping — train split labels only %s", name, ty, sorted(set(y_tr.unique())))
+                continue
             model = xgb.XGBClassifier(
                 n_estimators=300, max_depth=2, learning_rate=0.02,
                 objective="multi:softprob", num_class=3,
                 random_state=42, n_jobs=1, tree_method="hist", verbosity=0,
             )
             model.fit(
-                X_train_hist.iloc[:split], y_train_hist.iloc[:split],
-                eval_set=[(X_train_hist.iloc[split:], y_train_hist.iloc[split:])],
+                X_tr, y_tr,
+                eval_set=[(X_ev, y_ev)],
                 verbose=False,
             )
             from backtests.forward_test import _forward_metrics, _regime_metrics, _classify_vol_regime

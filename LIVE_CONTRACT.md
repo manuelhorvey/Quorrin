@@ -45,17 +45,10 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 | BTC (satellite) | BTC-USD | `rate_diff, 2y_yield_delta_63, vix_delta_5, dxy_mom_21, vix_ma21, btc_mom_10, btc_mom_21, btc_vs_spy_21, btc_mom_63, btc_vs_spy_63` | tb20 | pt_sl=[2,2], vbar=20 |
 | GC | GC=F | `real_yield_delta_63, breakeven_delta_63, dxy_mom_63, gc_mom_63` | fwd60 | window=60, threshold=0.02 |
 | EURAUD | EURAUD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, euraud=x_mom_21, euraud=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| NZDJPY | NZDJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, nzdjpy=x_mom_21, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| CADJPY | CADJPY=X | `vix_ma21, ca_jp_spread_mom_21, us_jp_10y_spread, vix_delta_5, ca_jp_10y_spread, dxy_mom_21, cadjpy=x_mom_10, cadjpy=x_mom_21, cadjpy=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
 | AUDJPY | AUDJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, audjpy=x_mom_21, audjpy=x_mom_63, nzdjpy_lead_3, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
 | USDCAD | USDCAD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdcad=x_mom_21, usdcad=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| GBPJPY | GBPJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, gbpjpy=x_mom_21, gbpjpy=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| USDJPY | USDJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, dxy_mom_21, usdjpy=x_mom_21, usdjpy=x_mom_63, gc_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| USDCHF | USDCHF=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdchf=x_mom_21, usdchf=x_mom_63, gc_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| GBPUSD | GBPUSD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, gbpusd=x_mom_21, gbpusd=x_mom_63` | tb20 | pt_sl=[2,2], vbar=20 |
 | CHFJPY | CHFJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, chfjpy=x_mom_21, chfjpy=x_mom_63` | tb20 | pt_sl=[2,2], vbar=20 |
 | EURCAD | EURCAD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, eurcad=x_mom_21, eurcad=x_mom_63` | tb20 | pt_sl=[2,2], vbar=20 |
-| ^DJI | ^DJI | `rate_diff, vix_ma21, dxy_mom_21, breakeven_delta_63, dji_mom_21, dji_mom_63, dji_vs_spy_21, dji_vs_spy_63` | tb20 | pt_sl=[2,2], vbar=20 |
 
 **Momentum features** use `{contract_prefix}_mom_{window}` naming (e.g. `euraud=x_mom_21`), derived from the `contract_prefix` field in `features/registry.py`. **Lead-lag features** (`dji_lead_1`, `gc_lead_1`, `nzdjpy_lead_3`) are declared in `custom_features` on each asset's FeatureContract and computed from normalized leader returns shifted by the specified lag.
 
@@ -93,17 +86,10 @@ Applied in: `PositionManager.compute_daily_pnl()` → `current_value * direction
 |-------|---------|---------|-----------|--------------|
 | EURAUD | 0.30 | 1.00 | 4-tier | yes |
 | GC | 0.30 | 1.50 | no | yes |
-| NZDJPY | 0.30 | 1.75 | 4-tier | yes |
-| CADJPY | 0.30 | 1.25 | 4-tier | yes |
 | AUDJPY | 0.30 | 1.75 | 4-tier | yes |
 | USDCAD | 0.30 | 1.50 | 4-tier | yes |
-| GBPJPY | 0.30 | 1.25 | 4-tier | yes |
-| USDJPY | 0.30 | 1.00 | no | yes |
-| USDCHF | 0.30 | 1.75 | 4-tier | yes |
 | CHFJPY | 0.30 | 1.00 | no | yes |
 | EURCAD | 0.30 | 1.75 | 4-tier | yes |
-| ^DJI | 0.30 | 1.50 | 4-tier | yes |
-| GBPUSD | 0.52 | 1.97 | 4-tier | no (plateau default) |
 | BTC (satellite) | 0.58 | 1.51 | 4-tier | no (plateau default) |
 
 **Regime-validity adjustment:** When model validity state is YELLOW, TP is multiplied by 0.85; when RED, TP × 0.70. SL stays at base multiplier across all states.
@@ -123,7 +109,7 @@ short: sl = entry × (1 + vol × sl_mult_effective)
 The system uses ATR-based dynamic barriers with auto-calibration at startup, matching the EWM volatility scale scaled by a `calibration_scale` factor of `1.2` (expanding barriers by 20% to support higher TP rates and maximize Sharpe ratio).
 
 **Scale-Out Strategy:**
-For assets with scale-out enabled (EURAUD, NZDJPY, CADJPY, AUDJPY, USDCAD, GBPJPY, USDCHF, GBPUSD, EURCAD, DJI), profit-taking is split into 4 tiers:
+For assets with scale-out enabled (EURAUD, AUDJPY, USDCAD, EURCAD), profit-taking is split into 4 tiers:
 - **Tier 1:** 25% of the position closed at 25% of the original TP multiplier.
 - **Tier 2:** 25% of the position closed at 50% of the original TP multiplier.
 - **Tier 3:** 25% of the position closed at 75% of the original TP multiplier.
@@ -165,23 +151,18 @@ portfolio_circuit_breaker: force-closed by portfolio-level drawdown limit (-15%)
 
 ## 7. PORTFOLIO ALLOCATION CONTRACT
 
-**Core portfolio (13 assets, cash buffer ~3%):**
+**Core portfolio (6 assets, cash buffer ~5%):**
 
 | Asset | Ticker | Allocation | Driver cluster |
 |---|---|---|---|
-| EURAUD | EURAUD=X | 0.12 | eur_cross |
-| GC | GC=F | 0.13 | real_asset |
-| NZDJPY | NZDJPY=X | 0.11 | carry_fx |
-| CADJPY | CADJPY=X | 0.09 | oil_carry |
-| CHFJPY | CHFJPY=X | 0.07 | carry_fx |
-| AUDJPY | AUDJPY=X | 0.06 | carry_fx |
-| USDCAD | USDCAD=X | 0.08 | usd_macro |
-| GBPJPY | GBPJPY=X | 0.08 | carry_fx |
-| EURCAD | EURCAD=X | 0.05 | eur_cross |
-| ^DJI | ^DJI | 0.05 | equity_index |
-| GBPUSD | GBPUSD=X | 0.05 | usd_macro |
-| USDJPY | USDJPY=X | 0.04 | usd_macro |
-| USDCHF | USDCHF=X | 0.04 | usd_macro |
+| EURCAD | EURCAD=X | 0.20 | eur_cross |
+| GC | GC=F | 0.17 | real_asset |
+| AUDJPY | AUDJPY=X | 0.16 | carry_fx |
+| CHFJPY | CHFJPY=X | 0.14 | carry_fx |
+| USDCAD | USDCAD=X | 0.13 | usd_macro |
+| EURAUD | EURAUD=X | 0.10 | eur_cross |
+
+**Removed (negative/near-zero walk-forward Sharpe):** NZDJPY (-0.20), GBPJPY (0.00), ^DJI (-0.71), CADJPY (0.12, 1/5), USDJPY (0.21, 1/5), GBPUSD (0.17, 1/5), USDCHF (0.36, 1/2)
 
 **BTC satellite bucket:**
 | Property | Value |
@@ -197,7 +178,9 @@ portfolio_circuit_breaker: force-closed by portfolio-level drawdown limit (-15%)
 | Per-cycle logging | `"BTC satellite: gate=OPEN\|CLOSED, position=ACTIVE\|FLAT, value=XXXX"` |
 
 **Capital:** $100,000
-**Sum constraint:** `sum(core_allocations) ≈ 0.97` (cash buffer of ~3%)
+**Sum constraint:** `sum(core_allocations) = 0.90` + `BTC satellite = 0.05` = `0.95 deployed` (cash buffer of ~5%)
+
+**JPY-cross cluster:** AUDJPY (0.16) + CHFJPY (0.14) = 0.30 (under 40% limit)
 
 ---
 
@@ -224,7 +207,7 @@ max_holding_days: 30        # force-close after N calendar days, reason `time_st
 ```
 Applied in `asset_engine._apply_decision()` (min_confidence) and `asset_engine.update_pnl()` (max_holding_days).
 
-**Per-asset override:** BTC drawdown = -0.15, NZDJPY drawdown = -0.06
+**Per-asset override:** BTC drawdown = -0.15
 
 **Validity scoring:**
 ```

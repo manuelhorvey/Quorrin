@@ -662,7 +662,7 @@ class PaperTradingEngine:
         # tc is the theoretical full portfolio capital (Core + Satellite)
         tc = CONFIG.get("capital", sum(a.initial_capital for a in self.assets.values()))
 
-        # mtm_total = sum of all assets MTM + satellite MTM
+        # mtm_total = sum of all assets MTM + satellite MTM + cash buffer
         mtm_total = sum(a.mtm_value for a in self.assets.values())
         sat_unrealized = 0.0
         if self.satellite is not None:
@@ -671,6 +671,11 @@ class PaperTradingEngine:
                 # Unrealized for satellite = current_value - entry_capital
                 entry_cap = getattr(self.satellite, "_entry_capital", self.satellite.max_capital)
                 sat_unrealized = self.satellite.current_value - entry_cap
+
+        # Cash buffer fills the gap to full capital, absorbing PnL drift from
+        # position_size leverage and asset current_value vs initial_capital differences
+        cash_buffer = max(0, tc - mtm_total)
+        mtm_total += cash_buffer
 
         satellite_value = self.satellite.current_value if self.satellite is not None else 0.0
         satellite_pct = satellite_value / max(tc, 1) * 100
@@ -683,7 +688,11 @@ class PaperTradingEngine:
             + sat_unrealized
         )
 
-        realized_total = mtm_total - unrealized_dollars
+        # Realized = actual closed-trade PnL, not derived from cash_buffer-inflated mtm_total
+        realized_pnl = sum(
+            t.get("pnl", 0) for a in self.assets.values() for t in a.trade_log
+        )
+        realized_total = tc + realized_pnl
         realized_return = (realized_total - tc) / tc * 100 if tc > 0 else 0.0
 
         mtm_return = (mtm_total - tc) / tc * 100 if tc > 0 else 0

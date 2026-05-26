@@ -29,23 +29,13 @@ liquidity_config:
   stressed_size_reduce_pct: 30
   stressed_halt: true
 vol_baselines:
-  NZDJPY: 0.0055
-  CADJPY: 0.0048
   EURAUD: 0.0042
   GC: 0.012
   BTC: 0.45
   USDCAD: 0.0038
   AUDJPY: 0.0051
-  GBPJPY: 0.0062
-  USDJPY: 0.0049
-  USDCHF: 0.0043
-  GBPUSD: 0.0056
-  EURUSD: 0.0048
-  AUDUSD: 0.0059
-  NZDUSD: 0.0061
   EURCAD: 0.0035
   CHFJPY: 0.0048
-  DJI: 0.0081
 execution_defaults:
   base_spread_bps: 0.5
   spread_vol_slope: 2.0
@@ -122,7 +112,7 @@ satellite:
 assets:
   EURAUD:
     ticker: EURAUD=X
-    allocation: 0.12
+    allocation: 0.10
     sl_mult: 0.3
     tp_mult: 1.0
     regime_sizing: true
@@ -175,7 +165,7 @@ assets:
         activate_breakeven_after: 0
   GC:
     ticker: GC=F
-    allocation: 0.13
+    allocation: 0.17
     sl_mult: 0.3
     tp_mult: 1.5
     regime_sizing: true
@@ -211,111 +201,9 @@ assets:
         threshold: 0.55
       scale_out:
         enabled: false
-  NZDJPY:
-    ticker: NZDJPY=X
-    allocation: 0.07
-    sl_mult: 0.3
-    tp_mult: 1.75
-    regime_sizing: true
-    adaptive_macro: true
-    execution_config:
-      base_spread_bps: 2.0
-      avg_daily_volume: 300000000
-    features:
-    - vix_ma21
-    - vix_delta_5
-    - us_jp_10y_spread
-    - nzdjpy_mom_21
-    - dji_lead_1
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 2.0
-        atr_mult_tp: 3.5
-        min_rr_ratio: 1.8
-        calibration_scale: 1.2
-        auto_calibrate: true
-        trailing_activation_mult: 1.5
-        trailing_distance_mult: 2.0
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
-  CADJPY:
-    ticker: CADJPY=X
-    allocation: 0.07
-    sl_mult: 0.3
-    tp_mult: 1.25
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 2.0
-      avg_daily_volume: 300000000
-    features:
-    - vix_ma21
-    - ca_jp_spread_mom_21
-    - us_jp_10y_spread
-    - vix_delta_5
-    - ca_jp_10y_spread
-    - dxy_mom_21
-    - cadjpy_mom_10
-    - cadjpy_mom_21
-    - cadjpy_mom_63
-    - dji_lead_1
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 1.8
-        atr_mult_tp: 2.5
-        min_rr_ratio: 1.5
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
   AUDJPY:
     ticker: AUDJPY=X
-    allocation: 0.06
+    allocation: 0.16
     sl_mult: 0.3
     tp_mult: 1.75
     regime_sizing: true
@@ -364,7 +252,7 @@ assets:
         activate_breakeven_after: 0
   USDCAD:
     ticker: USDCAD=X
-    allocation: 0.08
+    allocation: 0.13
     sl_mult: 0.3
     tp_mult: 1.5
     regime_sizing: true
@@ -411,193 +299,9 @@ assets:
         - fraction: 0.25
           multiplier: 1.0
         activate_breakeven_after: 0
-  GBPJPY:
-    ticker: GBPJPY=X
-    allocation: 0.08
-    sl_mult: 0.3
-    tp_mult: 1.25
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 2.0
-      avg_daily_volume: 500000000
-    features:
-    - vix_ma21
-    - vix_delta_5
-    - us_jp_10y_spread
-    - gbpjpy_mom_21
-    - gbpjpy_mom_63
-    - dji_lead_1
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 1.8
-        atr_mult_tp: 2.5
-        min_rr_ratio: 1.5
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
-  USDJPY:
-    ticker: USDJPY=X
-    allocation: 0.04
-    sl_mult: 0.3
-    tp_mult: 1.0
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 0.5
-      avg_daily_volume: 2000000000
-    features:
-    - vix_ma21
-    - vix_delta_5
-    - us_jp_10y_spread
-    - dxy_mom_21
-    - usdjpy_mom_21
-    - usdjpy_mom_63
-    - gc_lead_1
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 2.5
-        atr_mult_tp: 3.0
-        min_rr_ratio: 2.0
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: false
-  USDCHF:
-    ticker: USDCHF=X
-    allocation: 0.04
-    sl_mult: 0.3
-    tp_mult: 1.75
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 1.2
-      avg_daily_volume: 400000000
-    features:
-    - rate_diff
-    - dxy_mom_21
-    - vix_ma21
-    - vix_delta_5
-    - usdchf_mom_21
-    - usdchf_mom_63
-    - gc_lead_1
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 2.0
-        atr_mult_tp: 3.5
-        min_rr_ratio: 1.8
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
-  GBPUSD:
-    ticker: GBPUSD=X
-    allocation: 0.05
-    sl_mult: 0.52
-    tp_mult: 1.97
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 0.7
-      avg_daily_volume: 1200000000
-    features:
-    - rate_diff
-    - dxy_mom_21
-    - vix_ma21
-    - vix_delta_5
-    - gbpusd_mom_21
-    - gbpusd_mom_63
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 1.5
-        atr_mult_tp: 3.0
-        min_rr_ratio: 2.0
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
   CHFJPY:
     ticker: CHFJPY=X
-    allocation: 0.07
+    allocation: 0.14
     sl_mult: 0.3
     tp_mult: 1.0
     regime_sizing: true
@@ -634,7 +338,7 @@ assets:
         enabled: false
   EURCAD:
     ticker: EURCAD=X
-    allocation: 0.05
+    allocation: 0.20
     sl_mult: 0.3
     tp_mult: 1.75
     regime_sizing: true
@@ -663,56 +367,6 @@ assets:
         atr_mult_sl: 2.0
         atr_mult_tp: 3.5
         min_rr_ratio: 1.8
-        calibration_scale: 1.2
-        auto_calibrate: true
-      meta_labeling:
-        enabled: true
-        threshold: 0.55
-      scale_out:
-        enabled: true
-        tiers:
-        - fraction: 0.25
-          multiplier: 0.25
-        - fraction: 0.25
-          multiplier: 0.5
-        - fraction: 0.25
-          multiplier: 0.75
-        - fraction: 0.25
-          multiplier: 1.0
-        activate_breakeven_after: 0
-  DJI:
-    ticker: ^DJI
-    allocation: 0.05
-    sl_mult: 0.3
-    tp_mult: 1.5
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 1.0
-      avg_daily_volume: 5000000000
-    features:
-    - rate_diff
-    - vix_ma21
-    - dxy_mom_21
-    - breakeven_delta_63
-    - dji_mom_21
-    - dji_mom_63
-    - dji_vs_spy_21
-    - dji_vs_spy_63
-    halt:
-      drawdown: -0.08
-      monthly_pf: 0.7
-      signal_drought: 30
-      prob_drift: 0.25
-    config:
-      min_confidence: 50
-      max_holding_days: 30
-      dynamic_sltp:
-        enabled: true
-        method: atr
-        atr_period: 14
-        atr_mult_sl: 2.0
-        atr_mult_tp: 3.0
-        min_rr_ratio: 1.5
         calibration_scale: 1.2
         auto_calibrate: true
       meta_labeling:

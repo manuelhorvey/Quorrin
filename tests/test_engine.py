@@ -87,7 +87,7 @@ class TestConfig:
         assert "btc-usd_vs_spy_21" in features
 
     def test_paper_portfolio_structure(self):
-        assert "NZDJPY" in PAPER_PORTFOLIO
+        assert "EURAUD" in PAPER_PORTFOLIO
         assert "CADJPY" in PAPER_PORTFOLIO
         assert "USDCAD" in PAPER_PORTFOLIO
         assert "GC" in PAPER_PORTFOLIO
@@ -227,10 +227,10 @@ class TestUpdatePnl:
     @pytest.fixture
     def engine(self):
         return AssetEngine(
-            "NZDJPY=X",
-            "NZDJPY",
-            FEATURE_REGISTRY["NZDJPY=X"],
-            PAPER_PORTFOLIO["NZDJPY"]["alloc"],
+            "EURAUD=X",
+            "EURAUD",
+            FEATURE_REGISTRY["EURAUD=X"],
+            PAPER_PORTFOLIO["EURAUD"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 
@@ -402,19 +402,19 @@ class TestStopOutCooldown:
     @pytest.fixture
     def engine(self):
         return AssetEngine(
-            "NZDJPY=X",
-            "NZDJPY",
-            FEATURE_REGISTRY["NZDJPY=X"],
-            PAPER_PORTFOLIO["NZDJPY"]["alloc"],
+            "EURAUD=X",
+            "EURAUD",
+            FEATURE_REGISTRY["EURAUD=X"],
+            PAPER_PORTFOLIO["EURAUD"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 
     def test_recently_stopped_out_blocks_same_direction(self, engine):
-        engine._record_stop_out("short")
+        engine._record_stop_out("short", 100.0)
         assert engine._recently_stopped_out("short") is True
 
     def test_recently_stopped_out_allows_opposite_direction(self, engine):
-        engine._record_stop_out("short")
+        engine._record_stop_out("short", 100.0)
         assert engine._recently_stopped_out("long") is False
 
     def test_cooldown_active_after_sl_hit_in_update_pnl(self, engine):
@@ -437,3 +437,33 @@ class TestStopOutCooldown:
         assert engine.position is None
         assert engine._recently_stopped_out("long") is True
         assert engine._last_stop_out_side == "long"
+
+    def test_churn_case_skips_cooldown(self, engine):
+        """Price barely touches SL and bounces — cooldown skipped."""
+        from paper_trading.decision import PositionIntent
+
+        intent = PositionIntent(
+            side="short", entry_price=158.00, entry_date="2026-05-26",
+            stop_loss=158.30, take_profit=157.00, vol=0.02,
+        )
+        engine.pos_mgr.open(intent)
+        engine._entry_price = 158.00
+        engine._regime_adjusted_entry = True
+        engine._record_stop_out("short", exit_price=158.32)
+        assert engine._last_stop_out_side is None
+        assert engine._last_stop_out_date is None
+
+    def test_blowthrough_case_sets_cooldown(self, engine):
+        """Price blows through SL — cooldown applied."""
+        from paper_trading.decision import PositionIntent
+
+        intent = PositionIntent(
+            side="short", entry_price=158.00, entry_date="2026-05-26",
+            stop_loss=158.30, take_profit=157.00, vol=0.02,
+        )
+        engine.pos_mgr.open(intent)
+        engine._entry_price = 158.00
+        engine._regime_adjusted_entry = True
+        engine._record_stop_out("short", exit_price=158.55)
+        assert engine._last_stop_out_side == "short"
+        assert engine._last_stop_out_date is not None

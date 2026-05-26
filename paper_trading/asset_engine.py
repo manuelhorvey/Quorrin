@@ -170,6 +170,9 @@ class AssetEngine:
         self._load_liquidity_state()
         self._last_stop_out_side: str | None = None
         self._last_stop_out_date: pd.Timestamp | None = None
+        self._last_stop_out_price: float | None = None
+        self._entry_price: float | None = None
+        self._regime_adjusted_entry: bool = False
         self._initial_settlement_done: bool = False
 
     def _load_narrative_state(self) -> None:
@@ -429,6 +432,8 @@ class AssetEngine:
         )
         if self._initial_sl is not None:
             self._sltp_engine.reset_best_price(fill_price)
+        self._entry_price = intent.entry_price
+        self._regime_adjusted_entry = geom.get("sl_mult", 1.0) < 1.0
         self._scale_out_plan = None
         if self._scale_out_engine is not None and intent.take_profit is not None:
             self._scale_out_plan = self._scale_out_engine.build_plan(
@@ -469,7 +474,18 @@ class AssetEngine:
             self.state_store.write_trade_outcomes_cache()
         _record_exit_outcome(self.name, reason)
 
-    def _record_stop_out(self, side: str) -> None:
+    def _record_stop_out(self, side: str, exit_price: float) -> None:
+        if self.pos_mgr.position is not None:
+            self._last_stop_out_price = self.pos_mgr.position.stop_loss
+        else:
+            self._last_stop_out_price = None
+
+        if self._regime_adjusted_entry and self._last_stop_out_price is not None and self._entry_price is not None:
+            sl_distance = abs(self._last_stop_out_price - self._entry_price)
+            price_beyond_sl = abs(exit_price - self._last_stop_out_price)
+            if sl_distance > 0 and (price_beyond_sl / sl_distance) < 0.5:
+                return
+
         self._last_stop_out_side = side
         self._last_stop_out_date = pd.Timestamp.now(tz="UTC").normalize()
 
@@ -939,7 +955,7 @@ class AssetEngine:
                     "%s: SL/TP HIT: %s at %s (Current: %s)", self.name, hit[0].upper(), hit[1], self.current_price
                 )
                 if self.pos_mgr.position is not None:
-                    self._record_stop_out(self.pos_mgr.position.side)
+                    self._record_stop_out(self.pos_mgr.position.side, hit[1])
                 self._close_position(hit[1], last_bar, hit[0])
                 if self.current_value > self.peak_value:
                     self.peak_value = self.current_value

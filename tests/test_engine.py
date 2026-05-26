@@ -14,15 +14,14 @@ from paper_trading.config_manager import (
 )
 from paper_trading.engine import (
     _SKIP_JOURNAL,
-    CONFIG,
     ET,
-    HALT,
-    PAPER_PORTFOLIO,
     AssetEngine,
     PaperTradingEngine,
     flatten,
     norm_index,
 )
+from paper_trading.config_manager import EngineConfig, get_config
+from paper_trading.portfolio_builder import build_paper_portfolio
 
 
 class TestHelpers:
@@ -60,17 +59,20 @@ class TestHelpers:
 
 class TestConfig:
     def test_has_expected_keys(self):
-        assert "capital" in CONFIG
-        assert "position_size" in CONFIG
-        assert "rebalance" in CONFIG
-        assert "retrain_freq" in CONFIG
-        assert "retrain_window" in CONFIG
+        cfg = get_config()
+        d = cfg.to_dict()
+        assert "capital" in d
+        assert "position_size" in d
+        assert "rebalance" in d
+        assert "retrain_freq" in d
+        assert "retrain_window" in d
 
     def test_halt_has_expected_keys(self):
-        assert "drawdown" in HALT
-        assert "monthly_pf" in HALT
-        assert "signal_drought" in HALT
-        assert "prob_drift" in HALT
+        cfg = get_config()
+        assert "drawdown" in cfg.halt
+        assert "monthly_pf" in cfg.halt
+        assert "signal_drought" in cfg.halt
+        assert "prob_drift" in cfg.halt
 
     def test_xlf_features(self):
         features = FEATURE_REGISTRY["BTC-USD"].features
@@ -87,10 +89,11 @@ class TestConfig:
         assert "btc-usd_vs_spy_21" in features
 
     def test_paper_portfolio_structure(self):
+        pf = build_paper_portfolio(get_config().halt)
         for asset in ("EURAUD", "USDCAD", "GC", "AUDJPY", "EURCAD", "CHFJPY"):
-            assert asset in PAPER_PORTFOLIO
-        assert "XLF" not in PAPER_PORTFOLIO
-        assert sum(v["alloc"] for v in PAPER_PORTFOLIO.values()) <= 1.0
+            assert asset in pf
+        assert "XLF" not in pf
+        assert sum(v["alloc"] for v in pf.values()) <= 1.0
 
 
 class TestConfigManager:
@@ -218,11 +221,12 @@ class TestPaperTradingEngineState:
 class TestUpdatePnl:
     @pytest.fixture
     def engine(self):
+        pf = build_paper_portfolio(get_config().halt)
         return AssetEngine(
             "EURAUD=X",
             "EURAUD",
             FEATURE_REGISTRY["EURAUD=X"],
-            PAPER_PORTFOLIO["EURAUD"]["alloc"],
+            pf["EURAUD"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 
@@ -394,11 +398,12 @@ class TestUpdatePnl:
 class TestStopOutCooldown:
     @pytest.fixture
     def engine(self):
+        pf = build_paper_portfolio(get_config().halt)
         return AssetEngine(
             "EURAUD=X",
             "EURAUD",
             FEATURE_REGISTRY["EURAUD=X"],
-            PAPER_PORTFOLIO["EURAUD"]["alloc"],
+            pf["EURAUD"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 

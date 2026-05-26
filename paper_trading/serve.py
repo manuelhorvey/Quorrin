@@ -6,8 +6,6 @@ import time
 from dataclasses import asdict
 from urllib.parse import unquote
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from features.fxstreet_fetcher import confirm_pending_narrative, get_narrative_status
 from paper_trading.config_manager import get_config
 from paper_trading.health_score import compute_all as _compute_health_all

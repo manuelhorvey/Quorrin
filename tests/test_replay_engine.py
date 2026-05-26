@@ -8,8 +8,10 @@ import pytest
 
 from paper_trading.engine import AssetEngine
 from paper_trading.decision import PositionIntent
-from tests.test_engine import PAPER_PORTFOLIO, _SKIP_JOURNAL
+from tests.test_engine import _SKIP_JOURNAL
 from features.registry import FEATURE_REGISTRY
+from paper_trading.config_manager import get_config
+from paper_trading.portfolio_builder import build_paper_portfolio
 
 
 class TestUpdatePnlDeterministic:
@@ -20,8 +22,9 @@ class TestUpdatePnlDeterministic:
 
     @pytest.fixture
     def engine(self):
+        pf = build_paper_portfolio(get_config().halt)
         return AssetEngine(
-            "NZDJPY=X", "NZDJPY", FEATURE_REGISTRY["NZDJPY=X"], PAPER_PORTFOLIO["NZDJPY"]["alloc"],
+            "NZDJPY=X", "NZDJPY", FEATURE_REGISTRY["NZDJPY=X"], pf["NZDJPY"]["alloc"],
             journal_path=_SKIP_JOURNAL,
         )
 

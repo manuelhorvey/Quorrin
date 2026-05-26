@@ -3,12 +3,9 @@ import logging
 import os
 import pickle
 import signal as sigmod
-import sys
 import threading
 import time
 import warnings
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paper_trading.engine import LOG_PATH, PaperTradingEngine  # noqa: E402
 from paper_trading.serve import serve  # noqa: E402

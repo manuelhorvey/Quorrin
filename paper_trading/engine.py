@@ -67,33 +67,6 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Backward-compat module-level config (populated lazily from config_manager)
-CONFIG: dict = {}
-HALT: dict = {}
-
-
-def _refresh_module_config() -> None:
-    global CONFIG, HALT
-    cfg = get_config()
-    CONFIG.clear()
-    CONFIG.update(cfg.to_dict())
-    HALT.clear()
-    HALT.update(cfg.halt)
-
-
-_refresh_module_config()
-
-from paper_trading.portfolio_builder import build_paper_portfolio as _build_paper_portfolio  # noqa: E402
-from paper_trading.portfolio_builder import cluster_risk_report  # noqa: E402
-
-PAPER_PORTFOLIO = _build_paper_portfolio(HALT)
-_total_alloc = sum(v["alloc"] for v in PAPER_PORTFOLIO.values())
-assert _total_alloc <= 1.01, f"Portfolio allocations sum to {_total_alloc}, must be ≤ 1.0 (remainder is cash buffer)"
-
-_cluster_warnings = cluster_risk_report(PAPER_PORTFOLIO)
-for w in _cluster_warnings:
-    logger.warning("PORTFOLIO CLUSTER RISK: %s", w)
-
 
 class PaperTradingEngine:
     def __init__(self, state_store=None):
@@ -127,9 +100,12 @@ class PaperTradingEngine:
         self._rebalance_weights: dict[str, float] = {}
 
     def _build_asset_registry(self) -> None:
+        from paper_trading.portfolio_builder import build_paper_portfolio as _build_paper_portfolio
+
+        portfolio = _build_paper_portfolio(get_config().halt)
         _reg = StrategyRegistry.get_instance()
-        _reg.register_defaults(list(PAPER_PORTFOLIO.keys()))
-        for name, spec in PAPER_PORTFOLIO.items():
+        _reg.register_defaults(list(portfolio.keys()))
+        for name, spec in portfolio.items():
             self.assets[name] = AssetEngine(
                 spec["ticker"],
                 name,
@@ -193,7 +169,7 @@ class PaperTradingEngine:
                 tp_mult=btc_sat.get("tp_mult", 1.51),
             )
             self.satellite = HighVolSatellite(
-                total_aum=CONFIG["capital"],
+                total_aum=get_config().capital,
                 config=sconfig,
                 name="BTC",
             )
@@ -644,7 +620,7 @@ class PaperTradingEngine:
             "portfolio": self._compute_portfolio_summary(overall_validity, any_halted),
             "assets": ad,
             "satellite": self._satellite_snapshot(),
-            "halt_conditions": HALT,
+            "halt_conditions": get_config().halt,
             "risk_parity": {
                 "weights": rp_weights,
                 "capital_allocations": rp_allocations,
@@ -660,7 +636,7 @@ class PaperTradingEngine:
             else (ExecutionState.PAUSED if (overall_validity / n) < 0.5 else ExecutionState.ACTIVE)
         )
         # tc is the theoretical full portfolio capital (Core + Satellite)
-        tc = CONFIG.get("capital", sum(a.initial_capital for a in self.assets.values()))
+        tc = get_config().capital or sum(a.initial_capital for a in self.assets.values())
 
         # mtm_total = sum of all assets MTM + satellite MTM + cash buffer
         mtm_total = sum(a.mtm_value for a in self.assets.values())
@@ -715,7 +691,7 @@ class PaperTradingEngine:
             "start_date": self.start_date.strftime("%Y-%m-%d"),
             "start_datetime": self.start_date.isoformat(),
             "last_update": self.last_update.strftime("%Y-%m-%d %H:%M:%S") if self.last_update else None,
-            "capital": CONFIG["capital"],
+            "capital": get_config().capital,
             "allocations": {n: a.allocation for n, a in self.assets.items()},
             "deployment_cleared": True,
             "open_positions": sum(a.pos_mgr.has_position() for a in self.assets.values()),
@@ -833,7 +809,7 @@ class PaperTradingEngine:
 
         satellite = state.get("satellite", {})
         satellite_value = satellite.get("current_value", 0.0) if satellite else 0.0
-        cash_buffer = CONFIG["capital"] - portfolio.get("realized_value", 0) - satellite_value
+        cash_buffer = get_config().capital - portfolio.get("realized_value", 0) - satellite_value
 
         self._sim_store.capture(
             portfolio_value=portfolio.get("total_value", 0),

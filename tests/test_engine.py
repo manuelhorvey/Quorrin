@@ -1,6 +1,6 @@
 import os
-from types import SimpleNamespace
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -87,16 +87,8 @@ class TestConfig:
         assert "btc-usd_vs_spy_21" in features
 
     def test_paper_portfolio_structure(self):
-        assert "EURAUD" in PAPER_PORTFOLIO
-        assert "CADJPY" in PAPER_PORTFOLIO
-        assert "USDCAD" in PAPER_PORTFOLIO
-        assert "GC" in PAPER_PORTFOLIO
-        assert "EURAUD" in PAPER_PORTFOLIO
-        assert "AUDJPY" in PAPER_PORTFOLIO
-        assert "GBPJPY" in PAPER_PORTFOLIO
-        assert "USDJPY" in PAPER_PORTFOLIO
-        assert "USDCHF" in PAPER_PORTFOLIO
-        assert "GBPUSD" in PAPER_PORTFOLIO
+        for asset in ("EURAUD", "USDCAD", "GC", "AUDJPY", "EURCAD", "CHFJPY"):
+            assert asset in PAPER_PORTFOLIO
         assert "XLF" not in PAPER_PORTFOLIO
         assert sum(v["alloc"] for v in PAPER_PORTFOLIO.values()) <= 1.0
 
@@ -264,8 +256,9 @@ class TestUpdatePnl:
         assert engine.current_value == engine.initial_capital
 
     def test_returns_when_last_bar_already_processed(self, engine, signal_data):
-        from zoneinfo import ZoneInfo
         from datetime import datetime
+        from zoneinfo import ZoneInfo
+
         ET = ZoneInfo("US/Eastern")
         engine.signal_data = signal_data
         engine.trades = [{"date": str(datetime.now(tz=ET).date())}]
@@ -443,8 +436,12 @@ class TestStopOutCooldown:
         from paper_trading.decision import PositionIntent
 
         intent = PositionIntent(
-            side="short", entry_price=158.00, entry_date="2026-05-26",
-            stop_loss=158.30, take_profit=157.00, vol=0.02,
+            side="short",
+            entry_price=158.00,
+            entry_date="2026-05-26",
+            stop_loss=158.30,
+            take_profit=157.00,
+            vol=0.02,
         )
         engine.pos_mgr.open(intent)
         engine._entry_price = 158.00
@@ -458,8 +455,12 @@ class TestStopOutCooldown:
         from paper_trading.decision import PositionIntent
 
         intent = PositionIntent(
-            side="short", entry_price=158.00, entry_date="2026-05-26",
-            stop_loss=158.30, take_profit=157.00, vol=0.02,
+            side="short",
+            entry_price=158.00,
+            entry_date="2026-05-26",
+            stop_loss=158.30,
+            take_profit=157.00,
+            vol=0.02,
         )
         engine.pos_mgr.open(intent)
         engine._entry_price = 158.00

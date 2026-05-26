@@ -689,9 +689,7 @@ class PaperTradingEngine:
         )
 
         # Realized = actual closed-trade PnL, not derived from cash_buffer-inflated mtm_total
-        realized_pnl = sum(
-            t.get("pnl", 0) for a in self.assets.values() for t in a.trade_log
-        )
+        realized_pnl = sum(t.get("pnl", 0) for a in self.assets.values() for t in a.trade_log)
         realized_total = tc + realized_pnl
         realized_return = (realized_total - tc) / tc * 100 if tc > 0 else 0.0
 

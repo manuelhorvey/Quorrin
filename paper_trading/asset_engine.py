@@ -527,17 +527,22 @@ class AssetEngine:
         y = train["label"].astype(int)
 
         from sklearn.model_selection import train_test_split
+
         y_vals = set(y.unique())
         if y_vals != {0, 1, 2}:
-            logger.warning("%s: training labels only %s — need all 3 classes, skipping retrain", self.name, sorted(y_vals))
+            logger.warning("%s: train labels only %s — need 3 classes, skipping", self.name, sorted(y_vals))
             return
         min_class_count = y.value_counts().min()
         strat = y if min_class_count >= 2 else None
         X_tr, X_ev, y_tr, y_ev = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=strat,
+            X,
+            y,
+            test_size=0.2,
+            random_state=42,
+            stratify=strat,
         )
         if set(y_tr.unique()) != {0, 1, 2}:
-            logger.warning("%s: train split has only classes %s — skipping retrain", self.name, sorted(set(y_tr.unique())))
+            logger.warning("%s: train split classes %s — skipping", self.name, sorted(set(y_tr.unique())))
             return
 
         model = xgb.XGBClassifier(
@@ -552,7 +557,8 @@ class AssetEngine:
             verbosity=0,
         )
         model.fit(
-            X_tr, y_tr,
+            X_tr,
+            y_tr,
             eval_set=[(X_ev, y_ev)],
             verbose=False,
         )

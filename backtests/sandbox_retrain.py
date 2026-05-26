@@ -145,21 +145,33 @@ def train_sandbox_model(
         logger.warning("  %s: training labels only %s — need all 3 classes, skipping", ticker, sorted(y_vals))
         return None
     from sklearn.model_selection import train_test_split
+
     min_class_count = y_train.value_counts().min()
     strat = y_train if min_class_count >= 2 else None
     X_tr, X_ev, y_tr, y_ev = train_test_split(
-        X_train, y_train, test_size=0.2, random_state=42, stratify=strat,
+        X_train,
+        y_train,
+        test_size=0.2,
+        random_state=42,
+        stratify=strat,
     )
     if set(y_tr.unique()) != {0, 1, 2}:
         logger.warning("  %s: train split has only classes %s — skipping", ticker, sorted(set(y_tr.unique())))
         return None
     model = xgb.XGBClassifier(
-        n_estimators=300, max_depth=2, learning_rate=0.02,
-        objective="multi:softprob", num_class=3,
-        random_state=42, n_jobs=1, tree_method="hist", verbosity=0,
+        n_estimators=300,
+        max_depth=2,
+        learning_rate=0.02,
+        objective="multi:softprob",
+        num_class=3,
+        random_state=42,
+        n_jobs=1,
+        tree_method="hist",
+        verbosity=0,
     )
     model.fit(
-        X_tr, y_tr,
+        X_tr,
+        y_tr,
         eval_set=[(X_ev, y_ev)],
         verbose=False,
     )
@@ -247,7 +259,10 @@ def run_one_asset(
 
     logger.info("  Adversarial manifold projection...")
     manifold = evaluate_adversarial_manifold(
-        asset=name, model=sandbox_model, X=X, close=close,
+        asset=name,
+        model=sandbox_model,
+        X=X,
+        close=close,
         predict_fn=predict_fn,
     )
     logger.info("  %s CMSS=%.4f class=%s", name, manifold.get("cmss", 0), manifold.get("stability_class", "N/A"))
@@ -299,16 +314,20 @@ def log_verdict(name, model_res, signal_res, portfolio_res, shadow_res, summary)
         logger.info("  %s %s = %s", status, c["check"], c["value"])
     if "error" not in model_res:
         mr = model_res
-        logger.info("  accuracy: old=%.4f new=%.4f", mr.get("old", {}).get("accuracy", 0), mr.get("new", {}).get("accuracy", 0))
+        logger.info(
+            "  accuracy: old=%.4f new=%.4f", mr.get("old", {}).get("accuracy", 0), mr.get("new", {}).get("accuracy", 0)
+        )
     if "error" not in signal_res:
         sr = signal_res
         logger.info("  signal agreement=%.4f flips=%d", sr.get("overall_agreement", 0), sr.get("total_flips", 0))
     if "error" not in portfolio_res:
         pr = portfolio_res
-        logger.info("  return: old=%.4f new=%.4f delta=%.4f",
-                     pr.get("old", {}).get("total_return", 0),
-                     pr.get("new", {}).get("total_return", 0),
-                     pr.get("delta", {}).get("return_diff", 0))
+        logger.info(
+            "  return: old=%.4f new=%.4f delta=%.4f",
+            pr.get("old", {}).get("total_return", 0),
+            pr.get("new", {}).get("total_return", 0),
+            pr.get("delta", {}).get("return_diff", 0),
+        )
     logger.info("─" * 50)
 
 
@@ -322,9 +341,15 @@ def log_mas(name, mas_result):
             logger.info("  ✗ %s", f)
     ss = mas_result.get("sub_scores", {})
     if ss:
-        logger.info("  model=%.4f  signal=%.4f  portfolio=%.4f  shadow=%.4f  forward=%.4f  stress=%.4f",
-                     ss.get("model", 0), ss.get("signal", 0), ss.get("portfolio", 0),
-                     ss.get("shadow", 0), ss.get("forward", 0), ss.get("stress", 0))
+        logger.info(
+            "  model=%.4f  signal=%.4f  portfolio=%.4f  shadow=%.4f  forward=%.4f  stress=%.4f",
+            ss.get("model", 0),
+            ss.get("signal", 0),
+            ss.get("portfolio", 0),
+            ss.get("shadow", 0),
+            ss.get("forward", 0),
+            ss.get("stress", 0),
+        )
     delta = mas_result.get("delta_mas")
     if delta is not None:
         logger.info("  ΔMAS = %+.2f", delta)
@@ -335,10 +360,13 @@ def log_promotion(name, promotion):
     if not promotion:
         return
     logger.info("─" * 50)
-    logger.info("PROMOTION for %s: %s | cond=%s | conf=%.2f",
-                 name, promotion.get("decision", "N/A"),
-                 promotion.get("conditions_met", "?"),
-                 promotion.get("confidence", 0))
+    logger.info(
+        "PROMOTION for %s: %s | cond=%s | conf=%.2f",
+        name,
+        promotion.get("decision", "N/A"),
+        promotion.get("conditions_met", "?"),
+        promotion.get("confidence", 0),
+    )
     for fm in promotion.get("failure_modes", []):
         logger.info("  ⚠ %s", fm)
     logger.info("  action: %s", promotion.get("recommended_action", "?"))
@@ -362,33 +390,37 @@ def main(force: bool = False, target_assets: Optional[list] = None):
             results.append(r)
         except Exception as e:
             logger.error("Fatal error for %s: %s", ticker, e)
-            import traceback; traceback.print_exc()
+            import traceback
+
+            traceback.print_exc()
 
     summary_path = os.path.join(SANDBOX_BASE, "summary.json")
     overview = []
     for r in results:
         mas_r = r.get("mas", {})
         prom = r.get("promotion", {})
-        overview.append({
-            "ticker": r.get("ticker"),
-            "name": r.get("name"),
-            "verdict": r.get("summary", {}).get("verdict", "ERROR"),
-            "accuracy_old": r.get("model_comparison", {}).get("old", {}).get("accuracy"),
-            "accuracy_new": r.get("model_comparison", {}).get("new", {}).get("accuracy"),
-            "signal_agreement": r.get("signal_comparison", {}).get("overall_agreement"),
-            "flip_rate": r.get("signal_comparison", {}).get("flip_rate"),
-            "return_old": r.get("portfolio_comparison", {}).get("old", {}).get("total_return"),
-            "return_new": r.get("portfolio_comparison", {}).get("new", {}).get("total_return"),
-            "entropy_shift": r.get("shadow_intel", {}).get("entropy_shift"),
-            "mas": mas_r.get("mas"),
-            "delta_mas": mas_r.get("delta_mas"),
-            "mas_decision": mas_r.get("decision"),
-            "mas_sub_scores": mas_r.get("sub_scores"),
-            "promotion_decision": prom.get("decision"),
-            "promotion_confidence": prom.get("confidence"),
-            "promotion_conditions": prom.get("conditions_met"),
-            "promotion_action": prom.get("recommended_action"),
-        })
+        overview.append(
+            {
+                "ticker": r.get("ticker"),
+                "name": r.get("name"),
+                "verdict": r.get("summary", {}).get("verdict", "ERROR"),
+                "accuracy_old": r.get("model_comparison", {}).get("old", {}).get("accuracy"),
+                "accuracy_new": r.get("model_comparison", {}).get("new", {}).get("accuracy"),
+                "signal_agreement": r.get("signal_comparison", {}).get("overall_agreement"),
+                "flip_rate": r.get("signal_comparison", {}).get("flip_rate"),
+                "return_old": r.get("portfolio_comparison", {}).get("old", {}).get("total_return"),
+                "return_new": r.get("portfolio_comparison", {}).get("new", {}).get("total_return"),
+                "entropy_shift": r.get("shadow_intel", {}).get("entropy_shift"),
+                "mas": mas_r.get("mas"),
+                "delta_mas": mas_r.get("delta_mas"),
+                "mas_decision": mas_r.get("decision"),
+                "mas_sub_scores": mas_r.get("sub_scores"),
+                "promotion_decision": prom.get("decision"),
+                "promotion_confidence": prom.get("confidence"),
+                "promotion_conditions": prom.get("conditions_met"),
+                "promotion_action": prom.get("recommended_action"),
+            }
+        )
 
     with open(summary_path, "w") as f:
         json.dump({"date": datetime.now().isoformat(), "assets": overview}, f, indent=2, default=str)
@@ -406,11 +438,15 @@ def main(force: bool = False, target_assets: Optional[list] = None):
         mas = a.get("mas")
         mas_d = a.get("mas_decision", "")
         if mas is not None:
-            print(f'  {a["name"]:10s} [{verdict:5s}]  MAS={mas:6.2f} ({mas_d:15s})  '
-                  f'acc: {acc_old:.4f}→{acc_new:.4f}  agree: {agree:.4f}')
+            print(
+                f"  {a['name']:10s} [{verdict:5s}]  MAS={mas:6.2f} ({mas_d:15s})  "
+                f"acc: {acc_old:.4f}→{acc_new:.4f}  agree: {agree:.4f}"
+            )
         else:
-            print(f'  {a["name"]:10s} [{verdict:5s}]  MAS=  REJECTED                '
-                  f'acc: {acc_old:.4f}→{acc_new:.4f}  agree: {agree:.4f}')
+            print(
+                f"  {a['name']:10s} [{verdict:5s}]  MAS=  REJECTED                "
+                f"acc: {acc_old:.4f}→{acc_new:.4f}  agree: {agree:.4f}"
+            )
     print(f"\nResults saved to {summary_path}")
     print_equilibrium_report()
 
@@ -467,7 +503,9 @@ def augment_features(
     return aug.dropna(how="any")
 
 
-def run_historical(force: bool = False, target_assets: Optional[list] = None, augmented: bool = False, tb20_cadjpy: bool = False):
+def run_historical(
+    force: bool = False, target_assets: Optional[list] = None, augmented: bool = False, tb20_cadjpy: bool = False
+):
     logger.info("Loading macro data...")
     macro = load_macro_data()
     ref = fetch_history("SPY", years=15)
@@ -482,12 +520,19 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
         contract = FEATURE_REGISTRY[ticker]
         name = contract.name
         logger.info("=" * 60)
-        logger.info("Historical: %s (%s) — %d yearly windows%s", ticker, name, len(test_years),
-                     " [AUGMENTED]" if augmented else "")
+        logger.info(
+            "Historical: %s (%s) — %d yearly windows%s",
+            ticker,
+            name,
+            len(test_years),
+            " [AUGMENTED]" if augmented else "",
+        )
         if tb20_cadjpy and name == "CADJPY":
             from features.contract import FeatureContract
+
             contract = FeatureContract(
-                ticker=ticker, name=name,
+                ticker=ticker,
+                name=name,
                 label_type="tb20",
                 label_params={"pt_sl": [2, 2], "vertical_barrier": 20},
                 macro_filters=contract.macro_filters,
@@ -498,6 +543,7 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
         logger.info("=" * 60)
         df = fetch_history(ticker)
         from features.builder import build_features
+
         features_df = build_features(df, macro, ref, contract)
         X = features_df[list(contract.features)]
         y = features_df["label"]
@@ -507,7 +553,9 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
             continue
         if augmented:
             X_aug = augment_features(X, ticker, macro, ref, df, close)
-            logger.info("  %s: augmented %d features → %d features (%d rows)", name, X.shape[1], X_aug.shape[1], len(X_aug))
+            logger.info(
+                "  %s: augmented %d features → %d features (%d rows)", name, X.shape[1], X_aug.shape[1], len(X_aug)
+            )
             X = X_aug
             y = y.reindex(X.index)
             close = close.reindex(X.index).ffill()
@@ -533,6 +581,7 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
                 logger.info("  %s %d: insufficient train data (%d), skipping", name, ty, len(X_train_hist))
                 continue
             from sklearn.model_selection import train_test_split
+
             y_vals = set(y_train_hist.unique())
             if y_vals != {0, 1, 2}:
                 logger.info("  %s %d: skipping — train labels only %s, need all 3 classes", name, ty, sorted(y_vals))
@@ -540,47 +589,69 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
             min_class_count = y_train_hist.value_counts().min()
             strat = y_train_hist if min_class_count >= 2 else None
             X_tr, X_ev, y_tr, y_ev = train_test_split(
-                X_train_hist, y_train_hist, test_size=0.2, random_state=42, stratify=strat,
+                X_train_hist,
+                y_train_hist,
+                test_size=0.2,
+                random_state=42,
+                stratify=strat,
             )
             # After-split guard: training must have all 3 classes for multi:softprob
             if set(y_tr.unique()) != {0, 1, 2}:
                 logger.info("  %s %d: skipping — train split labels only %s", name, ty, sorted(set(y_tr.unique())))
                 continue
             model = xgb.XGBClassifier(
-                n_estimators=300, max_depth=2, learning_rate=0.02,
-                objective="multi:softprob", num_class=3,
-                random_state=42, n_jobs=1, tree_method="hist", verbosity=0,
+                n_estimators=300,
+                max_depth=2,
+                learning_rate=0.02,
+                objective="multi:softprob",
+                num_class=3,
+                random_state=42,
+                n_jobs=1,
+                tree_method="hist",
+                verbosity=0,
             )
             model.fit(
-                X_tr, y_tr,
+                X_tr,
+                y_tr,
                 eval_set=[(X_ev, y_ev)],
                 verbose=False,
             )
             from backtests.forward_test import _forward_metrics, _regime_metrics, _classify_vol_regime
             from sklearn.metrics import accuracy_score
+
             proba = predict_fn(model, X_test)
             max_probs = proba.max(axis=1)
             pct_above_045 = float((max_probs > 0.45).mean())
             pct_above_033 = float((max_probs > 0.33).mean())
             class_dist = [float((proba.argmax(axis=1) == c).mean()) for c in range(3)]
-            logger.info("  %s %d: max_p=%.3f >0.45=%.1f%% >0.33=%.1f%% dist=[%.2f %.2f %.2f]",
-                        name, ty, float(max_probs.mean()), pct_above_045 * 100, pct_above_033 * 100,
-                        class_dist[0], class_dist[1], class_dist[2])
+            logger.info(
+                "  %s %d: max_p=%.3f >0.45=%.1f%% >0.33=%.1f%% dist=[%.2f %.2f %.2f]",
+                name,
+                ty,
+                float(max_probs.mean()),
+                pct_above_045 * 100,
+                pct_above_033 * 100,
+                class_dist[0],
+                class_dist[1],
+                class_dist[2],
+            )
             fwd = _forward_metrics(proba, close_test)
             yr_regime = _classify_vol_regime(close_test)
             reg = _regime_metrics(proba, close_test, yr_regime)
             acc = accuracy_score(y_test, proba.argmax(axis=1))
-            year_results.append({
-                "year": ty,
-                "n_train": len(X_train_hist),
-                "n_test": len(X_test),
-                "accuracy": round(float(acc), 4),
-                "sharpe": fwd["sharpe"],
-                "hit_rate": fwd["hit_rate"],
-                "max_drawdown": fwd["max_drawdown"],
-                "stability": fwd["stability"],
-                "regime_metrics": reg,
-            })
+            year_results.append(
+                {
+                    "year": ty,
+                    "n_train": len(X_train_hist),
+                    "n_test": len(X_test),
+                    "accuracy": round(float(acc), 4),
+                    "sharpe": fwd["sharpe"],
+                    "hit_rate": fwd["hit_rate"],
+                    "max_drawdown": fwd["max_drawdown"],
+                    "stability": fwd["stability"],
+                    "regime_metrics": reg,
+                }
+            )
         if year_results:
             all_results[name] = year_results
     if not all_results:
@@ -608,17 +679,21 @@ def run_historical(force: bool = False, target_assets: Optional[list] = None, au
         avg_dd = float(np.mean([y["max_drawdown"] for y in yrs]))
         avg_acc = float(np.mean([y["accuracy"] for y in yrs]))
         pos_windows = sum(1 for y in yrs if y["sharpe"] > 0)
-        years_str = "  ".join(f'{y["year"]}: S={y["sharpe"]:.2f} H={y["hit_rate"]:.2f} DD={y["max_drawdown"]:.3f}'
-                              for y in yrs)
-        print(f'\n  {name:10s}  avg(S)={avg_sharpe:.2f}  avg(H)={avg_hit:.2f}  '
-              f'avg(DD)={avg_dd:.3f}  avg(acc)={avg_acc:.4f}  '
-              f'pos_windows={pos_windows}/{len(yrs)}')
-        print(f'  {" " * 10}  {years_str}')
-    print(f'\nResults saved to {out_path}')
+        years_str = "  ".join(
+            f"{y['year']}: S={y['sharpe']:.2f} H={y['hit_rate']:.2f} DD={y['max_drawdown']:.3f}" for y in yrs
+        )
+        print(
+            f"\n  {name:10s}  avg(S)={avg_sharpe:.2f}  avg(H)={avg_hit:.2f}  "
+            f"avg(DD)={avg_dd:.3f}  avg(acc)={avg_acc:.4f}  "
+            f"pos_windows={pos_windows}/{len(yrs)}"
+        )
+        print(f"  {' ' * 10}  {years_str}")
+    print(f"\nResults saved to {out_path}")
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="Sandbox model retraining and comparison")
     parser.add_argument("--force", action="store_true", help="Retrain even if cached model exists")
     parser.add_argument("--assets", nargs="+", help="Specific assets to retrain (default: all)")

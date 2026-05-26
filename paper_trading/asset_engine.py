@@ -1,8 +1,8 @@
 import logging
 import os
-import pickle
 from datetime import datetime
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytz
@@ -508,9 +508,8 @@ class AssetEngine:
 
     def train(self, force=False):
         if os.path.exists(self.model_path) and not force:
-            with open(self.model_path, "rb") as f:
-                self.model = pickle.load(f)
-                self._trained = True
+            self.model = joblib.load(self.model_path)
+            self._trained = True
             self._enable_adaptive_macro()
             self._load_meta_label_model()
             return
@@ -571,8 +570,7 @@ class AssetEngine:
         self.model = model
         self._trained = True
         self._enable_adaptive_macro()
-        with open(self.model_path, "wb") as f:
-            pickle.dump(model, f)
+        joblib.dump(model, self.model_path)
 
         # Persist PSI baseline from training feature distribution
         try:

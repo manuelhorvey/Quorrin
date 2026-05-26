@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import logging
 import os
-import pickle
 import signal as sigmod
 import threading
 import time
 import warnings
+
+import joblib
 
 from paper_trading.engine import LOG_PATH, PaperTradingEngine  # noqa: E402
 from paper_trading.serve import serve  # noqa: E402
@@ -34,9 +35,8 @@ def main():
         if _shutdown.is_set():
             return
         if os.path.exists(asset.model_path):
-            with open(asset.model_path, "rb") as f:
-                asset.model = pickle.load(f)
-                asset._trained = True
+            asset.model = joblib.load(asset.model_path)
+            asset._trained = True
             logger.info("%s: loaded cached model", name)
         else:
             logger.info("%s: training new model...", name)

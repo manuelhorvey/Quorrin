@@ -145,6 +145,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
     import gzip
     import http.server
     import socketserver
+    from socketserver import ThreadingMixIn
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def _send_json(self, data: str, status: int = 200) -> None:
@@ -566,7 +567,7 @@ def serve(port=DEFAULT_PORT, shutdown_event=None):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": "not found"}).encode())
 
-    class ReuseServer(socketserver.TCPServer):
+    class ReuseServer(ThreadingMixIn, socketserver.TCPServer):
         allow_reuse_address = True
         daemon_threads = True
 

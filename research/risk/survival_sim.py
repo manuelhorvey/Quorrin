@@ -205,7 +205,11 @@ def _cap_asset(allocs: dict, asset: str, max_alloc: float) -> dict:
 
 
 def load_best_configs() -> dict:
-    """Load plateau-center SL/TP configs from aggregate report."""
+    """Load plateau-center SL/TP configs from aggregate report.
+    
+    Falls back to default (sl=1.0, tp=2.5) for any sandbox asset
+    not present in the report.
+    """
     with open(REPORT_PATH) as f:
         report = json.load(f)
 
@@ -238,17 +242,49 @@ def load_best_configs() -> dict:
                 "sharpe": cur.get("sharpe"),
                 "uplift_pct": cur.get("uplift_pct"),
             }
+
+    # Fill in defaults for any sandbox asset missing from the report
+    for d in sorted(os.listdir(SANDBOX_BASE)):
+        dpath = os.path.join(SANDBOX_BASE, d)
+        if not os.path.isdir(dpath):
+            continue
+        if d in ("calibration", "evolution", "historical", "optimization", "outcome_head",
+                 "persistence", "persistence_execution", "risk", "risk_5yr", "risk_baseline",
+                 "risk_cf04", "risk_cf05", "sltp_analysis", "heatmaps"):
+            continue
+        if d not in configs:
+            configs[d] = {
+                "sl_mult": 1.0,
+                "tp_mult": 2.5,
+                "source": "default",
+                "expected_sharpe": 0.0,
+            }
+
     return configs
 
 
-def load_allocations() -> dict:
-    """Load portfolio allocations from paper_trading.yaml."""
+def load_allocations(configs: dict | None = None) -> dict:
+    """Load portfolio allocations from paper_trading.yaml.
+    
+    Falls back to equal allocation for any asset in *configs* that is
+    not explicitly configured in the YAML file.
+    """
     import yaml
 
     config_path = os.path.join(PROJECT_ROOT, "configs", "paper_trading.yaml")
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
-    return {name: acfg["allocation"] for name, acfg in cfg["assets"].items()}
+    allocs = {name: acfg["allocation"] for name, acfg in cfg["assets"].items()}
+
+    if configs is not None:
+        # Equal-allocation fallback for assets not in paper_trading.yaml
+        missing = [n for n in configs if n not in allocs]
+        if missing:
+            per_asset = 1.0 / len(configs) if len(configs) > 0 else 0.0
+            for n in missing:
+                allocs[n] = per_asset
+
+    return allocs
 
 
 def load_asset_data(configs: dict, confidence_threshold: float = 0.0, regime_configs: dict = None, extended_history: bool = False, ensemble: bool = False, use_dynamic_sltp: bool = False) -> dict:
@@ -1800,7 +1836,7 @@ def main():
     # 1. Load data
     logger.info("Loading configs and allocations...")
     configs = load_best_configs()
-    base_allocations = load_allocations()
+    base_allocations = load_allocations(configs)
 
     # Build per-asset regime-conditional geometry configs
     regime_configs = None

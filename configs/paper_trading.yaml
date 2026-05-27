@@ -110,7 +110,7 @@ satellite:
 assets:
   EURAUD:
     ticker: EURAUD=X
-    allocation: 0.10
+    allocation: 0.05
     sl_mult: 0.48
     tp_mult: 1.0
     regime_sizing: true
@@ -364,3 +364,81 @@ assets:
         - fraction: 0.25
           multiplier: 1.0
         activate_breakeven_after: 0
+  USDJPY:
+    ticker: USDJPY=X
+    allocation: 0.08
+    sl_mult: 0.48
+    tp_mult: 1.5
+    churn_ratio_threshold: 0.35
+    regime_sizing: true
+    execution_config:
+      base_spread_bps: 1.5
+      avg_daily_volume: 800000000
+    features:
+    - vix_ma21
+    - vix_delta_5
+    - us_jp_10y_spread
+    - dxy_mom_21
+    - usdjpy_mom_21
+    - usdjpy_mom_63
+    - gc_lead_1
+    halt:
+      drawdown: -0.08
+      monthly_pf: 0.7
+      signal_drought: 30
+      prob_drift: 0.25
+    config:
+      min_confidence: 50
+      max_holding_days: 30
+      dynamic_sltp:
+        enabled: true
+        method: atr
+        atr_period: 14
+        atr_mult_sl: 2.0
+        atr_mult_tp: 3.0
+        min_rr_ratio: 1.5
+        calibration_scale: 1.2
+        auto_calibrate: true
+      meta_labeling:
+        enabled: true
+        threshold: 0.55
+      scale_out:
+        enabled: false
+  GBPCAD:
+    ticker: GBPCAD=X
+    allocation: 0.07
+    sl_mult: 0.48
+    tp_mult: 1.5
+    regime_sizing: true
+    execution_config:
+      base_spread_bps: 1.5
+      avg_daily_volume: 300000000
+    features:
+    - rate_diff
+    - dxy_mom_21
+    - vix_ma21
+    - vix_delta_5
+    - gbpcad_mom_21
+    - gbpcad_mom_63
+    halt:
+      drawdown: -0.08
+      monthly_pf: 0.7
+      signal_drought: 30
+      prob_drift: 0.25
+    config:
+      min_confidence: 50
+      max_holding_days: 30
+      dynamic_sltp:
+        enabled: true
+        method: atr
+        atr_period: 14
+        atr_mult_sl: 2.0
+        atr_mult_tp: 3.0
+        min_rr_ratio: 1.5
+        calibration_scale: 1.2
+        auto_calibrate: true
+      meta_labeling:
+        enabled: true
+        threshold: 0.55
+      scale_out:
+        enabled: false

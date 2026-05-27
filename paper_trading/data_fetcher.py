@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 
@@ -18,6 +19,7 @@ _STORE = StateStore(BASE)
 
 _MIN_REQUEST_INTERVAL = 1.0
 _last_request_time: float = 0.0
+_rate_limit_lock = threading.Lock()
 
 _IN_MEMORY_CACHE: dict[str, tuple[pd.DataFrame | float | None, float]] = {}
 _IN_MEMORY_TTL: dict[str, float] = {
@@ -28,10 +30,11 @@ _IN_MEMORY_TTL: dict[str, float] = {
 
 def _rate_limit() -> None:
     global _last_request_time
-    elapsed = time.monotonic() - _last_request_time
-    if elapsed < _MIN_REQUEST_INTERVAL:
-        time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
-    _last_request_time = time.monotonic()
+    with _rate_limit_lock:
+        elapsed = time.monotonic() - _last_request_time
+        if elapsed < _MIN_REQUEST_INTERVAL:
+            time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+        _last_request_time = time.monotonic()
 
 
 def _cache_get(key: str) -> pd.DataFrame | float | None:

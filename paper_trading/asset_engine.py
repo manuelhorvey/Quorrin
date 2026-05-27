@@ -263,14 +263,14 @@ class AssetEngine:
         except Exception as e:
             logger.debug("%s: no cached meta-label model: %s", self.name, e)
 
-    def _tb_vol(self, df):
-        returns = np.log(df["close"] / df["close"].shift(1))
+    def _tb_vol(self, close_series):
+        returns = np.log(close_series / close_series.shift(1))
         vol = returns.ewm(span=100).std()
         return vol.iloc[-1] if not pd.isna(vol.iloc[-1]) else 0.01
 
     def _open_position(self, side, entry_price, entry_date, df=None, tp_geo=None):
         data = df if df is not None else self.price_data
-        vol = self._tb_vol(data)
+        vol = self._tb_vol(data["close"])
         if pd.isna(vol) or pd.isna(entry_price) or entry_price == 0:
             logger.error("%s: invalid entry_price=%s or vol=%s", self.name, entry_price, vol)
             return

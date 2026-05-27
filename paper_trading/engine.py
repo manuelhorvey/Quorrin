@@ -346,6 +346,9 @@ class PaperTradingEngine:
             try:
                 return name, asset.generate_signal()
             except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                logger.error("%s: signal generation failed\n%s", name, tb)
                 return name, {"asset": name, "error": str(e)}
 
         with ThreadPoolExecutor(max_workers=8) as pool:

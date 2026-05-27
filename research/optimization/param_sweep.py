@@ -40,6 +40,27 @@ from research.risk.survival_sim import load_best_configs, load_allocations, PROJ
 logger = logging.getLogger("quantforge.param_sweep")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+# ── Ticker normalization ───────────────────────────────────────────────
+
+TICKER_TO_SHORT: dict[str, str] = {
+    "EURUSD=X": "EURUSD", "GBPUSD=X": "GBPUSD", "USDJPY=X": "USDJPY",
+    "AUDUSD=X": "AUDUSD", "USDCAD=X": "USDCAD", "NZDUSD=X": "NZDUSD",
+    "USDCHF=X": "USDCHF", "EURGBP=X": "EURGBP", "EURJPY=X": "EURJPY",
+    "GBPJPY=X": "GBPJPY", "AUDJPY=X": "AUDJPY", "CHFJPY=X": "CHFJPY",
+    "EURCHF=X": "EURCHF", "EURAUD=X": "EURAUD", "GBPAUD=X": "GBPAUD",
+    "AUDCAD=X": "AUDCAD", "NZDJPY=X": "NZDJPY", "EURCAD=X": "EURCAD",
+    "GBPCAD=X": "GBPCAD", "AUDNZD=X": "AUDNZD", "CADJPY=X": "CADJPY",
+    "EURNZD=X": "EURNZD", "GBPNZD=X": "GBPNZD", "GBPCHF=X": "GBPCHF",
+    "CADCHF=X": "CADCHF", "NZDCAD=X": "NZDCAD", "NZDCHF=X": "NZDCHF",
+    "AUDCHF=X": "AUDCHF", "GC=F": "GC", "BTC-USD": "BTC", "^DJI": "DJI",
+}
+
+
+def _normalize(name: str) -> str:
+    """Convert Yahoo ticker to short name; pass through if already short."""
+    return TICKER_TO_SHORT.get(name, name)
+
+
 # ── Search space ──────────────────────────────────────────────────────
 
 SL_MULTS = [0.3, 0.5, 0.7]
@@ -413,9 +434,10 @@ def run_sweep(
     list of SweepResult, sorted by score descending.
     """
     configs = load_best_configs()
+    short_names = [_normalize(a) for a in asset_names]
 
     # Filter to requested assets
-    configs = {k: v for k, v in configs.items() if k in asset_names}
+    configs = {k: v for k, v in configs.items() if k in short_names}
     if not configs:
         logger.error("No configs found for %s", asset_names)
         return []

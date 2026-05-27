@@ -417,55 +417,31 @@ def handle_attribution_trades(path: str, query: dict) -> str:
 
 
 def handle_attribution_summary(path: str, query: dict) -> str:
-    """Aggregate attribution summary — precomputed snapshot or computed live.
-
-    Returns per-archetype and per-regime performance deltas.
-    Computation is parquet-read-only, no engine dependency.
-    """
+    """Aggregate attribution summary via shared/metrics modules."""
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     all_records = _STORE.read_attribution(limit=limit)
     if not all_records:
         return json.dumps({"by_archetype": {}, "by_regime": {}, "overall": {}}, indent=2)
 
-    import pandas as pd
-    df = pd.DataFrame(all_records)
+    from shared.metrics.attribution import compute_aggregate_domain_scores
+    from shared.metrics.mae_mfe import compute_mae_mfe_stats
+
+    domain_scores = compute_aggregate_domain_scores(all_records)
+    mae_mfe = compute_mae_mfe_stats(all_records)
+
     overall = {
-        "n_trades": len(df),
-        "total_pnl": float(df.get("realized_pnl", df.get("realized_return", 0)).sum()),
-        "avg_r": float(df.get("exit_realized_r", df.get("realized_r", 0)).mean()),
-        "win_rate": float((df.get("exit_realized_r", df.get("realized_r", 0)) > 0).mean()),
+        "n_trades": mae_mfe["overall"]["n"],
+        "avg_r": mae_mfe["overall"]["avg_mfe_mae_ratio"],
+        "avg_mae_pct": mae_mfe["overall"]["avg_mae_pct"],
+        "avg_mfe_pct": mae_mfe["overall"]["avg_mfe_pct"],
+        "domain_scores": domain_scores["overall"],
     }
-
-    by_archetype = {}
-    arch_col = "pred_archetype_at_entry"
-    if arch_col in df.columns:
-        for arch, grp in df.groupby(arch_col):
-            by_archetype[arch] = {
-                "n": len(grp),
-                "avg_r": float(grp.get("exit_realized_r", 0).mean()),
-                "win_rate": float((grp.get("exit_realized_r", 0) > 0).mean()),
-                "avg_entry_slippage": float(grp.get("friction_entry_slippage_bps", 0).mean()),
-                "avg_exit_slippage": float(grp.get("friction_exit_slippage_bps", 0).mean()),
-                "avg_mae": float(grp.get("exit_mae", 0).mean()),
-                "avg_mfe": float(grp.get("exit_mfe", 0).mean()),
-                "tp_rate": float((grp.get("exit_exit_reason", "") == "tp").mean()),
-                "sl_rate": float((grp.get("exit_exit_reason", "") == "sl").mean()),
-            }
-
-    by_regime = {}
-    regime_col = "pred_regime_at_entry"
-    if regime_col in df.columns:
-        for reg, grp in df.groupby(regime_col):
-            by_regime[reg] = {
-                "n": len(grp),
-                "avg_r": float(grp.get("exit_realized_r", 0).mean()),
-                "win_rate": float((grp.get("exit_realized_r", 0) > 0).mean()),
-            }
 
     data = json.dumps({
         "overall": overall,
-        "by_archetype": by_archetype,
-        "by_regime": by_regime,
+        "by_archetype": mae_mfe.get("by_archetype", {}),
+        "by_regime": mae_mfe.get("by_regime", {}),
+        "domain_scores": domain_scores.get("by_archetype", {}),
         "updated_at": datetime.now(tz=ET).isoformat(),
     }, indent=2, default=str)
     cache_set("/attribution/summary.json", data)
@@ -473,52 +449,33 @@ def handle_attribution_summary(path: str, query: dict) -> str:
 
 
 def handle_execution_quality(path: str, query: dict) -> str:
-    """Execution quality metrics per asset — read from attribution + trade journal.
-
-    Computes EIS (Execution Impact Score) and FQI (Fill Quality Index)
-    per asset as deterministic parquet-derived aggregates.
-    """
+    """Execution quality metrics per asset — derived via shared/metrics modules."""
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_attribution(limit=limit)
     if not records:
         return json.dumps({"by_asset": {}}, indent=2)
 
     import pandas as pd
+    from shared.metrics.eis import compute_eis_from_df
+    from shared.metrics.fqi import compute_fqi_from_df
+
     df = pd.DataFrame(records)
+    eis_by_asset = compute_eis_from_df(df)
+    fqi_by_asset = compute_fqi_from_df(df)
 
     by_asset = {}
     for asset_name, grp in df.groupby("asset"):
         n = len(grp)
-        avg_entry_slippage = float(grp.get("friction_entry_slippage_bps", 0).mean())
-        avg_exit_slippage = float(grp.get("friction_exit_slippage_bps", 0).mean())
-        avg_latency = float(grp.get("friction_latency_bars", 0).mean())
-        gap_rate = float(grp.get("friction_gap_fill", False).mean())
-        partial_fill_rate = float(grp.get("friction_partial_fill", False).mean())
-        avg_fill_ratio = float(grp.get("friction_fill_qty_ratio", 1.0).mean())
-
-        # Fill Quality Index (FQI)
-        fqi = avg_fill_ratio * (1 - gap_rate) * max(0, 1 - avg_latency * 0.02)
-
-        # Execution Impact Score (EIS)
-        max_slippage = 50.0
-        slippage_ratio = min(avg_entry_slippage / max_slippage, 1.0)
-        eis = round(
-            0.40 * (1 - slippage_ratio)
-            + 0.35 * fqi
-            + 0.25 * (1 - partial_fill_rate),
-            4,
-        )
-
         by_asset[asset_name] = {
             "n": n,
-            "eis": eis,
-            "fqi": round(fqi, 4),
-            "avg_entry_slippage_bps": round(avg_entry_slippage, 2),
-            "avg_exit_slippage_bps": round(avg_exit_slippage, 2),
-            "avg_latency_bars": round(avg_latency, 2),
-            "gap_rate": round(gap_rate, 4),
-            "partial_fill_rate": round(partial_fill_rate, 4),
-            "avg_fill_ratio": round(avg_fill_ratio, 4),
+            "eis": eis_by_asset.get(asset_name),
+            "fqi": fqi_by_asset.get(asset_name),
+            "avg_entry_slippage_bps": round(float(grp.get("friction_entry_slippage_bps", 0).mean()), 2),
+            "avg_exit_slippage_bps": round(float(grp.get("friction_exit_slippage_bps", 0).mean()), 2),
+            "avg_latency_bars": round(float(grp.get("friction_latency_bars", 0).mean()), 2),
+            "gap_rate": round(float(grp.get("friction_gap_fill", False).mean()), 4),
+            "partial_fill_rate": round(float(grp.get("friction_partial_fill", False).mean()), 4),
+            "avg_fill_ratio": round(float(grp.get("friction_fill_qty_ratio", 1.0).mean()), 4),
         }
 
     data = json.dumps({"by_asset": by_asset}, indent=2, default=str)
@@ -576,49 +533,17 @@ def handle_shadow_trades_route(path: str, query: dict) -> str:
 
 
 def handle_shadow_summary(path: str, query: dict) -> str:
-    """Aggregate shadow vs live divergence summary.
-
-    Computes divergence rates, R-deltas, and outcome reason mismatches
-    entirely from parquet — no engine dependency.
-    """
+    """Aggregate shadow vs live divergence summary via shared/metrics."""
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_shadow_trades(limit=limit)
     if not records:
-        return json.dumps({"divergence": {}, "n": 0}, indent=2)
+        return json.dumps({"overall": {"n": 0}}, indent=2)
 
-    import pandas as pd
-    df = pd.DataFrame(records)
+    from shared.metrics.shadow import compute_shadow_divergence
 
-    n = len(df)
-    same_reason = (df.get("exit_reason", "") == df.get("live_exit_reason", "")).sum()
-    divergence_rate = 1 - (same_reason / n) if n > 0 else 0
-
-    r_delta = df.get("realized_r", 0) - df.get("live_realized_r", 0)
-    avg_r_delta = float(r_delta.mean())
-    r_delta_std = float(r_delta.std())
-
-    # Divergence by alt_label (shadow configuration)
-    by_label = {}
-    for label, grp in df.groupby("alt_label"):
-        gn = len(grp)
-        gsr = (grp.get("exit_reason", "") == grp.get("live_exit_reason", "")).sum()
-        gr_delta = grp.get("realized_r", 0) - grp.get("live_realized_r", 0)
-        by_label[label] = {
-            "n": gn,
-            "divergence_rate": round(1 - gsr / gn, 4) if gn > 0 else 0,
-            "avg_r_delta": round(float(gr_delta.mean()), 4),
-            "shadow_avg_r": round(float(grp.get("realized_r", 0).mean()), 4),
-            "live_avg_r": round(float(grp.get("live_realized_r", 0).mean()), 4),
-        }
-
-    data = json.dumps({
-        "n": n,
-        "divergence_rate": round(divergence_rate, 4),
-        "avg_r_delta": round(avg_r_delta, 4),
-        "r_delta_std": round(r_delta_std, 4),
-        "by_label": by_label,
-        "updated_at": datetime.now(tz=ET).isoformat(),
-    }, indent=2, default=str)
+    result = compute_shadow_divergence(records)
+    result["updated_at"] = datetime.now(tz=ET).isoformat()
+    data = json.dumps(result, indent=2, default=str)
     cache_set("/shadow/summary.json", data)
     return data
 
@@ -632,6 +557,22 @@ def handle_analytics_snapshot(path: str, query: dict) -> str:
     if snapshot is not None:
         return json.dumps(snapshot, indent=2, default=str)
     return json.dumps({"overall": {}, "by_archetype": {}, "by_regime": {}, "shadow": {}}, indent=2)
+
+
+def handle_attribution_waterfall(path: str, query: dict) -> str:
+    """PnL decomposition waterfall via shared/metrics."""
+    limit = max(1, min(int(query.get("limit", 500)), 2000))
+    records = _STORE.read_attribution(limit=limit)
+    if not records:
+        return json.dumps({"prediction_pnl": 0.0, "execution_cost": 0.0, "exit_cost": 0.0, "friction_cost": 0.0, "net_pnl": 0.0, "n": 0}, indent=2)
+
+    from shared.metrics.attribution import compute_waterfall
+
+    result = compute_waterfall(records)
+    result["updated_at"] = datetime.now(tz=ET).isoformat()
+    data = json.dumps(result, indent=2, default=str)
+    cache_set("/attribution/waterfall.json", data)
+    return data
 
 
 def handle_archetype_stats(path: str, query: dict) -> str:
@@ -689,6 +630,7 @@ GET_ROUTES: dict[str, tuple] = {
     "/shadow/trades.json": (handle_shadow_trades_route, False),
     "/shadow/summary.json": (handle_shadow_summary, False),
     "/archetype/stats.json": (handle_archetype_stats, False),
+    "/attribution/waterfall.json": (handle_attribution_waterfall, False),
     "/analytics/snapshot.json": (handle_analytics_snapshot, False),
     "/ping": (handle_ping, False),
 }

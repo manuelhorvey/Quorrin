@@ -29,6 +29,7 @@ from paper_trading.data_fetcher import (  # noqa: F401
 from paper_trading.decision import PositionIntent, PositionSide
 from paper_trading.execution.paper_broker import PaperBroker
 from paper_trading.execution_bridge import ExecutionBridge
+from paper_trading.experiment_context import ExperimentContext
 from paper_trading.market_hours import is_market_closed
 from paper_trading.satellite import HighVolSatellite, SatelliteConfig
 from paper_trading.satellite_runner import (
@@ -93,6 +94,7 @@ class PaperTradingEngine:
         self.execution_bridge = ExecutionBridge(self.broker)
 
         self._build_asset_registry()
+        self._init_experiment_context()
         self._init_narrative()
         self._init_satellite()
         self._restore_positions(saved_positions)
@@ -120,6 +122,23 @@ class PaperTradingEngine:
                 state_store=self.state_store,
                 execution_bridge=self.execution_bridge,
             )
+
+    def _init_experiment_context(self) -> None:
+        """Initialize pipeline freeze and stamp attribution context on all assets."""
+        universe = tuple(sorted(self.assets.keys()))
+        ctx = ExperimentContext.initialize(
+            asset_universe=universe,
+            execution_config=get_config().execution_defaults,
+        )
+        export_dir = os.path.join(BASE, "data", "research", "attribution")
+        for name, asset in self.assets.items():
+            asset.set_experiment_context(ctx.freeze.experiment_id, export_dir=export_dir)
+        logger.info(
+            "experiment: initialized experiment_id=%s (%d assets, %d components frozen)",
+            ctx.freeze.experiment_id,
+            len(self.assets),
+            len(ctx.freeze.component_hashes),
+        )
 
     def _init_narrative(self) -> None:
         self._narrative_api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
@@ -263,6 +282,18 @@ class PaperTradingEngine:
         if is_market_closed():
             logger.debug("Market closed — core assets skipped")
             return self._run_satellite_only()
+
+        # Pipeline integrity check (Phase 7 prelude)
+        ctx = ExperimentContext.get()
+        if ctx is not None:
+            changes = ctx.check_integrity()
+            if changes:
+                logger.warning(
+                    "experiment: %d component(s) changed during experiment %s — attribution data may degrade",
+                    len(changes),
+                    ctx.freeze.experiment_id,
+                )
+
         pd_limit = get_config().portfolio_drawdown_limit
         results = {}
 
@@ -800,6 +831,7 @@ class PaperTradingEngine:
         self._append_equity_history(state)
         self.state_store.save_snapshot(snapshot)
         self._capture_simulation_snapshot(state)
+        self._flush_experiment_state()
         return state
 
     def _capture_simulation_snapshot(self, state: dict) -> None:
@@ -866,3 +898,26 @@ class PaperTradingEngine:
             },
         }
         self.state_store.append_equity_history(record)
+
+    def _flush_experiment_state(self) -> None:
+        """Flush attribution buffer and export experiment freeze metadata."""
+        # Flush any remaining attribution records from all assets
+        for name, asset in self.assets.items():
+            asset.flush_attribution()
+
+        # Export experiment freeze metadata
+        ctx = ExperimentContext.get()
+        if ctx is not None:
+            export_dir = os.path.join(BASE, "data", "research", "attribution")
+            os.makedirs(export_dir, exist_ok=True)
+            metadata_path = os.path.join(export_dir, f"experiment_{ctx.freeze.experiment_id}.json")
+            if not os.path.exists(metadata_path):
+                import json  # noqa: F401  # defer import
+
+                with open(metadata_path, "w") as f:
+                    json.dump(ctx.freeze.to_dict(), f, indent=2, default=str)
+                logger.info(
+                    "experiment: exported freeze metadata to %s (experiment_id=%s)",
+                    metadata_path,
+                    ctx.freeze.experiment_id,
+                )

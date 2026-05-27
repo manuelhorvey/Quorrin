@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 
 from paper_trading.decision import PositionSide
@@ -50,6 +50,9 @@ class PredictionAttribution:
     archetype_at_entry: str = ""
     label_version: str = ""
 
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
 
 @dataclass
 class ExecutionAttribution:
@@ -75,6 +78,9 @@ class ExecutionAttribution:
             return None
         return self.entry_price / self.mid_price_at_signal
 
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
 
 @dataclass
 class ExitAttribution:
@@ -98,6 +104,9 @@ class ExitAttribution:
     counterfactual_convex_tp_r: float | None = None
     exit_archetype: str = ""
 
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
 
 @dataclass
 class FrictionAttribution:
@@ -117,6 +126,9 @@ class FrictionAttribution:
     fill_model_version: str = ""
     execution_model_version: str = ""
 
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
 
 # ── Decision Quality (outcome-independent) ─────────────────────────
 
@@ -134,6 +146,9 @@ class DecisionQuality:
     volatility_rank: float | None
     liquidity_rank: float | None
     entry_distance_from_structure: float | None
+
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
 # ── Aggregated Record ──────────────────────────────────────────────
@@ -171,6 +186,49 @@ class TradeAttributionRecord:
     def __post_init__(self):
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
+
+    def to_dict(self) -> dict:
+        """Flatten to a single-level dict suitable for DataFrame rows."""
+        d: dict = {}
+        d["trade_id"] = self.trade_id
+        d["asset"] = self.asset
+        d["entry_date"] = self.entry_date
+        d["exit_date"] = self.exit_date
+        d["side"] = self.side
+        d["policy_hash"] = self.policy_hash
+        d["archetype_version"] = self.archetype_version
+        d["execution_model_version"] = self.execution_model_version
+        d["fill_model_version"] = self.fill_model_version
+        d["entry_price"] = self.entry_price
+        d["exit_price"] = self.exit_price
+        d["realized_return"] = self.realized_return
+        d["realized_pnl"] = self.realized_pnl
+        d["created_at"] = self.created_at
+        d["experiment_id"] = ""
+        # prediction domain
+        d.update({f"pred_{k}": v for k, v in self.prediction.to_dict().items()})
+        # execution domain
+        d.update({f"exec_{k}": v for k, v in self.execution.to_dict().items()})
+        # exit domain
+        if self.exit_info is not None:
+            d.update({f"exit_{k}": v for k, v in self.exit_info.to_dict().items()})
+        else:
+            d.update({f"exit_{f.name}": None for f in fields(ExitAttribution)})
+        # friction domain
+        d.update({f"friction_{k}": v for k, v in self.friction.to_dict().items()})
+        # decision quality
+        d.update({f"dq_{k}": v for k, v in self.decision_quality.to_dict().items()})
+        return d
+
+    @classmethod
+    def to_frame(cls, records: list[TradeAttributionRecord], experiment_id: str = "") -> pd.DataFrame:  # noqa: F821
+        """Build a DataFrame from a list of records."""
+        import pandas as pd  # noqa: F401  # defer import
+
+        rows = [r.to_dict() for r in records]
+        for row in rows:
+            row["experiment_id"] = experiment_id
+        return pd.DataFrame.from_records(rows) if rows else pd.DataFrame()
 
 
 # ── Counterfactual Helpers ─────────────────────────────────────────

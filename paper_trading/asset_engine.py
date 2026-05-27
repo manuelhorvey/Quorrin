@@ -27,7 +27,7 @@ from paper_trading.regime_classifier import RegimeClassifier
 from paper_trading.risk_governance import record_trade_outcome as _record_exit_outcome
 from paper_trading.scale_out import build_scale_out_from_config
 from paper_trading.state_store import _SKIP_JOURNAL, StateStore
-from paper_trading.trade_attribution import AttributionCollector
+from paper_trading.trade_attribution import AttributionCollector, TradeAttributionRecord
 from shared.registry import StrategyRegistry
 
 logger = logging.getLogger("quantforge.asset_engine")
@@ -160,7 +160,37 @@ class AssetEngine:
         self._execution_policy = ExecutionPolicyLayer()
         self._pending_entries: dict[str, object] = {}  # direction -> DeferredEntry
         self._attribution = AttributionCollector()
+        self._experiment_id: str = ""
+        self._attribution_export_dir: str | None = None
         self._current_trade_id: str | None = None
+        self._attribution_buffer: list[TradeAttributionRecord] = []
+
+    def set_experiment_context(self, experiment_id: str, export_dir: str | None = None) -> None:
+        """Set experiment tracking context for attribution export."""
+        self._experiment_id = experiment_id
+        if export_dir is not None:
+            self._attribution_export_dir = export_dir
+            os.makedirs(export_dir, exist_ok=True)
+
+    def flush_attribution(self) -> None:
+        """Append buffered attribution records to persistent parquet storage.
+
+        Exports incrementally so data survives crash/restart.
+        """
+        if not self._attribution_buffer or not self._attribution_export_dir:
+            return
+        try:
+            path = os.path.join(self._attribution_export_dir, f"{self.name}_attribution.parquet")
+            records = list(self._attribution_buffer)
+            self._attribution_buffer.clear()
+            frame = TradeAttributionRecord.to_frame(records, experiment_id=self._experiment_id)
+            if os.path.exists(path):
+                existing = pd.read_parquet(path)
+                frame = pd.concat([existing, frame], ignore_index=True)
+            frame.to_parquet(path, index=False)
+            logger.debug("attribution: flushed %d records for %s to %s", len(records), self.name, path)
+        except Exception:
+            logger.exception("attribution: failed to flush records for %s", self.name)
 
     def set_narrative_state(self, narr) -> None:
         self.governance.set_narrative_state(narr)
@@ -413,7 +443,7 @@ class AssetEngine:
                 entry_slippage_bps=getattr(self, "_last_entry_slippage", 0.0),
                 exit_slippage_bps=exit_slippage_bps,
             )
-            self._attribution.finalize(
+            record = self._attribution.finalize(
                 trade_id=trade_id,
                 asset=self.name,
                 entry_date=str(trade.get("entry_date", "")),
@@ -429,6 +459,9 @@ class AssetEngine:
                 archetype_version="1.0",
                 exit_archetype=getattr(self, "_exit_archetype", ""),
             )
+            if record is not None:
+                self._attribution_buffer.append(record)
+                self.flush_attribution()
             trade["attribution_trade_id"] = trade_id
 
         try:

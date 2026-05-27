@@ -13,6 +13,7 @@ import logging
 
 import numpy as np
 
+from paper_trading.decision import PositionIntent
 from paper_trading.execution.order_manager import OrderManager
 from paper_trading.execution.paper_broker import PaperBroker
 from paper_trading.execution_simulator import (
@@ -20,7 +21,6 @@ from paper_trading.execution_simulator import (
     FillResult,
     MarketSnapshot,
 )
-from paper_trading.decision import PositionIntent
 from shared.execution_config import compute_market_impact, compute_slippage_cost
 
 logger = logging.getLogger("quantforge.execution_bridge")
@@ -82,9 +82,7 @@ class ExecutionBridge:
         # Phase 5: ExecutionSimulator entry fill (degradation only)
         if self.simulator is not None:
             market = self._build_market_snapshot(asset, mid_price)
-            result = self.simulator.simulate(
-                "entry", side, mid_price, quantity, market, config
-            )
+            result = self.simulator.simulate("entry", side, mid_price, quantity, market, config)
             fill = result.fill_price
             slippage_bps = result.slippage_bps
             impact_bps = 0.0
@@ -123,7 +121,6 @@ class ExecutionBridge:
             market = self._build_market_snapshot(asset, current_price)
             return self.simulator.simulate_stop_loss(position, current_price, market, config)
 
-        side = "sell" if position.side == "long" else "buy"
         fill_px = position.stop_loss
         return FillResult(fill_px, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
 
@@ -143,7 +140,6 @@ class ExecutionBridge:
             market = self._build_market_snapshot(asset, current_price)
             return self.simulator.simulate_take_profit(position, current_price, market, config)
 
-        side = "sell" if position.side == "long" else "buy"
         fill_px = position.take_profit
         return FillResult(fill_px, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
 

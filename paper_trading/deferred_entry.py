@@ -1,12 +1,13 @@
 import hashlib
-import json
 import logging
-from enum import Enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from paper_trading.decision import TradeDecision, EntryAction
+from enum import Enum
+
+from paper_trading.decision import TradeDecision
 
 logger = logging.getLogger("quantforge.paper_trading.deferred_entry")
+
 
 class DeferredEntryStatus(Enum):
     PENDING = "PENDING"
@@ -15,11 +16,13 @@ class DeferredEntryStatus(Enum):
     EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"
 
+
 @dataclass
 class DeferredEntry:
     """
     First-class state machine for deferred trade entries.
     """
+
     decision: TradeDecision
     entry_id: str
     status: DeferredEntryStatus = DeferredEntryStatus.PENDING
@@ -27,7 +30,7 @@ class DeferredEntry:
     bars_elapsed: int = 0
     max_bars: int = 5
     trigger_price: float | None = None
-    
+
     @classmethod
     def from_decision(cls, decision: TradeDecision, max_bars: int = 5) -> "DeferredEntry":
         """
@@ -36,12 +39,8 @@ class DeferredEntry:
         # ID is hashed from asset, signal, timestamp to prevent duplicates
         id_str = f"{decision.asset}_{decision.signal}_{decision.timestamp}"
         entry_id = hashlib.md5(id_str.encode()).hexdigest()[:12]
-        
-        return cls(
-            decision=decision,
-            entry_id=entry_id,
-            max_bars=max_bars
-        )
+
+        return cls(decision=decision, entry_id=entry_id, max_bars=max_bars)
 
     def update(self) -> None:
         """Increments time tracking."""
@@ -62,11 +61,11 @@ class DeferredEntry:
         if self.status in [DeferredEntryStatus.PENDING, DeferredEntryStatus.TRIGGERED]:
             self.status = DeferredEntryStatus.CANCELLED
             logger.info(f"Entry {self.entry_id} CANCELLED. Reason: {reason}")
-            
+
     def close(self) -> None:
         """Transitions to CLOSED state."""
         self.status = DeferredEntryStatus.CLOSED
-        
+
     @property
     def is_active(self) -> bool:
         return self.status == DeferredEntryStatus.PENDING

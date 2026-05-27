@@ -1,7 +1,9 @@
 import logging
-from paper_trading.decision import MarketStructureState, EntryAction, SignalType
+
+from paper_trading.decision import EntryAction, MarketStructureState, SignalType
 
 logger = logging.getLogger("quantforge.paper_trading.entry_optimizer")
+
 
 class EntryOptimizer:
     """
@@ -21,11 +23,7 @@ class EntryOptimizer:
         }
 
     def evaluate(
-        self, 
-        signal: SignalType, 
-        archetype: str, 
-        structure: MarketStructureState,
-        config: dict = None
+        self, signal: SignalType, archetype: str, structure: MarketStructureState, config: dict = None
     ) -> EntryAction:
         """
         Routes the signal to the correct policy based on its archetype.
@@ -34,7 +32,7 @@ class EntryOptimizer:
             return EntryAction.SKIP
 
         policy_func = self.policy_map.get(archetype, self._default_policy)
-        
+
         try:
             return policy_func(signal, structure, config or {})
         except Exception as e:
@@ -53,7 +51,7 @@ class EntryOptimizer:
             return EntryAction.DEFER
         if signal == SignalType.SELL and s.breakout_pressure < min_pressure:
             return EntryAction.DEFER
-            
+
         return EntryAction.ENTER
 
     def _mean_reversion_policy(self, signal: SignalType, s: MarketStructureState, config: dict) -> EntryAction:
@@ -64,9 +62,9 @@ class EntryOptimizer:
         extreme_low = config.get("mr_extreme_low", 0.15)
 
         if signal == SignalType.BUY and s.breakout_pressure > extreme_low:
-             return EntryAction.DEFER
+            return EntryAction.DEFER
         if signal == SignalType.SELL and s.breakout_pressure < extreme_high:
-             return EntryAction.DEFER
+            return EntryAction.DEFER
 
         return EntryAction.ENTER
 
@@ -75,7 +73,7 @@ class EntryOptimizer:
         Policy: Confirm breakout compression.
         """
         if s.compression_score > config.get("breakout_max_compression", 0.05):
-             return EntryAction.DEFER
+            return EntryAction.DEFER
         return EntryAction.ENTER
 
     def _vol_expansion_policy(self, signal: SignalType, s: MarketStructureState, config: dict) -> EntryAction:

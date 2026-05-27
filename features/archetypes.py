@@ -1,9 +1,10 @@
-from enum import Enum
-import pandas as pd
-import numpy as np
 import logging
+from enum import Enum
+
+import pandas as pd
 
 logger = logging.getLogger("quantforge.features.archetypes")
+
 
 class SetupArchetype(Enum):
     MOMENTUM_IGNITION = "MOMENTUM_IGNITION"
@@ -12,6 +13,7 @@ class SetupArchetype(Enum):
     VOL_EXPANSION = "VOL_EXPANSION"
     LIQUIDITY_SWEEP = "LIQUIDITY_SWEEP"
     UNKNOWN = "UNKNOWN"
+
 
 class ArchetypeClassifier:
     """
@@ -49,7 +51,7 @@ class ArchetypeClassifier:
 
             # 4. Vol Expansion (Approximated by low ADX turning higher)
             if adx < 20.0 and abs(bb_z) < 1.0:
-                 return SetupArchetype.VOL_EXPANSION
+                return SetupArchetype.VOL_EXPANSION
 
             return SetupArchetype.UNKNOWN
         except Exception as e:
@@ -63,15 +65,18 @@ class ArchetypeClassifier:
         df["archetype_name"] = df["archetype"].apply(lambda x: x.value)
         return df
 
+
 if __name__ == "__main__":
     # Quick test with dummy data
-    data = pd.DataFrame({
-        "adx": [30.0, 15.0, 40.0, 10.0],
-        "rsi": [50.0, 80.0, 50.0, 50.0],
-        "bb_zscore": [1.8, 2.2, 2.5, 0.5],
-        "ema_spread": [0.02, 0.001, 0.03, 0.0001]
-    })
-    
+    data = pd.DataFrame(
+        {
+            "adx": [30.0, 15.0, 40.0, 10.0],
+            "rsi": [50.0, 80.0, 50.0, 50.0],
+            "bb_zscore": [1.8, 2.2, 2.5, 0.5],
+            "ema_spread": [0.02, 0.001, 0.03, 0.0001],
+        }
+    )
+
     classifier = ArchetypeClassifier()
     tagged = classifier.tag_dataframe(data)
     print("Archetype Classification Test:")

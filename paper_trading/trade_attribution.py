@@ -19,11 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-
-import numpy as np
 
 from paper_trading.decision import PositionSide
 
@@ -195,9 +192,9 @@ def compute_mae_mfe(
 
     if side in ("long", PositionSide.LONG):
         favorable = [max(0.0, h - entry_price) for h in high_prices]
-        adverse = [max(0.0, entry_price - l) for l in low_prices]
+        adverse = [max(0.0, entry_price - low) for low in low_prices]
     else:
-        favorable = [max(0.0, entry_price - l) for l in low_prices]
+        favorable = [max(0.0, entry_price - low) for low in low_prices]
         adverse = [max(0.0, h - entry_price) for h in high_prices]
 
     mfe = max(favorable) if favorable else 0.0
@@ -393,22 +390,15 @@ class AttributionCollector:
         # Compute MAE / MFE
         high_prices = self._trade_high.pop(trade_id, [])
         low_prices = self._trade_low.pop(trade_id, [])
-        highs_for_mae = self._trade_high_ts.pop(trade_id, [])
-        lows_for_mae = self._trade_low_ts.pop(trade_id, [])
 
         entry_price = exec_attr.entry_price if exec_attr else 0.0
-        mae, mfe, time_to_mae, time_to_mfe = compute_mae_mfe(
-            entry_price, side, high_prices, low_prices
-        )
+        mae, mfe, time_to_mae, time_to_mfe = compute_mae_mfe(entry_price, side, high_prices, low_prices)
 
         bars_held_attr = 0
         try:
             bars_held_attr = max(
                 0,
-                (
-                    datetime.fromisoformat(exit_date)
-                    - datetime.fromisoformat(entry_date)
-                ).days,
+                (datetime.fromisoformat(exit_date) - datetime.fromisoformat(entry_date)).days,
             )
         except (ValueError, TypeError):
             bars_held_attr = 0
@@ -441,13 +431,21 @@ class AttributionCollector:
 
         if exec_attr is None:
             exec_attr = ExecutionAttribution(
-                entry_type="unknown", deferred_bars=0, entry_price=0.0,
-                mid_price_at_signal=0.0, entry_slippage_bps=0.0,
+                entry_type="unknown",
+                deferred_bars=0,
+                entry_price=0.0,
+                mid_price_at_signal=0.0,
+                entry_slippage_bps=0.0,
             )
         if friction is None:
-            friction = FrictionAttribution(entry_slippage_bps=0.0, exit_slippage_bps=0.0,
-                                           gap_fill=False, partial_fill=False,
-                                           fill_qty_ratio=1.0, latency_bars=0)
+            friction = FrictionAttribution(
+                entry_slippage_bps=0.0,
+                exit_slippage_bps=0.0,
+                gap_fill=False,
+                partial_fill=False,
+                fill_qty_ratio=1.0,
+                latency_bars=0,
+            )
         if dq is None:
             dq = DecisionQuality(None, None, None, None, None)
 

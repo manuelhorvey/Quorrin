@@ -22,10 +22,10 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
-from paper_trading.slippage_model import SlippageModel
+from paper_trading.decision import PolicyDecision, PositionIntent
 from paper_trading.fill_model import FillModel
 from paper_trading.latency_model import LatencyModel
-from paper_trading.decision import PolicyDecision, PositionIntent
+from paper_trading.slippage_model import SlippageModel
 from shared.execution_config import ExecutionConfig
 
 logger = logging.getLogger("quantforge.execution_simulator")
@@ -37,6 +37,7 @@ Side = Literal["buy", "sell"]
 @dataclass(frozen=True)
 class MarketSnapshot:
     """Point-in-time market state at execution simulation."""
+
     current_price: float
     open_price: float
     high_price: float
@@ -47,6 +48,7 @@ class MarketSnapshot:
 @dataclass(frozen=True)
 class FillResult:
     """Frozen outcome of a simulated execution."""
+
     fill_price: float
     fill_qty: float
     slippage_bps: float
@@ -117,36 +119,26 @@ class ExecutionSimulator:
         # 2. Check gap-through (for stop-loss fills)
         gap_fill = False
         fill_price = requested_price
-        if order_type == "stop_loss":
-            if self.fill.check_gap_through(market.open_price, requested_price, side):
-                gap_fill = True
-                fill_price = self.fill.gap_fill_price(market.open_price, requested_price, side)
+        if order_type == "stop_loss" and self.fill.check_gap_through(market.open_price, requested_price, side):
+            gap_fill = True
+            fill_price = self.fill.gap_fill_price(market.open_price, requested_price, side)
 
         # 3. Apply order-type-specific slippage
         slippage_bps = 0.0
         if order_type == "stop_loss" and not gap_fill:
             price_slip = self.slippage.stop_loss_slippage(fill_price, market.vol_zscore, config, side)
             slippage_bps = (price_slip / fill_price * 10000) if fill_price > 0 else 0.0
-            if side == "buy":
-                fill_price = fill_price - price_slip  # worse (slip down to buy)
-            else:
-                fill_price = fill_price + price_slip  # worse (slip up to sell)
+            fill_price = fill_price - price_slip if side == "buy" else fill_price + price_slip
 
         elif order_type == "take_profit":
             price_slip = self.slippage.take_profit_slippage(fill_price, config)
             slippage_bps = (price_slip / fill_price * 10000) if fill_price > 0 else 0.0
-            if side == "buy":
-                fill_price = fill_price - price_slip  # slightly better (limit order)
-            else:
-                fill_price = fill_price + price_slip  # slightly better
+            fill_price = fill_price - price_slip if side == "buy" else fill_price + price_slip
 
         elif order_type == "entry":
             price_slip = self.slippage.entry_slippage(fill_price, market.vol_zscore, config)
             slippage_bps = price_slip * 10000
-            if side == "buy":
-                fill_price = fill_price * (1.0 + price_slip)
-            else:
-                fill_price = fill_price * (1.0 - price_slip)
+            fill_price = fill_price * (1.0 + price_slip) if side == "buy" else fill_price * (1.0 - price_slip)
 
         fill_price = max(fill_price, 0.0)
 

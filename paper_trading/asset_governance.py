@@ -6,6 +6,8 @@ from features.fxstreet_fetcher import get_active_narrative, is_narrative_stale
 from features.liquidity_regime import (
     classify_liquidity_regime,
     compute_liquidity_features,
+)
+from features.liquidity_regime import (
     liquidity_governance_scalars as _liquidity_scalars,
 )
 from features.macro_narrative import narrative_governance_scalars as _narrative_scalars

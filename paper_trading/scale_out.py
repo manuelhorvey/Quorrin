@@ -53,9 +53,7 @@ class ScaleOutEngine:
         if tier_specs is not None:
             total = sum(f for f, _ in tier_specs)
             if abs(total - 1.0) > 1e-6:
-                raise ValueError(
-                    f"ScaleOutEngine tier fractions must sum to 1.0, got {total:.4f}"
-                )
+                raise ValueError(f"ScaleOutEngine tier fractions must sum to 1.0, got {total:.4f}")
 
     def build_plan(
         self,
@@ -69,14 +67,14 @@ class ScaleOutEngine:
         """
         if tier_specs is None:
             # Default fallback (Balanced)
-            tier_specs = [(1/3, 0.50), (1/3, 1.00), (1/3, 1.50)]
+            tier_specs = [(1 / 3, 0.50), (1 / 3, 1.00), (1 / 3, 1.50)]
 
         tp_total = abs(take_profit - entry_price)
         tiers = []
         for fraction, mult in tier_specs:
             price = entry_price + tp_total * mult if side == "long" else entry_price - tp_total * mult
             tiers.append(ScaleOutTier(fraction=fraction, price=price))
-        
+
         return ScaleOutPlan(tiers=tiers, entry_price=entry_price, remaining_fraction=1.0)
 
     def check_tiers(
@@ -160,10 +158,10 @@ def build_scale_out_from_config(asset_config: dict) -> ScaleOutEngine | None:
     so_cfg = asset_config.get("scale_out")
     if not so_cfg or not so_cfg.get("enabled", False):
         return None
-    
+
     activate_after = so_cfg.get("activate_breakeven_after", 0)
     trailing_after = so_cfg.get("trailing_after_tier")
-    
+
     return ScaleOutEngine(
         activate_breakeven_after=activate_after,
         trailing_after_tier=trailing_after,

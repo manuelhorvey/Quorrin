@@ -34,9 +34,7 @@ class AssetTrainingPipeline:
         ref = None
         if getattr(asset.contract, "vs_spy_windows", ()):
             ref = fetch_ref("SPY")
-        macro = compute_macro_derived(
-            pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet"))
-        )
+        macro = compute_macro_derived(pd.read_parquet(os.path.join(BASE, "data/processed/macro_factors.parquet")))
         features = asset._build_features(df, ref, macro)
         validate_no_cross_asset_leakage(features, asset.contract, known_slugs=FEATURE_REGISTRY.keys())
         logger.info("%s: %d feature rows", asset.name, len(features))

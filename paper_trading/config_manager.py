@@ -49,10 +49,10 @@ class EngineConfig:
         defaults_halt = _default_halt()
         for k, v in defaults_halt.items():
             halt.setdefault(k, v)
-            
+
         execution = data.get("execution", {})
         governance = execution.get("governance", {})
-        
+
         return cls(
             capital=data.get("capital", 100_000),
             position_size=data.get("position_size", 0.95),

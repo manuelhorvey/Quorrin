@@ -1,10 +1,13 @@
+import logging
+
 import numpy as np
 import pandas as pd
-import logging
 from scipy import stats
+
 from paper_trading.decision import MarketStructureState
 
 logger = logging.getLogger("quantforge.features.market_structure")
+
 
 class MarketStructureDetector:
     """
@@ -33,7 +36,7 @@ class MarketStructureDetector:
         log_price = np.log(close)
         x = np.arange(len(log_price))
         slope, _, _, _, _ = stats.linregress(x, log_price)
-        
+
         # 2. Compression Score (Bollinger Band width / MA)
         ma20 = close.rolling(20).mean()
         std20 = close.rolling(20).std()
@@ -43,8 +46,8 @@ class MarketStructureDetector:
         # 3. Distance to Swing High/Low
         swing_high = float(high.max())
         swing_low = float(low.min())
-        dist_high = (swing_high / last_close - 1.0)
-        dist_low = (last_close / swing_low - 1.0)
+        dist_high = swing_high / last_close - 1.0
+        dist_low = last_close / swing_low - 1.0
 
         # 4. Volatility Regime (Rolling 10d vol / Rolling 50d vol)
         rets = close.pct_change().dropna()
@@ -66,7 +69,7 @@ class MarketStructureDetector:
             distance_to_swing_high=round(dist_high, 6),
             distance_to_swing_low=round(dist_low, 6),
             volatility_regime=round(vol_regime, 4),
-            breakout_pressure=round(float(pressure), 4)
+            breakout_pressure=round(float(pressure), 4),
         )
 
     def _empty_state(self) -> MarketStructureState:
@@ -76,16 +79,19 @@ class MarketStructureDetector:
             distance_to_swing_high=0.0,
             distance_to_swing_low=0.0,
             volatility_regime=1.0,
-            breakout_pressure=0.5
+            breakout_pressure=0.5,
         )
+
 
 if __name__ == "__main__":
     # Test with dummy data
-    data = pd.DataFrame({
-        "close": np.linspace(100, 105, 100) + np.random.normal(0, 0.1, 100),
-        "high": np.linspace(101, 106, 100),
-        "low": np.linspace(99, 104, 100)
-    })
+    data = pd.DataFrame(
+        {
+            "close": np.linspace(100, 105, 100) + np.random.normal(0, 0.1, 100),
+            "high": np.linspace(101, 106, 100),
+            "low": np.linspace(99, 104, 100),
+        }
+    )
     detector = MarketStructureDetector(window=50)
     state = detector.detect(data)
     print("Market Structure State:")

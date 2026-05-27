@@ -31,6 +31,7 @@ class MarketStructureState:
     Structural snapshot of the market.
     Purely informational, no decision logic.
     """
+
     trend_strength: float
     compression_score: float
     distance_to_swing_high: float
@@ -52,9 +53,10 @@ class PolicyDecision:
     Immutable execution instruction packet.
     Frozen orchestration of signal, timing, and reward.
     """
+
     action: EntryAction
     entry_plan: object | None  # PositionIntent | DeferredEntry
-    exit_plan: object | None   # TPGeometry
+    exit_plan: object | None  # TPGeometry
     reason: str
     archetype: str
     metadata: dict
@@ -66,6 +68,7 @@ class TPGeometry:
     Immutable reward geometry generated at entry.
     Locked and path-independent execution schedule.
     """
+
     tp_distance: float
     scale_out_tiers: list[tuple[float, float]]  # [(fraction, multiplier)]
     convexity_score: float
@@ -108,7 +111,13 @@ class PositionIntent:
 
     @classmethod
     def from_price_and_vol(
-        cls, side: PositionSide, entry_price: float, entry_date: str, vol: float, sl_mult: float = 1.0, tp_mult: float = 2.5
+        cls,
+        side: PositionSide,
+        entry_price: float,
+        entry_date: str,
+        vol: float,
+        sl_mult: float = 1.0,
+        tp_mult: float = 2.5,
     ) -> "PositionIntent":
         if side == PositionSide.LONG:
             sl = entry_price * (1 - vol * sl_mult)

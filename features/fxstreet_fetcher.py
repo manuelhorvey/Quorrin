@@ -66,7 +66,9 @@ def fetch_fxstreet_article() -> str | None:
                 article_resp = requests.get(href, headers=headers, timeout=15)
                 article_resp.raise_for_status()
                 article_soup = BeautifulSoup(article_resp.text, "html.parser")
-                body = article_soup.find("div", class_=re.compile(r"article-content|entry-content|post-content|fxs_contentView"))
+                body = article_soup.find(
+                    "div", class_=re.compile(r"article-content|entry-content|post-content|fxs_contentView")
+                )
                 if body:
                     for tag in body.find_all(["script", "style", "nav", "footer"]):
                         tag.decompose()
@@ -121,7 +123,7 @@ def call_llm(text: str, api_key: str, model: str = "deepseek-v4-flash-free", ret
         except Exception as e:
             logger.warning("LLM attempt %d failed: %s", attempt + 1, e)
         if attempt < retries:
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     logger.error("LLM call failed after %d attempts", retries + 1)
     return None
 

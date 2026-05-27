@@ -615,7 +615,9 @@ class PaperTradingEngine:
                 "liquidity_size_scalar": asset.governance._liquidity_size_scalar,
                 "narrative_sl_mult": asset.governance._narrative_sl_mult,
                 "narrative_size_scalar": asset.governance._narrative_size_scalar,
-                "narrative_regime": asset.governance._narrative_active.overall_regime if asset.governance._narrative_active else None,
+                "narrative_regime": asset.governance._narrative_active.overall_regime
+                if asset.governance._narrative_active
+                else None,
                 "narrative_stale": asset.governance._narrative_stale,
                 "regime_geometry": asset.regime_geometry,
                 "stop_out_last_side": getattr(asset, "_last_stop_out_side", None),

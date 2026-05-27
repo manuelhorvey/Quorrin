@@ -230,6 +230,84 @@ class StateStore:
         except Exception as e:
             logger.warning("Failed to write trade outcomes cache: %s", e)
 
+    def append_attribution(self, record_dict: dict) -> None:
+        """Persist a single TradeAttributionRecord flattened dict to attribution.parquet.
+
+        Centralized store for dashboard consumption. Does NOT replace per-asset
+        experiment export — this is the durable queryable copy.
+        """
+        path = os.path.join(self.live_dir, "attribution.parquet")
+        df = pd.DataFrame([record_dict])
+        for col in ("entry_date", "exit_date", "created_at"):
+            if col in df.columns:
+                df[col] = df[col].astype(str)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            try:
+                existing = pd.read_parquet(path)
+                for col in ("entry_date", "exit_date", "created_at"):
+                    if col in existing.columns:
+                        existing[col] = existing[col].astype(str)
+                df = pd.concat([existing, df], ignore_index=True)
+            except Exception:
+                pass
+        df.to_parquet(path, index=False)
+
+    def read_attribution(self, limit: int = 100, offset: int = 0,
+                         archetype: str | None = None,
+                         regime: str | None = None,
+                         asset: str | None = None) -> list:
+        """Read attribution records with optional filters."""
+        path = os.path.join(self.live_dir, "attribution.parquet")
+        if not os.path.exists(path):
+            return []
+        try:
+            df = pd.read_parquet(path)
+            if archetype:
+                df = df[df.get("pred_archetype_at_entry", "") == archetype]
+            if regime:
+                df = df[df.get("pred_regime_at_entry", "") == regime]
+            if asset:
+                df = df[df.get("asset", "") == asset]
+            df = df.sort_values("exit_date", ascending=False).iloc[offset:offset + limit]
+            return json.loads(df.to_json(orient="records", default_handler=str))
+        except Exception as e:
+            logger.warning("Failed to read attribution: %s", e)
+            return []
+
+    def append_shadow_trade(self, record_dict: dict) -> None:
+        """Persist a single ShadowTradeRecord dict to shadow_trades.parquet."""
+        path = os.path.join(self.live_dir, "shadow_trades.parquet")
+        df = pd.DataFrame([record_dict])
+        for col in ("entry_date", "exit_date"):
+            if col in df.columns:
+                df[col] = df[col].astype(str)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            try:
+                existing = pd.read_parquet(path)
+                for col in ("entry_date", "exit_date"):
+                    if col in existing.columns:
+                        existing[col] = existing[col].astype(str)
+                df = pd.concat([existing, df], ignore_index=True)
+            except Exception:
+                pass
+        df.to_parquet(path, index=False)
+
+    def read_shadow_trades(self, limit: int = 100, offset: int = 0,
+                           alt_label: str | None = None) -> list:
+        """Read shadow trade records with optional filter."""
+        path = os.path.join(self.live_dir, "shadow_trades.parquet")
+        if not os.path.exists(path):
+            return []
+        try:
+            df = pd.read_parquet(path)
+            if alt_label:
+                df = df[df.get("alt_label", "") == alt_label]
+            df = df.sort_values("exit_date", ascending=False).iloc[offset:offset + limit]
+            return json.loads(df.to_json(orient="records", default_handler=str))
+        except Exception as e:
+            logger.warning("Failed to read shadow trades: %s", e)
+            return []
+
     def append_confidence_bucket(self, bucket: dict) -> None:
         df = pd.DataFrame([bucket])
         if os.path.exists(self.confidence_bucket_path) and os.path.getsize(self.confidence_bucket_path) > 0:

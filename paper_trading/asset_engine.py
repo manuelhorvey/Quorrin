@@ -527,7 +527,45 @@ class AssetEngine:
             if record is not None:
                 self._attribution_buffer.append(record)
                 self.flush_attribution()
+                # Persist to centralized store for dashboard queries
+                if self.state_store is not None:
+                    try:
+                        self.state_store.append_attribution(record.to_dict())
+                    except Exception:
+                        logger.exception("attribution: failed to persist to centralized store")
+                # Enrich trade journal with MAE/MFE and attribution fields
+                exit_info = record.exit_info
+                if exit_info is not None:
+                    trade["mae"] = exit_info.mae
+                    trade["mfe"] = exit_info.mfe
+                    trade["mae_per_bar"] = exit_info.mae_per_bar
+                    trade["mfe_per_bar"] = exit_info.mfe_per_bar
+                    trade["realized_r"] = exit_info.realized_r
+                    trade["bars"] = exit_info.bars_held
+                    trade["exit_archetype"] = exit_info.exit_archetype
+                exec_attr = record.execution
+                trade["entry_slippage_bps"] = exec_attr.entry_slippage_bps if exec_attr else 0.0
+                friction = record.friction
+                trade["exit_slippage_bps"] = friction.exit_slippage_bps
+                trade["fill_qty_ratio"] = friction.fill_qty_ratio
+                trade["gap_fill"] = friction.gap_fill
+                trade["partial_fill"] = friction.partial_fill
+                trade["latency_bars"] = friction.latency_bars
+                trade["pred_confidence"] = record.prediction.confidence
+                trade["pred_archetype"] = record.prediction.archetype_at_entry
+                trade["pred_regime"] = record.prediction.regime_at_entry
             trade["attribution_trade_id"] = trade_id
+
+            # Persist completed shadow trades to centralized store
+            if self.state_store is not None:
+                try:
+                    shadow = getattr(self, "_shadow_sltp", None)
+                    if shadow is not None:
+                        completed = shadow.flush_completed(asset_name=self.name)
+                        for st in completed:
+                            self.state_store.append_shadow_trade(st.__dict__)
+                except Exception:
+                    logger.exception("shadow: failed to persist completed shadow trades")
 
         try:
             macro_head = getattr(self.model, "macro_head", None) if self.model else None

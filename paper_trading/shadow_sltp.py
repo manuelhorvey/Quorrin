@@ -250,6 +250,19 @@ class ShadowSLTPEngine:
         )
         self._shadow_active = False
 
+    def flush_completed(self, asset_name: str = "") -> list[ShadowTradeRecord]:
+        """Return and clear all completed shadow trades, setting asset name.
+
+        This is the read-once pattern for persisting shadow results to durable
+        storage without keeping them in memory.
+        """
+        records = list(self.shadow_trades)
+        for r in records:
+            if not r.asset:
+                r.asset = asset_name
+        self.shadow_trades.clear()
+        return records
+
     def set_live_outcome(self, exit_reason: str, realized_r: float) -> None:
         """Attach the live outcome to the most recent shadow trade for comparison."""
         if self.shadow_trades:

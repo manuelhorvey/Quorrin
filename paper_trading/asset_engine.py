@@ -620,8 +620,32 @@ class AssetEngine:
 
         if self._cooldown_score < 0.05:
             self._cooldown_score = 0.0
+            self._last_stop_out_side = None
 
         return self._cooldown_score
+
+    def _can_enter(self, side: str, price: float, context: dict | None = None) -> tuple[bool, str]:
+        """Single entry gate — pure evaluation, never mutates state.
+
+        Returns (allowed: bool, reason: str). All entry paths MUST
+        route through this gate to maintain execution singularity.
+        """
+        # A. Hard same-bar stop-out lock
+        if self._last_stop_out_date is not None and self._last_stop_out_side == side:
+            now = pd.Timestamp.now(tz="UTC")
+            if self._last_stop_out_date == now.normalize():
+                return False, "same_day_stopout_lock"
+
+        # B. Cooldown penalty (soft block)
+        penalty = self._cooldown_penalty(side)
+        if penalty > 0:
+            return False, f"cooldown_active_{penalty:.2f}"
+
+        # C. Pending-entry conflict — no duplicate direction in queue
+        if side in self._pending_entries:
+            return False, "pending_entry_exists"
+
+        return True, "ok"
 
     def refresh_price(self):
         # 1. Try absolute real-time price first
@@ -708,20 +732,17 @@ class AssetEngine:
             if self.pos_mgr.has_position():
                 self._close_position(decision.close_price, today, "signal_flip")
             if new_side:
-                penalty = self._cooldown_penalty(new_side)
-                if penalty > 0:
-                    max_penalty = self.config.get("cooldown_max_penalty_pct", 20.0)
-                    threshold_penalty = penalty * max_penalty
-                    if decision.confidence < (min_conf + threshold_penalty):
-                        logger.info(
-                            "%s: cooldown blocking %s entry (conf %.1f%% < threshold %.1f%% + penalty %.1f%%)",
-                            self.name,
-                            new_side,
-                            decision.confidence,
-                            min_conf,
-                            threshold_penalty,
-                        )
-                        new_side = None
+                ok, reason = self._can_enter(
+                    new_side,
+                    decision.close_price,
+                    {"regime": getattr(self, "_current_regime", "neutral")},
+                )
+                if not ok:
+                    logger.info(
+                        "%s: entry gate blocking %s entry — %s",
+                        self.name, new_side, reason,
+                    )
+                    new_side = None
 
                 if new_side:
                     # 1. Gather Phase 1-3 Artifacts
@@ -874,9 +895,22 @@ class AssetEngine:
             self._entry_archetype = entry.decision.archetype
 
             if policy_dec.action == EntryAction.ENTER:
+                side = PositionSide(direction)
+                ok, reason = self._can_enter(
+                    side,
+                    float(df["close"].iloc[-1]),
+                    {"regime": getattr(self, "_current_regime", "neutral")},
+                )
+                if not ok:
+                    logger.info(
+                        "%s: entry gate blocking deferred %s entry — %s",
+                        self.name, direction, reason,
+                    )
+                    entry.cancel(reason=reason)
+                    to_remove.append(direction)
+                    continue
                 logger.info(f"{self.name}: TRIGGERING deferred {direction} entry (Policy: {policy_dec.reason})")
                 entry.trigger(float(df["close"].iloc[-1]))
-                side = PositionSide(direction)
                 self._open_position(side, entry.decision.close_price, today, df, tp_geo=policy_dec.exit_plan)
                 if self.position is not None:
                     self.position["confidence"] = entry.decision.confidence

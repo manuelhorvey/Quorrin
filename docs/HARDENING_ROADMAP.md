@@ -91,6 +91,50 @@ Observe everything, mutate nothing. Never feeds back into labels, frozen kernel,
 
 ---
 
+## Execution Research Infrastructure Tiers (A0–B3)
+
+### A0 — Frozen Volatility Primitive
+
+- `shared/volatility.py` — `VolatilityPrimitive` dataclass with `compute_atr_series()`, `compute_atr_pct()`, `estimate_gap_risk()`, `estimate_ewm_vol()` (EWM is legacy fallback).
+- Single ATR implementation consumed by labels, execution geometry, shadow replay, and attribution — eliminates train/serve skew at barrier geometry level.
+- `DynamicSLTPEngine` consumes shared primitive; removed duplicate `_compute_atr()`, `_estimate_vol()`, `_estimate_gap_risk()` methods.
+
+### A1 — ATR-Aligned Triple-Barrier Labeling
+
+- Barrier widths computed via `shared.volatility.compute_atr_pct()` matching runtime ATR.
+- Label params include `vol_method` and `atr_period` for all live-traded assets.
+- `label_version` hash auto-updates when vol params differ; vol method persisted in `df.attrs` for replayability.
+
+### A2 — Vol-Drop Anti-Pattern Fix
+
+- `post_entry_adjust()` tightens SL on vol spike (>1.3× ratio) to protect; vol collapse (<0.7×) triggers no action (trade safer with less noise).
+- **Tests:** `tests/test_dynamic_sltp.py` — `test_vol_drop_tightens_sl`.
+
+### A3 — Continuous Meta-Confidence Sizing
+
+- Replaces binary meta-label gate with `_meta_size_multiplier()`.
+- Maps [threshold, 1.0] → [min_size, 1.0]; below threshold → 0.0 (zero notional).
+- Applied in `_composite_size_scalar()` alongside governance scalars.
+
+### B1 — Shadow Counterfactual Replay
+
+- `paper_trading/shadow_sltp.py` — isolated counterfactual SL/TP engine. Consumes immutable artifacts, never reads PositionManager.
+- Integration: `_open_position()` (entry recording), `update_pnl()` (tick per refresh), `_close_position()` (shadow close with live exit reason).
+- Config-gated: `shadow_sltp.enabled`.
+
+### B2 — Expanded Attribution
+
+- `ExitAttribution.meta_bucket` field for meta-confidence decile stratification.
+- `get_metrics().archetype_stats` — per-archetype win rate, avg R, SL/TP rate, trade count.
+- Trade journal captures `archetype_at_entry`.
+
+### B3 — Execution Path Analysis
+
+- `research/execution_path_analysis.py` — distributional analysis of attribution data.
+- Per-archetype path stats, meta-bucket stratification, report generation.
+
+---
+
 ## Tier 1 — Cross-asset leakage and regime sizing
 
 ### Feature isolation
@@ -244,11 +288,11 @@ pytest tests/ -q --tb=short
 - `tests/test_dynamic_sltp.py` — 51+ tests for barriers, calibrate, trailing stop, post-entry adjustment, helpers, confidence-based SL adjustment, best-price tracking.
 - `tests/test_scale_out.py` — 35 tests for config building, plan building, tier checks, breakeven activation, trailing activation.
 
-### 4B — Probability-based SL/TP via meta-label confidence
+### 4B — Continuous meta-confidence sizing (replaces binary ENTER/BLOCK)
 
-- `paper_trading/dynamic_sltp.py` — `confidence_sl_adjust` config parameter (default 0.0, disabled); `_confidence_sl_factor()` computes dynamic SL tightness from meta-confidence (p=0.5 → 1.0×, p=0.9 → 1.0 - adjust, p=0.1 → 1.0 + adjust/2).
-- `paper_trading/asset_engine.py` — `compute_barriers()` accepts `meta_confidence` param; threads `_last_meta_proba` through for live inference.
-- Strength: preserves meta-label gating (ENTER/BLOCK) while biasing SL width toward confidence.
+- `paper_trading/asset_engine.py` — `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly from XGBoost `MetaLabelModel` probability.
+- `paper_trading/dynamic_sltp.py` — `post_entry_adjust()` recomputes barriers based on current ATR; vol spikes (>1.3×) tighten SL; vol collapses (<0.7×) no action.
+- Design invariant: meta-confidence is size-only — never modifies TP geometry, trailing, or scale-out schedules.
 
 ### 4C — Shadow SL/TP analytics
 

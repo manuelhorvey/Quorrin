@@ -80,8 +80,8 @@ graph TD
     end
 
     subgraph Execution_Layer [Paper Trading Engine]
-        K1 --> L[AssetEngine x13 + BTC satellite]
-        L --> L1[13 core assets + BTC satellite bucket]
+        K1 --> L[AssetEngine x8 + BTC satellite]
+        L --> L1[8 core assets + BTC satellite bucket]
         L1 --> L2[Live inference every 5 min]
         L2 --> L3[Vol-scaled sizing + SL/TP + scale-out]
         L3 --> L4[PnL tracking: state.json + trade_journal.parquet]
@@ -148,10 +148,10 @@ Features are computed independently per module and concatenated by common index.
 - Regime persistence lock (minimum 5 periods before transition allowed)
 - Capital allocation is stepped, not continuous — makes state auditable
 
-**Position Sizing** (`risk/position_sizing.py`)
+**Position Sizing** (`shared/sizing.py:VolTargetSizing`)
 - Base dollar risk × regime multiplier
-- Engine adds volatility scalar (target_vol=0.30, cap=1.0) for BTC
-- Triple-barrier volatility used for SL/TP placement
+- Engine adds volatility scalar via `VolTargetSizing`
+- ATR-based barrier geometry via `shared/volatility.py:VolatilityPrimitive` — primary vol source for labels, SL/TP, shadow replay, and attribution
 
 ### Archetype Classification (`features/`)
 
@@ -216,11 +216,11 @@ Features are computed independently per module and concatenated by common index.
 - `_poll_pending_entries()`: checks DeferredEntry triggers each cycle
 
 **PaperTradingEngine** (orchestrator)
-- Manages 13 AssetEngine instances + BTC satellite
+- Manages 8 AssetEngine instances + BTC satellite
 - Label architectures: tb20 (triple-barrier) for FX/equities, fwd60 (60-day forward return) for GC
-- 7-layer governance: validity state machine, narrative, liquidity, PSI drift, drawdown, signal drought, confidence drift
+- 7-layer governance: validity state machine, meta-labeling (XGBoost confidence filter), macro narrative, liquidity regime, PSI drift, drawdown, signal drought
 - SL/TP chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`
-- Scale-out: 4-tier profit-taking for 10 of 13 assets
+- Scale-out: 4-tier profit-taking for 6 of 8 core assets (AUDJPY, CHFJPY, EURAUD, EURCAD, GBPCAD, USDJPY)
 - Dynamic SL/TP calibration at startup (ATR-based, calibration_scale=1.2)
 - Runs every 300s (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)
 - Exposes state via JSON for dashboard, persists to Parquet/JSON
@@ -329,7 +329,7 @@ graph TD
 - `position_size: 0.95` — Max position fraction
 - Per-asset: ticker, weight, features, drawdown limits, halt conditions
 - `retrain_freq: annual` — Model retraining frequency
-- `target_vol: 0.30` — Annualized target volatility for position scaling
+- Per-asset ATR params: `atr_period`, `atr_mult_sl`, `atr_mult_tp` — Dynamic barrier geometry via `shared/volatility.py:VolatilityPrimitive`
 
 **Environment:**
 - `PYTHONPATH=.:$PYTHONPATH` — Required for module imports

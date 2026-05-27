@@ -222,15 +222,17 @@ Observed range across all (asset, regime) pairs:
 
 **Lesson learned:** Aggregate trade quality numbers hide regime-specific variation. The regime-stratified table is now part of `print_comparison_summary()` output when `--regime-geometry` is active, providing actionable monitoring data.
 
-### Meta-Model Validation — AUC 0.49-0.55 (Random)
+### Meta-Model Validation — AUC 0.49-0.55 (Random) [Superseded]
 
-**Hypothesis:** A logistic regression secondary filter trained on live trade outcomes can distinguish winning from losing primary signals.
+**Original hypothesis:** A logistic regression secondary filter trained on live trade outcomes can distinguish winning from losing primary signals.
 
-**Result:** Holdout validation across all 8 assets with > 200 trades: AUC 0.49 (AUDJPY) to 0.55 (EURCAD). Effectively random. Removed from all production paths in `asset_engine.py` and `survival_sim.py`. The `shared/meta_labeling.py` module kept as reference for future research.
+**Result (LogisticRegression):** Holdout validation across all 8 assets with > 200 trades: AUC 0.49 (AUDJPY) to 0.55 (EURCAD). Effectively random. The `shared/meta_labeling.py` LogisticRegression module is kept as reference; it was removed from production paths.
 
-**Why it failed:** The primary XGBoost models already produce well-calibrated probabilities. The 5 meta-model features (primary confidence, regime state, periods in state, stability penalty, close price) do not contain incremental information that the primary model has not already exploited.
+**Replacement (XGBoost MetaLabelModel):** A new XGBoost-based `labels/meta_labels.py:MetaLabelModel` (XGBClassifier, 7 features including primary model probabilities) replaces the old approach. It uses threshold-based continuous gating: below `threshold` (0.55 for most assets) → zero notional; above → `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly. Meta-confidence modulates exposure only — never TP geometry, trailing, or scale-out schedules.
 
-**Lesson learned:** A secondary filter cannot improve on a primary model that has already learned its own failure modes. The +5–19% Sharpe lift observed during development was from random gating (the meta-model was randomly skipping losing trades), not from genuine skill.
+**Why LogisticRegression failed:** The primary XGBoost models already produce well-calibrated probabilities. The 5 meta-model features do not contain incremental information.
+
+**Why XGBoost may succeed:** Uses richer feature set including primary model probabilities, regime state, and stability metrics. The continuous size scalar avoids the hard ENTER/BLOCK switching that made the old approach fragile.
 
 ### Near-Zero Correlation Portfolio
 
@@ -238,11 +240,11 @@ Observed range across all (asset, regime) pairs:
 
 ### JPY Carry Cluster Risk Caps (40% Concentration Limit)
 
-**Why it's necessary:** The 14-asset portfolio contains 6 JPY-cross pairs (NZDJPY, CADJPY, AUDJPY, GBPJPY, USDJPY, CHFJPY), collectively absorbing ~46% allocation at equal weight. JPY crosses share a common funding-currency risk factor — a sharp JPY rally (carry unwind) would hit all six simultaneously, eliminating the diversification benefit.
+**Why it's necessary:** The current 8-asset portfolio contains 3 JPY-cross pairs (AUDJPY, CHFJPY, USDJPY), collectively absorbing ~38% allocation. JPY crosses share a common funding-currency risk factor — a sharp JPY rally (carry unwind) would hit all three simultaneously.
 
-**Implementation:** `cluster_risk_report()` in `portfolio_builder.py` checks total allocation across JPY-cross assets against `JPY_CARRY_MAX_ALLOC=0.40`. Emits a `logger.warning` at engine startup if exceeded. No automatic rebalancing — the warning is an informational trigger for manual intervention.
+**Implementation:** `cluster_risk_report()` in `portfolio_builder.py` checks total allocation across JPY-cross assets against `JPY_CARRY_MAX_ALLOC=0.40`. Emits a `logger.warning` at engine startup if exceeded.
 
-**Current state:** The ~46% total JPY cross allocation exceeds the 40% cap. Decision to act vs monitor is pending — the 6 JPY crosses have structurally different drivers (AUDJPY ~ risk appetite, USDJPY ~ rates differential, CHFJPY ~ safe-haven, CADJPY ~ oil), which partially mitigates the common-factor risk. The cap remains conservative at 40% to catch the worst-case unwind scenario.
+**Current state:** The 3 JPY crosses (AUDJPY 16%, CHFJPY 14%, USDJPY 8% = 38%) are collectively under the 40% cap. The retired assets (NZDJPY, CADJPY, GBPJPY) were removed in part to relieve JPY cross cluster concentration. The cap remains conservative at 40% to catch the worst-case unwind scenario.
 
 ### Expanding Window With Recency Weighting
 
@@ -349,23 +351,11 @@ Six parameterised stress blocks cover structurally distinct crisis regimes: COVI
 
 **Resolution:** BTC was removed from the core portfolio and placed in a `HighVolSatellite` bucket at 5% AUM cap. Marginal contribution analysis confirmed that BTC's 60-80% annualised vol and 77% 2022 drawdown corrupted portfolio-level Sharpe and drawdown metrics even at 20% allocation. The satellite isolation preserves upside convexity while preventing tail events from corrupting core metrics. 14-asset survival sim validated: BTC Satellite portfolio Sharpe 5.58, worst DD 12.1%, vs BTC Legacy 20% Sharpe 3.78, worst DD 27.5%. See [ADR-018](../docs/adr/ADR-018-btc-satellite.md).
 
-### Portfolio Expansion — 11 to 14 Assets (CHFJPY, EURCAD, ^DJI)
+### Portfolio Composition History
 
-**Resolution:** 32 tickers registered and walk-forward screened. 10 passed the promotion gate. Historical 5-year sandbox governance narrowed to 4 candidates. CL=F rejected (avg Sharpe −0.33 in historical backtest — regime overfit to 2020 crash). GBPNZD held back (only 3/5 consistent windows). Three promoted:
+**Current portfolio:** 8 core assets (AUDJPY, CHFJPY, EURAUD, EURCAD, GBPCAD, GC, USDCAD, USDJPY) + BTC satellite. Earlier iterations expanded from 11 to 14 assets by adding CHFJPY, EURCAD, and ^DJI. ^DJI was later removed (marginal ΔSharpe −0.11 — the equity index did not compensate for its idiosyncratic risk factor). NZDJPY, CADJPY, GBPJPY, GBPUSD, and USDCHF were retired during portfolio optimization as their marginal Sharpe contribution degraded the risk-parity surface.
 
-- **CHFJPY**: avg Sharpe 0.89 (WF), 1.62 (historical), 5/5 windows, plateau SL/TP at 0.50/1.70
-- **EURCAD**: avg Sharpe 0.52 (WF), 1.41 (historical), 5/5 windows, plateau SL/TP at 0.51/1.96
-- **^DJI**: avg Sharpe 1.53 (historical), 4/5 windows, started underweight at 5%; marginal contribution ΔSharpe −0.11 (under observation)
-
-**14-asset survival sim results**: Sharpe 6.02 (was 3.78), worst DD 8.3% (was 27.5%), flash crash DD 34.1% (was 35.8%), ruin 0%, 100% positive paths. Return compression −2.4% is the expected trade-off for diversification and well within bounds.
-
-**Lesson learned**: Single-metric walk-forward gates can miss regime overfitting (CL=F case). Historical 5-year governance is necessary as a secondary filter. Plateau-center SL/TP selection is more robust than global max Sharpe.
-
-### Risk-Parity Portfolio Allocation — In Progress
-
-**Blocking issue:** The portfolio/ module has HRP and risk parity implementations marked "in progress." Current allocation uses fixed weights across 14 assets (see README §4).
-
-**Data needed:** Validated correlation and volatility models for the 14-asset portfolio. The expansion to 14 assets may shift pairwise correlation structure. Requires: a) rolling correlation estimator, b) volatility forecasting, c) rebalancing schedule, d) backtest against fixed-weight baseline.
+**Stable allocation:** Fixed-weight allocation (see README §4) with 100% core sum + 5% satellite. Risk-parity portfolio module remains in progress — the fixed-weight approach is the production allocation.
 
 **Estimated effort:** 2-3 weeks for implementation + 2 weeks for validation.
 
@@ -377,8 +367,8 @@ See also `docs/SURVIVAL_SIMULATION.md`, `docs/GOVERNANCE_LAYER.md`, `docs/FEATUR
 
 ### Active Paper Trading
 
-- **13-asset live paper trading** active with regime-optimized SL/TP geometry (sl=0.30 sweep-derived TP, 12/13 assets regime-tuned, BTC in satellite).
-- **14 models** in `paper_trading/models/` (13 core + BTC satellite). Stale non-traded models cleaned up.
+- **8-asset live paper trading** active with ATR-based dynamic barrier geometry, meta-label confidence filtering, and shadow counterfactual replay.
+- **9 models** in `paper_trading/models/` (8 core + BTC satellite). Stale non-traded models cleaned up.
 - **32 assets** registered in FEATURE_REGISTRY with full FeatureContracts, walk-forward evaluated via `scripts/walk_forward_all.py`
 - **Dashboard UX**: TradeFeed pagination, SignalsTable search filter, lazy-loaded FeatureCards, refetch indicator spinner, narrative regime badge, liquidity regime badges, SL/TP gauge bars, scale-out tier visualization
 
@@ -399,5 +389,5 @@ See also `docs/SURVIVAL_SIMULATION.md`, `docs/GOVERNANCE_LAYER.md`, `docs/FEATUR
 - Paper trading only (no live capital execution)
 - Data limited to Yahoo Finance + FRED
 - EURUSD excluded (pending COT integration)
-- ^DJI marginal contribution under watch (ΔSharpe −0.11)
+- ^DJI removed from portfolio (marginal ΔSharpe −0.11 did not justify equity index idiosyncratic risk)
 - 19 unscreened pairs not yet evaluated

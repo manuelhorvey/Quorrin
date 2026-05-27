@@ -125,7 +125,9 @@ The research pipeline is complete when all three expansion axes and the generali
 
 **Any further work is either:**
 - **Stabilization** (observe live engine, confirm assumptions hold in production)
-- **New research direction** (unified labeling theory, meta-label generator, adaptive geometry)
+- **New research direction** (unified labeling theory, adaptive geometry)
+
+> **Note:** A meta-label generator now exists (`labels/meta_labels.py:MetaLabelModel`, XGBoost-based) — replaces the earlier LogisticRegression approach that failed to outperform random.
 
 ---
 
@@ -143,6 +145,7 @@ The research pipeline is complete when all three expansion axes and the generali
 | GC | fwd120 | 4-feature | 0.3/2.25 | 2.90 | 1.51 |
 
 *Retrain report estimates. †Loose collapse — monitor asset, not portfolio asset.
+Static SL/TP values shown are research-optimized historical baselines. Live system uses ATR-based dynamic barriers via `shared/volatility.py:VolatilityPrimitive` — see `configs/paper_trading.yaml` for per-asset ATR parameters.
 
 ---
 

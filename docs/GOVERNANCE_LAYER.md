@@ -6,7 +6,7 @@ Seven independent governance mechanisms operating at different frequencies and g
 |---|---|---|---|---|
 | Validity state machine | Per tick | Per asset | Exposure 0–100% |
 | Feature stability | Per retrain | Per asset | Validity penalty |
-| Meta-labeling | Per signal | Per asset | Trade skip |
+| Meta-labeling (XGBoost) | Per signal | Per asset | Continuous size scalar [0–1] |
 | 5D drift monitoring | Per tick | Per asset | Alert |
 | Shadow risk engine | Per tick | Per asset | Advisory |
 | Macro narrative | Weekly | Global | SL width, position size |
@@ -38,16 +38,16 @@ Training-window feature importances are persisted per asset per retrain cycle. T
 - **Spearman rank correlation** (shared features): < 0.7 → −0.08 penalty, < 0.5 → −0.20 penalty
 - **Worst-wins aggregation**: the most negative penalty is applied (not averaged)
 
-## 3. Meta-Labeling Layer
+## 3. Meta-Labeling Layer (XGBoost)
 
 A secondary confidence filter applied after the primary XGBoost signal:
 
-- **Model**: Logistic regression, `class_weight='balanced'`, min 50 trades
-- **Features** (5): primary confidence, regime state, periods in state, stability penalty, close price
-- **Decision bands**: FULL (≥ 0.55, scale 1.0×), REDUCED (≥ 0.40, scale 0.5×), SKIP (< 0.40, scale 0.0×)
-- **Integration**: `pos_size *= meta_result.scale_factor` in `_generate_and_apply()` before `TradeDecision`
+- **Model**: XGBoost XGBClassifier (`labels/meta_labels.py:MetaLabelModel`)
+- **Features** (7): primary model probabilities, regime state, periods in state, stability penalty, close price, archetype, market structure
+- **Decision**: continuous probability — below `threshold` (0.55 for most assets) → zero notional; above → `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly
+- **Integration**: `_last_meta_proba` fed into `_composite_size_scalar()` alongside governance scalars; meta-confidence is size-only — never modifies TP geometry, trailing, or scale-out schedules
 
-Logistic regression underfits if no signal exists — a natural guard against overfitting. Class weighting preserves real trade outcome distribution. The SKIP band filters ~30-40% of signals at the validated REDUCED threshold of 0.40 (see `meta_labeling.confidence_threshold` in config).
+**Historical note:** An earlier LogisticRegression implementation (`shared/meta_labeling.py`) was removed after AUC 0.49-0.55 validation (effectively random). The XGBoost replacement uses richer features and continuous sizing to avoid the hard ENTER/BLOCK switching that made the old approach fragile.
 
 ## 4. 5D Drift Monitoring
 

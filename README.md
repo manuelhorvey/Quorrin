@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Status](https://img.shields.io/badge/status-research%20system%20%7C%20paper%20trading-green)
 ![WalkForward](https://img.shields.io/badge/walk--forward-32%20assets%20validated-success)
-![Portfolio](https://img.shields.io/badge/portfolio-14%20assets%20%7C%20BTC%20satellite-blue)
+![Portfolio](https://img.shields.io/badge/portfolio-8%20core%20%7C%20BTC%20satellite-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/QuantForge/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/QuantForge)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
@@ -18,13 +18,16 @@ QuantForge is a **deterministic market interaction simulator with causally decom
 | **Features** | Deterministic macro-conditioned signals under strict schema contracts |
 | **Models** | Probabilistic directional intent via XGBoost (BUY / HOLD / SELL) — signal generator, not decision authority |
 | **Archetype Classification** | 5 pure-feature market structure archetypes — primary execution conditioning variable across Phases 1-4 |
+| **Volatility Primitive** | Frozen ATR-based shared module — single vol source for labels, execution geometry, shadow replay, and attribution |
 | **Entry Quality** | DeferredEntry engine with idempotent entry_id, EntryOptimizer routing (ENTER / DEFER / SKIP) |
 | **Execution Policy** | Immutable PolicyDecision dispatch — archetype-to-policy switchboard |
 | **Fill Realism** | Seeded deterministic slippage (asymmetric SL/TP), gap-through, partial fill, latency |
-| **Trade Attribution** | 4-domain causal reconstruction (Prediction, Execution, Exit, Friction) with counterfactual decomposition — observes everything, mutates nothing |
+| **Shadow Counterfactual Engine** | Isolated SL/TP replay on live tape — never shares mutable state with PositionManager |
+| **Trade Attribution** | 4-domain causal reconstruction (Prediction, Execution, Exit, Friction) with counterfactual decomposition + archetype stratification — observes everything, mutates nothing |
+| **Execution Path Analysis** | Distributional attribution diagnostics — per-archetype path stats, meta-confidence decile stratification |
 | **Governance** | 7-layer suppression under instability — see [docs/GOVERNANCE_LAYER.md](docs/GOVERNANCE_LAYER.md) |
 | **Simulation** | Adversarial survival testing with execution physics and deleveraging feedback |
-| **Execution** | Paper trading with mark-to-market PnL, SL/TP surface optimization, portfolio construction |
+| **Execution** | Paper trading with mark-to-market PnL, SL/TP surface optimization, portfolio construction, continuous meta sizing |
 | **Telemetry** | Shadow analytics, drift detection, importance tracking, deterministic replay |
 
 ### Design Philosophy
@@ -34,9 +37,12 @@ QuantForge is a **deterministic market interaction simulator with causally decom
 - **Governance as primary component** — validity state machines, stability penalties, meta-labeling, narrative + liquidity governance
 - **Portfolio topology over standalone alpha** — assets selected for marginal contribution to portfolio risk, not individual Sharpe
 - **Archetypes as primary routing key** — execution policy, TP geometry, and entry behavior are all conditioned on archetype classification; archetypes are the central conditioning variable across Phases 1-4
-- **Epistemic boundary separation** — prediction (Phase 3), decision (Phase 4), execution (Phase 5), and attribution (Phase 6) are causally isolated layers; each can only degrade the signal, never create it
+- **Epistemic boundary separation** — prediction (Phase 3), decision (Phase 4), execution (Phase 5), attribution (Phase 6), shadow research, and path analysis are causally isolated layers; each can only degrade the signal, never create it
 - **Fill realism as degradation** — Phase 5 may only make fills worse, never better; sits after PolicyDecision freeze
 - **Observe-only analytics** — Phase 6 attribution observes everything but mutates nothing; never feeds back into labels, frozen kernel, or policies
+- **Frozen volatility primitive** — single ATR implementation shared across labels, execution geometry, shadow replay, and attribution; eliminates train/serve skew at barrier geometry level
+- **Meta-confidence as size scalar only** — modulates exposure magnitude; never modifies TP geometry, trailing, or scale-out schedules
+- **Shadow engines are isolated** — never share mutable execution state with live engine; replay same tape independently
 
 ---
 
@@ -46,44 +52,51 @@ QuantForge is a **deterministic market interaction simulator with causally decom
 graph TD
 A[Market + Macro Data] --> B[FeatureContract Validation]
 B --> C[Driver Atlas Routing]
-C --> D1[JPY Carry: NZDJPY / AUDJPY / GBPJPY / CHFJPY]
-C --> D2[USD Macro: USDCAD / USDCHF / GBPUSD / USDJPY]
+C --> D1[JPY Carry: AUDJPY / CHFJPY / USDJPY]
+C --> D2[USD Macro: USDCAD]
 C --> D3[Real Yield: GC=F]
-C --> D4[Equity Index: ^DJI]
-C --> D5[EUR Cross: EURAUD / EURCAD]
-C --> D6[Oil-Correlation: CADJPY]
-C --> D7[BTC Satellite: HighVolSatellite]
+C --> D4[EUR Cross: EURAUD / EURCAD]
+C --> D5[GBP Cross: GBPCAD]
+C --> D6[BTC Satellite: HighVolSatellite]
 
-D1 & D2 & D3 & D4 & D5 & D6 --> E[Labeling Layer]
-D7 --> S[Satellite Gate]
+D1 & D2 & D3 & D4 & D5 --> E[Labeling Layer]
+D6 --> S[Satellite Gate]
 S --> E
 
-E --> F1[tb20: Triple Barrier]
-E --> F2[fwd60: Forward Returns]
-F1 & F2 --> G[XGBoost Signal Generator]
+E --> F1[tb20: Triple Barrier — ATR-aligned]
+F1 --> G[XGBoost Signal Generator]
 G --> H[Regime Classifier Overlay]
 G --> I[Signal Intent]
 H --> I
-I --> J[Risk Engine]
+I --> J[VolatilityPrimitive + VolTargetSizing]
 J --> K[Portfolio Allocation]
 
 K --> P[Execution Spine: Phases 3-6 — see detailed pipeline below]
 P --> L[PaperBroker Execution]
 L --> M[Observability Layer]
+L --> N[Shadow SL/TP Engine — isolated replay]
 
 subgraph "Research (Offline)"
     R1[Execution Surface Sweep]
     R2[Survival Monte Carlo]
     R3[Regime Bootstrap]
-    R1 & R2 & R3 --> R[Research / Risk]
+    R4[Execution Path Analysis]
+    R1 & R2 & R3 & R4 --> R[Research / Risk]
 end
 R --> A
 ```
 
-### Execution Pipeline (Phases 3–6)
+### Execution Pipeline (Phases 3–6 + Research Tiers)
 
 ```mermaid
 graph LR
+    subgraph Primitive [Shared Volatility — FROZEN]
+        V[VolatilityPrimitive: ATR] --> V1[Label Barrier Geometry]
+        V --> V2[DynamicSLTP Barriers]
+        V --> V3[Shadow SL/TP Replay]
+        V --> V4[Attribution Path Analysis]
+    end
+
     subgraph Signal [Signal Layer]
         A[Model Signal + Confidence] --> B[Archetype Classifier]
     end
@@ -102,6 +115,10 @@ graph LR
         F -->|Triggered| E
     end
 
+    subgraph Barriers [Barrier Geometry]
+        V2 --> I
+    end
+
     subgraph Fill [Fill Realism — FROZEN CONTRACT]
         I --> J[ExecutionSimulator]
         J --> K[SlippageModel: asym SL/TP]
@@ -116,16 +133,25 @@ graph LR
         O --> Q[Execution Attribution]
         O --> R[Exit Attribution]
         O --> S[Friction Attribution]
+        O --> T[ExecutionPathAnalysis: distributional]
+    end
+
+    subgraph Shadow [Shadow Research — ISOLATED]
+        N --> U[ShadowSLTPEngine]
+        U --> W[Counterfactual Replay]
+        V3 --> U
     end
 
     subgraph State [State Mutation — Mutable]
-        N --> T[AssetEngine: position state]
-        T --> U[PnL + Journal + Snapshots]
+        N --> X[AssetEngine: position state]
+        X --> Y[PnL + Journal + Snapshots]
     end
 
     style I fill:#1a1a2e,stroke:#e94560
     style O fill:#1a1a2e,stroke:#0f3460
+    style U fill:#1a1a2e,stroke:#533483
     style N fill:#16213e,stroke:#e94560
+    style V fill:#1a1a2e,stroke:#00b4d8
 ```
 
 See [docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md) for full component details.
@@ -161,27 +187,22 @@ export FRED_API_KEY=your_key
 
 ## 4. LIVE PORTFOLIO
 
-13-asset continuously evaluated simulation with regime-optimized SL/TP (sl=0.30, sweep-derived TP per asset). BTC actively traded in a satellite bucket via a 5-condition macro gate with vol-adjusted SL/TP and full position management — opens when gate permits, closes when gate blocks or SL/TP is hit, with entry/target/stop prices and exit reasons exposed on the dashboard.
+8-core-asset continuously evaluated simulation with ATR-based dynamic barrier geometry (via `shared/volatility.py:VolatilityPrimitive`). SL/TP are computed as ATR multiples per asset config. BTC actively traded in a satellite bucket via a macro gate with vol-adjusted SL/TP and full position management.
 
-| Asset | Alloc | sl_mult | tp_mult | R:R | Scale-out | Regime-tuned |
-|-------|-------|---------|---------|:---:|-----------|--------------|
-| EURAUD | 12% | 0.30 | 1.00 | 1:3.3 | 4-tier | yes |
-| GC | 13% | 0.30 | 1.50 | 1:5.0 | no | yes |
-| NZDJPY | 11% | 0.30 | 1.75 | 1:5.8 | 4-tier | yes |
-| CADJPY | 9% | 0.30 | 1.25 | 1:4.2 | 4-tier | yes |
-| USDCAD | 8% | 0.30 | 1.50 | 1:5.0 | 4-tier | yes |
-| GBPJPY | 8% | 0.30 | 1.25 | 1:4.2 | 4-tier | yes |
-| CHFJPY | 7% | 0.30 | 1.00 | 1:3.3 | no | yes |
-| AUDJPY | 6% | 0.30 | 1.75 | 1:5.8 | 4-tier | yes |
-| EURCAD | 5% | 0.30 | 1.75 | 1:5.8 | 4-tier | yes |
-| ^DJI | 5% | 0.30 | 1.50 | 1:5.0 | 4-tier | yes |
-| GBPUSD | 5% | 0.52 | 1.97 | 1:3.8 | 4-tier | no |
-| USDJPY | 4% | 0.30 | 1.00 | 1:3.3 | no | yes |
-| USDCHF | 4% | 0.30 | 1.75 | 1:5.8 | 4-tier | yes |
+| Asset | Alloc | sl_mult | tp_mult | Dynamic SL/TP | Scale-out | Meta-label |
+|-------|-------|---------|---------|:-------------:|:---------:|:----------:|
+| EURAUD | 5% | 0.48 | 1.00 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
+| AUDJPY | 16% | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
+| CHFJPY | 14% | 0.48 | 1.00 | ATR ×1.8/2.0, period=14 | 4-tier | 0.55 |
+| EURCAD | 20% | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
+| GBPCAD | 7% | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
+| GC | 17% | 0.30 | 1.50 | ATR ×2.5/4.0, period=14 | no | 0.55 |
+| USDCAD | 13% | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | no | 0.55 |
+| USDJPY | 8% | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
 
-**BTC satellite**: 5% AUM cap, vol target 40%, drawdown limit 25%, 5-condition AND gate. Actively managed — positions open on gate OPEN, close on gate CLOSED or SL/TP hit. Vol-adjusted SL/TP (same formula as core assets: `entry × (1 ± vol × multiplier)`). Entry/stop/target prices and exit reason logged per cycle and displayed on the satellite dashboard card.
+**Total core allocation**: 100% (sum before capital utilization cap). **BTC satellite**: 5% AUM cap, vol target 40%, drawdown limit 25%, ATR period 7, ATR ×2.5/3.0, meta-label threshold 0.50.
 
-> Portfolio allocation provides capital input only. Execution truth resides in the deterministic contract chain: PolicyDecision (Phase 4) → FillResult (Phase 5) → AttributionRecord (Phase 6). Allocation weights are not execution decisions.
+> Portfolio allocation provides capital input only. Execution truth resides in the deterministic contract chain: VolatilityPrimitive → DynamicSLTP → PolicyDecision → FillResult → AttributionRecord. Allocation weights are not execution decisions. Barriers are recomputed via `post_entry_adjust()` — vol spikes (>1.3×) tighten SL for protection; vol collapses (<0.7×) trigger no action.
 
 ---
 
@@ -203,8 +224,13 @@ Reference for `configs/paper_trading.yaml`. See [docs/PAPER_TRADING_RUNBOOK.md](
 | `liquidity_config.volume_z_thin_threshold` | -1.5 | Volume z → THIN |
 | `liquidity_config.amihud_high_threshold` | 1.5 | Amihud z → THIN |
 | `liquidity_config.stressed_sl_widen_pct` | 30 | SL widen in STRESSED |
-| `meta_labeling.confidence_threshold` | 0.40 | Primary signal confidence filter (isotonic calibrated) |
-| `meta_labeling.threshold_reduced` | 0.40 | Meta-model REDUCED/SKIP boundary |
+| `dynamic_sltp.method` | atr | Volatility method (atr / ewm) |
+| `dynamic_sltp.atr_period` | 14 | ATR lookback period |
+| `dynamic_sltp.atr_mult_sl` | 2.0 | ATR × SL distance |
+| `dynamic_sltp.atr_mult_tp` | 3.0 | ATR × TP distance |
+| `dynamic_sltp.post_adjust_interval_bars` | 3 | Bars between post-entry adjustment |
+| `meta_labeling.threshold` | 0.55 | XGBoost meta-confidence threshold |
+| `shadow_sltp.enabled` | false | Counterfactual shadow replay |
 
 ---
 
@@ -214,12 +240,13 @@ Reference for `configs/paper_trading.yaml`. See [docs/PAPER_TRADING_RUNBOOK.md](
 |---|---|---|---|---|
 | Validity state machine | Per tick | Per asset | Exposure 0–100% | — |
 | Feature stability | Per retrain | Per asset | Validity penalty | — |
-| Meta-labeling | Per signal | Per asset | Trade skip | — |
+| Meta-labeling (XGBoost) | Per signal | Per asset | Continuous size scalar [0–1] | `labels/meta_labels.py` |
 | Macro narrative | Weekly | Global | SL +10%, size −20% | `features/macro_narrative.py` |
 | Liquidity regime | Per signal | Per asset | SL +15/30%, size −15/30%, halt | `features/liquidity_regime.py` |
 | PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE | `monitoring/psi_monitor.py` |
 
-Multiplicative chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`  
+Multiplicative chain: `final_sl = base × regime_geom × narrative_sl × liquidity_sl`
+Size scalar chain: `final_size = base × governance_scalar × meta_confidence_scalar`
 Validity stacking: stability penalty + PSI penalty + halt penalties (additive, worst-wins at layer level)
 
 Full detail: [docs/GOVERNANCE_LAYER.md](docs/GOVERNANCE_LAYER.md)
@@ -257,6 +284,18 @@ Full detail: [docs/ARCHITECTURE_FOUNDATIONS.md](docs/ARCHITECTURE_FOUNDATIONS.md
 | **4** | Execution Policy Layer — archetype-to-policy dispatch via POLICY_MAP; PolicyDecision as immutable instruction packet |
 | **5** | Fill Realism Layer — SlippageModel, FillModel, LatencyModel, ExecutionSimulator; asymmetric SL/TP slippage; gap-through; partial fill; seeded deterministic randomness |
 | **6** | Causal Reconstruction Layer — 4-domain attribution (Prediction, Execution, Exit, Friction); counterfactual metrics (perfect entry, zero slippage, ideal exit); MAE/MFE time-normalized; archetype drift tracking; deterministic replay audit |
+
+### Execution Research Infrastructure Tiers (A0–B3)
+
+| Tier | Capability |
+|------|------------|
+| **A0** | Frozen volatility primitive — `shared/volatility.py:VolatilityPrimitive` with `compute_atr_series()`, `compute_atr_pct()`, `estimate_gap_risk()`, `estimate_ewm_vol()` |
+| **A1** | ATR-aligned triple-barrier labeling — barrier widths computed via `shared.volatility.compute_atr_pct()`; `label_version` hash auto-updates on vol param change |
+| **A2** | Vol-drop anti-pattern fix — `post_entry_adjust()` tightens SL on vol spike (>1.3×), no action on vol collapse (<0.7×) |
+| **A3** | Continuous meta-confidence sizing — `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0], applied in `_composite_size_scalar()` |
+| **B1** | Shadow counterfactual replay — `paper_trading/shadow_sltp.py` isolated SL/TP engine on live tape; config-gated via `shadow_sltp.enabled` |
+| **B2** | Expanded attribution — `ExitAttribution.meta_bucket` field; `get_metrics().archetype_stats` per-archetype win rate, avg R, SL/TP rate |
+| **B3** | Execution path analysis — `research/execution_path_analysis.py` distributional attribution diagnostics, per-archetype path stats, report generation |
 
 ### Pre-existing Tiers (1–7)
 
@@ -303,6 +342,12 @@ Full detail: [docs/SURVIVAL_SIMULATION.md](docs/SURVIVAL_SIMULATION.md)
 - Degradation-only fill realism: Phase 5 may only degrade outcomes, never improve them
 - Observe-only attribution: Phase 6 analytics never mutate labels, kernel, or policies
 - Frozen execution contract: PolicyDecision (Phase 4), FillResult (Phase 5), and AttributionRecord (Phase 6) form an immutable causal ledger — deterministic replay, counterfactual evaluation, no upstream mutation
+- **Frozen volatility primitive**: single ATR implementation shared across labels, execution, shadow, and attribution — no duplicate vol logic
+- **Meta-confidence is size-only**: never modifies TP geometry, trailing, or scale-out schedules
+- **Shadow engine isolation**: never shares mutable state with PositionManager; independent replay on same tape
+- **No auto-widening on SL rate**: preserves replayability and contract determinism
+- **No Kelly sizing**: amplifies error on noisy estimates; excluded by design
+- **No post-entry re-interpretation of open trades**: preserves frozen execution contracts
 
 ---
 
@@ -321,8 +366,8 @@ Full detail: [docs/SURVIVAL_SIMULATION.md](docs/SURVIVAL_SIMULATION.md)
 - Paper trading only (no live capital)
 - Data limited to Yahoo Finance + FRED
 - EURUSD excluded (pending COT integration)
-- ^DJI marginal contribution under watch (ΔSharpe −0.11)
 - 19 unscreened pairs not yet evaluated
+- Shadow engine in data-collection phase — no statistical output until attribution variance stabilizes across regimes
 
 ---
 
@@ -338,17 +383,21 @@ Distinguished from backtesting frameworks by treating execution physics as the p
 
 The system now operates on a **frozen execution ledger** composed of immutable artifacts forming a causal chain of market interaction:
 
-| Artifact | Phase | Immutability |
+| Artifact | Layer | Immutability |
 |----------|-------|--------------|
+| Volatility Primitive | Shared | Frozen single ATR implementation |
 | Initial Barrier Geometry | Phase 0 | Frozen at kernel compile |
 | Archetype Context | Phase 3 | Deterministic from feature vector |
 | Entry Decision State | Phase 1 | Idempotent entry_id |
 | Reward Geometry | Phase 2 | Compiled from regime×archetype |
 | Policy Decision Packet | Phase 4 | Frozen instruction |
+| Dynamic SL/TP Barriers | Phase 4 | ATR-based, post_entry_adjust vol-filtered |
 | Fill Simulation Result | Phase 5 | Seeded deterministic |
 | Trade Attribution Record | Phase 6 | Observe-only append |
+| Shadow Counterfactual Replay | Research | Isolated, never mutates live state |
+| Execution Path Analysis | Research | Distributional, never feeds back |
 
-These seven artifacts form a **deterministic replay chain**: same inputs + same seed → identical execution history. This enables counterfactual evaluation — what-if analysis on any single artifact without recomputing upstream layers.
+These artifacts form a **deterministic replay chain**: same inputs + same seed → identical execution history. This enables counterfactual evaluation — what-if analysis on any single artifact without recomputing upstream layers. The volatility primitive is the single source of truth for barrier geometry across all layers.
 
 ---
 
@@ -362,26 +411,31 @@ to:
 
 > Causally decomposed execution simulator with observability-first architecture
 
-| Dimension | Before (Phases 0–2) | After (Phases 0–6) |
-|-----------|--------------------|--------------------|
+| Dimension | Before (Phases 0–2) | After (Phases 0–6 + A0–B3) |
+|-----------|--------------------|-----------------------------|
 | Core abstraction | ML pipeline | Execution contract ledger |
 | Model role | Decision authority | Signal generator |
+| Volatility source | EWM duplicate per layer | Single frozen ATR primitive (shared) |
+| Meta-confidence | Binary ENTER/BLOCK gate | Continuous size scalar [0–1] |
 | Execution truth | Position manager state | Frozen PolicyDecision → FillResult |
-| Analytics | Performance metrics | Causal decomposition with counterfactuals |
-| Attribution | PnL attribution | 4-domain (Prediction, Execution, Exit, Friction) |
+| Analytics | Performance metrics | Causal decomposition + shadow replay + path analysis |
+| Attribution | PnL attribution | 4-domain + archetype stratification + meta-bucket deciles |
+| Shadow research | None | Isolated counterfactual SL/TP replay |
 | Reproducibility | Stochastic | Seeded deterministic across all layers |
 
 ---
 
 ## 17. SYSTEM MATURITY STATE
 
-QuantForge is now in **observability-complete execution simulation** state. The architecture is structurally complete through Phase 6. Future work is no longer about structural expansion, but about:
+QuantForge is now in **execution research infrastructure complete** state. The architecture is structurally complete through Phase 6 + Tiers A0–B3. The next phase is data accumulation:
 
-- **Statistical governance** — edge discovery from the full attribution surface
+- **Let the system accumulate data across regimes** — resist adding new logic until attribution variance stabilizes
+- **Generate first execution-path diagnostics report** — ranked PnL degradation decomposition is the first genuinely valuable diagnostic output
+- **Statistical governance** — edge discovery from the full attribution surface once data is sufficient
 - **Regime sensitivity analysis** — expectancy surfaces conditioned on market regime
 - **Policy optimization** — tuning execution within existing contract boundaries (no kernel contamination)
 
-The architecture is contract-frozen. All subsequent development operates within the existing causal isolation boundaries and respects the observe-only constraint on the signal kernel.
+The architecture is contract-frozen. All subsequent development operates within the existing causal isolation boundaries and respects the observe-only constraint on the signal kernel. The highest-value next action is data accumulation quality, not engineering.
 
 ---
 

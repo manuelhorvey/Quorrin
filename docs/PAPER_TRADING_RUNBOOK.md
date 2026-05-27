@@ -24,29 +24,26 @@ Operational procedures for the paper trading system. This document is for the pe
 
 ### Assets
 
-**Core portfolio (13 assets):**
+**Core portfolio (8 assets):**
 
-| Asset | Weight | Ticker | sl_mult | tp_mult | R:R | Scale-out | Label | Regime-tuned |
-|-------|--------|--------|---------|---------|:---:|-----------|-------|--------------|
-| EURAUD | 12% | EURAUD=X | 0.30 | 1.00 | 1:3.3 | 4-tier | tb20 | yes |
-| GC | 13% | GC=F | 0.30 | 1.50 | 1:5.0 | no | fwd60 | yes |
-| NZDJPY | 11% | NZDJPY=X | 0.30 | 1.75 | 1:5.8 | 4-tier | tb20 | yes (adaptive_macro + dji_lead_1) |
-| CADJPY | 9% | CADJPY=X | 0.30 | 1.25 | 1:4.2 | 4-tier | tb20 | yes (+ dji_lead_1) |
-| USDCAD | 8% | USDCAD=X | 0.30 | 1.50 | 1:5.0 | 4-tier | tb20 | yes (+ dji_lead_1) |
-| GBPJPY | 8% | GBPJPY=X | 0.30 | 1.25 | 1:4.2 | 4-tier | tb20 | yes (+ dji_lead_1) |
-| CHFJPY | 7% | CHFJPY=X | 0.30 | 1.00 | 1:3.3 | no | tb20 | yes |
-| AUDJPY | 6% | AUDJPY=X | 0.30 | 1.75 | 1:5.8 | 4-tier | tb20 | yes (+ nzdjpy_lead_3 + dji_lead_1) |
-| EURCAD | 5% | EURCAD=X | 0.30 | 1.75 | 1:5.8 | 4-tier | tb20 | yes |
-| ^DJI | 5% | ^DJI | 0.30 | 1.50 | 1:5.0 | 4-tier | tb20 | yes |
-| GBPUSD | 5% | GBPUSD=X | 0.52 | 1.97 | 1:3.8 | 4-tier | tb20 | no |
-| USDJPY | 4% | USDJPY=X | 0.30 | 1.00 | 1:3.3 | no | tb20 | yes (+ gc_lead_1) |
-| USDCHF | 4% | USDCHF=X | 0.30 | 1.75 | 1:5.8 | 4-tier | tb20 | yes (+ gc_lead_1) |
+| Asset | Weight | Ticker | sl_mult | tp_mult | Dynamic SL/TP | Scale-out | Meta-label |
+|-------|--------|--------|---------|---------|:------------:|:---------:|:----------:|
+| EURAUD | 5% | EURAUD=X | 0.48 | 1.00 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
+| AUDJPY | 16% | AUDJPY=X | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
+| CHFJPY | 14% | CHFJPY=X | 0.48 | 1.00 | ATR ×1.8/2.0, period=14 | 4-tier | 0.55 |
+| EURCAD | 20% | EURCAD=X | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
+| GBPCAD | 7% | GBPCAD=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
+| GC | 17% | GC=F | 0.30 | 1.50 | ATR ×2.5/4.0, period=14 | no | 0.55 |
+| USDCAD | 13% | USDCAD=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | no | 0.55 |
+| USDJPY | 8% | USDJPY=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
 
-**BTC satellite bucket:** 5% AUM cap, vol target 40%, drawdown limit 25%, 5-condition AND gate. Actively managed — when the gate is OPEN the satellite opens a long BTC position with vol-adjusted SL/TP; when the gate CLOSES or SL/TP is hit the position is flattened. Entry price, stop price, target price, and exit reason are logged every cycle and shown on the dashboard.
-**SL/TP base values:** Core assets use sl=0.30 universal (research-optimized via sweep across 3 regimes). BTC satellite uses satellite-specific multipliers: `sl_mult=0.58`, `tp_mult=1.51`. SL/TP are computed as `entry × (1 ± vol × multiplier)` where `vol` = EWMA(span=100) of BTC daily log returns (same formula as core assets, matching `AssetEngine._tb_vol`). Model-validity adjustments: YELLOW → tp × 0.85, RED → tp × 0.70. SL unchanged across validity states.
-**Dynamic SL/TP ATR Calibration:** ATR-based dynamic barriers auto-calibrated at engine startup to EWM vol using `calibration_scale: 1.2` (expanding barriers by 20% to support higher TP rates).
-**Confidence-based SL adjustment (optional):** When `confidence_sl_adjust > 0.0`, SL width tightens as meta-label confidence increases (p=0.9 → sl × (1.0 - adjust), p=0.1 → sl × (1.0 + adjust/2)). Default 0.0 (disabled).
-**Scale-Out Strategy:** For assets with scale-out enabled (EURAUD, NZDJPY, CADJPY, AUDJPY, USDCAD, GBPJPY, USDCHF, GBPUSD, EURCAD, DJI), profit-taking is split into 4 equal tiers (25% at 0.25x / 0.50x / 0.75x / 1.00x of original TP multiplier). The stop-loss is moved to breakeven after Tier 1 is filled (`activate_breakeven_after: 0`). Optionally, trailing stop activation can be triggered after a configurable tier (`trailing_after_tier`, default disabled) — see `ScaleOutEngine` in `paper_trading/scale_out.py`.
+**BTC satellite bucket:** 5% AUM cap, vol target 40%, drawdown limit 25%, ATR period 7, ATR ×2.5/3.0, meta-label threshold 0.50. Full position lifecycle (open → SL/TP/timeout → close) with entry/stop/target prices and exit reasons on the dashboard.
+
+**SL/TP Architecture:** Barriers are computed by `DynamicSLTPEngine` using `shared/volatility.py:VolatilityPrimitive` with `method="atr"`. At entry, initial barriers are set. On each refresh within the first `post_adjust_interval_bars` (default 3), `post_entry_adjust()` recomputes barriers based on current ATR — vol spikes (>1.3×) tighten SL; vol collapses (<0.7×) no action. Model-validity adjustments via `regime_geometry`: YELLOW → sl×0.9, tp×0.8; RED → sl×0.8, tp×0.5.
+
+**Meta-Confidence as Size Scalar:** The XGBoost-based `MetaLabelModel` produces a continuous probability. Below `threshold` (0.55 for most assets), trade notional is 0. Above threshold, `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly. Meta-confidence never modifies TP geometry, trailing, or scale-out schedules.
+
+**Scale-Out Strategy:** For assets with scale-out enabled (AUDJPY, CHFJPY, EURAUD, EURCAD, GBPCAD, USDJPY), profit-taking is split into 4 equal tiers (25% at 0.25× / 0.50× / 0.75× / 1.00× of original TP multiplier). Stop-loss moves to breakeven after Tier 1 fills (`activate_breakeven_after: 0`). See `ScaleOutEngine` in `paper_trading/scale_out.py`.
 
 **Dashboard features:** Per-asset scale-out tier progress visualization (filled vs pending tiers shown as color-coded blocks in AssetCard). SL/TP hit rate gauge bars (GREEN/YELLOW/RED thresholds) in the Trade Outcomes table. PSI Drift panel with per-feature distribution shift scores, trend arrows, and color-coded classification badges. **Satellite card** shows entry price, stop price, target price when position active; SL/TP show `—` when flat; last exit reason (SL_HIT/TP_HIT/GATE_CLOSED) is displayed after each exit.
 
@@ -145,7 +142,7 @@ curl http://127.0.0.1:5000/ping
 **What to verify on the dashboard (use the anchor nav bar to jump between sections):**
 
 - Portfolio total value and daily return are updating (trend arrows on metric cards show direction)
-- All 13 core assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
+- All 8 core assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
 - **BTC Satellite card**: check gate state (OPEN/CLOSED), position state (ACTIVE/FLAT), entry/SL/TP prices, and exit reason after each exit
 - Current price is within ~0.5% of market price
 - No asset is in halt (check asset cards for RED status)
@@ -170,17 +167,12 @@ After startup (Mon–Fri during market hours), verify log output shows:
 ```
 EURAUD: BUY conf=XX% @ $XX.XX
 GC: SELL conf=XX% @ $XX.XX
-NZDJPY: BUY conf=XX% @ $XX.XX
-CADJPY: FLAT conf=XX% @ $XX.XX
 AUDJPY: BUY conf=XX% @ $XX.XX
-USDCAD: SELL conf=XX% @ $XX.XX
-GBPJPY: BUY conf=XX% @ $XX.XX
-USDJPY: FLAT conf=XX% @ $XX.XX
-USDCHF: SELL conf=XX% @ $XX.XX
-GBPUSD: BUY conf=XX% @ $XX.XX
 CHFJPY: FLAT conf=XX% @ $XX.XX
 EURCAD: SELL conf=XX% @ $XX.XX
-^DJI: BUY conf=XX% @ $XX.XX
+GBPCAD: BUY conf=XX% @ $XX.XX
+USDCAD: FLAT conf=XX% @ $XX.XX
+USDJPY: SELL conf=XX% @ $XX.XX
 BTC satellite: gate=OPEN/CLOSED, position=ACTIVE/FLAT, value=XXXX
 Portfolio: $XXXXX (XX%)
 ```
@@ -235,17 +227,12 @@ for name, a in s['assets'].items():
 |-------|-------|----------------|-----------------|
 | EURAUD | tb20 | ~1:1 | 55-75% |
 | GC | fwd60 | ~1:1 | 55-75% |
-| NZDJPY | tb20 | ~1:1 | 55-75% |
-| CADJPY | tb20 | ~1:1 | 55-75% |
+| AUDJPY | tb20 | ~1:1 | 55-75% |
 | CHFJPY | tb20 | ~1:1 | 55-75% |
 | EURCAD | tb20 | ~1:1 | 55-75% |
-| AUDJPY | tb20 | ~1:1 | 55-75% |
+| GBPCAD | tb20 | ~1:1 | 55-75% |
 | USDCAD | tb20 | ~1:1 | 55-75% |
-| GBPJPY | tb20 | ~1:1 | 55-75% |
-| ^DJI | tb20 | ~1:1 | 55-75% |
 | USDJPY | tb20 | ~1:1 | 55-75% |
-| USDCHF | tb20 | ~1:1 | 55-75% |
-| GBPUSD | tb20 | ~1:1 | 55-75% |
 
 ### Narrative Check (Monday Morning)
 
@@ -650,12 +637,11 @@ execution_defaults:
   impact_coeff: 0.1
 
 assets:
-  NZDJPY:
-    regime_sizing: true      # vol target scales by regime
-    adaptive_macro: true     # only if model pickle has macro_head (HybridEnsemble)
+  EURAUD:
+    regime_sizing: true
     execution_config:
-      base_spread_bps: 2.0
-      avg_daily_volume: 300000000
+      base_spread_bps: 1.5
+      avg_daily_volume: 500000000
 ```
 
 **Volatility dashboard** (`/volatility.json`) compares live vol to `vol_baselines` in the same YAML file.
@@ -692,14 +678,13 @@ Project Root/
 │       ├── BTC_model.pkl
 │       ├── GC_model.pkl
 │       ├── EURAUD_model.pkl
-│       ├── NZDJPY_model.pkl
-│       ├── CADJPY_model.pkl
+│       ├── GBPCAD_model.pkl
 │       └── USDCAD_model.pkl
 ├── scripts/
 │   ├── run_extended_history_pipeline.py  # Backfill + extended_predictions stubs
 │   ├── train_all_assets.py       # 30-asset training pipeline
 │   ├── walk_forward_all.py       # Walk-forward for all assets
-│   ├── cadjpy_walk_forward.py    # CADJPY-specific fwd60 validation
+│   ├── gbpcad_walk_forward.py    # GBPCAD-specific walk-forward validation
 │   └── gc_walk_forward.py        # GC=F-specific fwd60 validation
 ├── risk/
 │   └── position_sizing.py        # Volatility-scaled sizing
@@ -718,7 +703,7 @@ Project Root/
 | All assets showing FLAT with low conf | Macro data stale | Check `data/processed/macro_factors.parquet` modification date |
 | Portfolio value not changing | Process not running | `ps aux | grep monitor.py` |
 | BTC drawdown > 15% | Normal for BTC (limit is -15%) | Let it run unless RED state persists > 5 days |
-| NZDJPY entering RED state | VIX spike or yield spread inversion | Check VIX level and US-JP 10y spread |
+| JPY cross entering RED state | VIX spike or yield spread inversion | Check VIX level and US-JP 10y spread |
 | GC=F showing flat/neutral bias | Real yields not updating on weekends | Normal — gold macro features are daily |
 | Dashboard shows CLSD / "weekend — no refresh" | Normal — market is closed | Engine resumes automatically Sun 17:00 ET |
 | "Market closed — skipping refresh" in logs | Normal — engine is paused for weekend | No action needed; data is stale but preserved |

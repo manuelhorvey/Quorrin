@@ -2,8 +2,8 @@ from collections import Counter
 
 import numpy as np
 
-from paper_trading.shadow_feedback import read_feedback
-from paper_trading.shadow_learning import compile_shadow_learning
+from paper_trading.shadow.feedback import read_feedback
+from paper_trading.shadow.learning import compile_shadow_learning
 
 PAPER_PORTFOLIO = ["NZDJPY", "CADJPY", "USDCAD", "GC", "EURAUD", "AUDJPY", "GBPJPY", "USDJPY", "USDCHF", "GBPUSD"]
 

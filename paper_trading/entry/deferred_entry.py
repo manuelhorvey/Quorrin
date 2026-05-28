@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from paper_trading.decision import TradeDecision
+from paper_trading.entry.decision import TradeDecision
 
 logger = logging.getLogger("quantforge.paper_trading.deferred_entry")
 

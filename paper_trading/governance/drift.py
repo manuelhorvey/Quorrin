@@ -2,7 +2,7 @@ from collections import Counter
 
 import numpy as np
 
-from paper_trading.shadow_memory import load_baseline, read_events
+from paper_trading.shadow.memory import load_baseline, read_events
 
 
 def _extract_probas(events: list) -> tuple:

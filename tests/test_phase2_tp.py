@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
-from paper_trading.tp_compiler import compute_take_profit
-from paper_trading.decision import MarketStructureState, ValidityState
+from paper_trading.entry.tp_compiler import compute_take_profit
+from paper_trading.entry.decision import MarketStructureState, ValidityState
 
 def test_tp_compiler_determinism():
     struct = MarketStructureState(0.001, 0.02, 0.01, 0.05, 1.0, 0.5)
@@ -49,11 +49,11 @@ def test_tp_compiler_no_internal_imports():
     import sys
     
     # Check modules currently loaded
-    project_mods = [m for m in sys.modules if m.startswith("paper_trading.") and m != "paper_trading.tp_compiler" and m != "paper_trading.decision"]
+    project_mods = [m for m in sys.modules if m.startswith("paper_trading.") and m != "paper_trading.entry.tp_compiler" and m != "paper_trading.entry.decision"]
     
     # This test is a bit tricky since they might be loaded by other tests, 
     # but we can check the file content.
-    with open("paper_trading/tp_compiler.py", "r") as f:
+    with open("paper_trading/entry/tp_compiler.py", "r") as f:
         content = f.read()
         
     assert "import AssetEngine" not in content

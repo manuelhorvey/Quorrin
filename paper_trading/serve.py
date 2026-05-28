@@ -2,7 +2,7 @@ import http.server
 import socketserver
 from socketserver import ThreadingMixIn
 
-from paper_trading.serve_handler import Handler
+from paper_trading.api.handler import Handler
 
 DEFAULT_PORT = 5000
 

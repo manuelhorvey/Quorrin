@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from paper_trading.trade_attribution import (
+from paper_trading.attribution.collector import (
     AttributionCollector,
     DecisionQuality,
     ExecutionAttribution,
@@ -28,7 +28,7 @@ from paper_trading.trade_attribution import (
     compute_mae_mfe,
     hash_policy_state,
 )
-from paper_trading.decision import PositionSide
+from paper_trading.entry.decision import PositionSide
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -825,7 +825,7 @@ class TestStructuralPurity:
 
     def test_collector_no_import_from_strategy_modules(self):
         """AttributionCollector does not import strategy modules."""
-        import paper_trading.trade_attribution as ta
+        import paper_trading.attribution.collector as ta
         src = str(ta.__file__)
         with open(src) as f:
             content = f.read()

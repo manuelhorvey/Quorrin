@@ -22,10 +22,10 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
-from paper_trading.decision import PolicyDecision, PositionIntent
-from paper_trading.fill_model import FillModel
-from paper_trading.latency_model import LatencyModel
-from paper_trading.slippage_model import SlippageModel
+from paper_trading.entry.decision import PolicyDecision, PositionIntent
+from paper_trading.execution.fill import FillModel
+from paper_trading.execution.latency import LatencyModel
+from paper_trading.execution.slippage import SlippageModel
 from shared.execution_config import ExecutionConfig
 
 logger = logging.getLogger("quantforge.execution_simulator")

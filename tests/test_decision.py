@@ -1,5 +1,5 @@
 import pytest
-from paper_trading.decision import TradeDecision, PositionIntent
+from paper_trading.entry.decision import TradeDecision, PositionIntent
 
 
 class TestTradeDecision:

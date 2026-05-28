@@ -9,17 +9,17 @@ import pytz
 from features.contract import validate_no_cross_asset_leakage
 from features.regime_features import generate_regime_features
 from features.registry import FEATURE_REGISTRY
-from paper_trading import diagnostics as diag
-from paper_trading import wrappers as _w
-from paper_trading.data_fetcher import fetch_live, fetch_ref
-from paper_trading.decision import SignalType, TradeDecision
-from paper_trading.drift_scoring import get_shadow_intelligence as _get_drift
-from paper_trading.risk_governance import evaluate as _risk_evaluate
-from paper_trading.shadow_actions import compute_shadow_actions as _compute_shadow
-from paper_trading.shadow_feedback import record_shadow_feedback as _record_feedback
-from paper_trading.shadow_learning import compile_shadow_learning as _compile_learning
-from paper_trading.shadow_memory import store_event as _shadow_store
-from paper_trading.tracer import (
+from paper_trading.ops import diagnostics as diag
+from paper_trading.ops import wrappers as _w
+from paper_trading.ops.data_fetcher import fetch_live, fetch_ref
+from paper_trading.entry.decision import SignalType, TradeDecision
+from paper_trading.governance.drift import get_shadow_intelligence as _get_drift
+from paper_trading.governance.risk import evaluate as _risk_evaluate
+from paper_trading.shadow.actions import compute_shadow_actions as _compute_shadow
+from paper_trading.shadow.feedback import record_shadow_feedback as _record_feedback
+from paper_trading.shadow.learning import compile_shadow_learning as _compile_learning
+from paper_trading.shadow.memory import store_event as _shadow_store
+from paper_trading.ops.tracer import (
     shadow_compare_signal,
     shadow_compare_sizing,
     trace_decision,

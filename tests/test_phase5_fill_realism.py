@@ -15,15 +15,15 @@ import pickle
 import numpy as np
 import pytest
 
-from paper_trading.execution_simulator import (
+from paper_trading.execution.simulator import (
     ExecutionSimulator,
     FillResult,
     MarketSnapshot,
 )
-from paper_trading.slippage_model import SlippageModel
-from paper_trading.fill_model import FillModel
-from paper_trading.latency_model import LatencyModel
-from paper_trading.decision import (
+from paper_trading.execution.slippage import SlippageModel
+from paper_trading.execution.fill import FillModel
+from paper_trading.execution.latency import LatencyModel
+from paper_trading.entry.decision import (
     EntryAction,
     PolicyDecision,
     PositionIntent,
@@ -234,7 +234,7 @@ class TestNoBackwardMutation:
 
     def test_module_has_no_import_of_asset_engine(self):
         """Phase 5 must not depend on core engine modules."""
-        with open("paper_trading/execution_simulator.py") as f:
+        with open("paper_trading/execution/simulator.py") as f:
             src = f.read()
         assert "asset_engine" not in src, "execution_simulator imports AssetEngine!"
         assert "position_manager" not in src, "execution_simulator imports PositionManager!"
@@ -310,10 +310,10 @@ class TestStructuralInvariants:
     def test_no_strategy_imports(self):
         """Phase 5 modules must not import strategy/alpha modules."""
         for mod_path in [
-            "paper_trading/execution_simulator.py",
-            "paper_trading/slippage_model.py",
-            "paper_trading/fill_model.py",
-            "paper_trading/latency_model.py",
+            "paper_trading/execution/simulator.py",
+            "paper_trading/execution/slippage.py",
+            "paper_trading/execution/fill.py",
+            "paper_trading/execution/latency.py",
         ]:
             with open(mod_path) as f:
                 src = f.read()

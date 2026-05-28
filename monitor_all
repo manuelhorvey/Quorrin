@@ -22,4 +22,4 @@ echo "  Building dashboard..."
 fuser 5000/tcp 2>/dev/null && fuser -k 5000/tcp 2>/dev/null || true
 sleep 1
 
-python -m paper_trading.monitor
+python -m paper_trading.ops.monitor

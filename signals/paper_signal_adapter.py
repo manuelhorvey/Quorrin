@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from paper_trading.decision import TradeDecision
+from paper_trading.entry.decision import TradeDecision
 
 
 class PaperSignalAdapter:

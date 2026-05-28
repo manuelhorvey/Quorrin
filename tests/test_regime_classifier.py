@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from paper_trading.regime_classifier import RegimeClassifier
+from paper_trading.governance.regime import RegimeClassifier
 
 
 class TestRegimeClassifier:

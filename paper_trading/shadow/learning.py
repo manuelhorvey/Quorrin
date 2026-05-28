@@ -6,7 +6,7 @@ from datetime import datetime
 
 import numpy as np
 
-from paper_trading.shadow_feedback import read_feedback
+from paper_trading.shadow.feedback import read_feedback
 
 _lock = threading.Lock()
 

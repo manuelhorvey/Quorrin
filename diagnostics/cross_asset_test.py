@@ -3,7 +3,7 @@ import numpy as np
 from data.loaders.downloader import download_data
 from features.regime_features import generate_regime_features
 from diagnostics.regime_audit import RegimeAudit, print_audit_report
-from paper_trading.regime_classifier import RegimeClassifier
+from paper_trading.governance.regime import RegimeClassifier
 
 def validate_asset(symbol: str, name: str):
     print(f"\nProcessing {name} ({symbol})...")

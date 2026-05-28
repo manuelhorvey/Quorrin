@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from hypothesis import assume, given, strategies as st
 
-from paper_trading.dynamic_sltp import (
+from paper_trading.position.dynamic_sltp import (
     DynamicSLTPEngine,
     build_dynamic_sltp_from_config,
 )

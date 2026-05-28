@@ -1,6 +1,6 @@
 import pytest
-from paper_trading.execution_policy import ExecutionPolicyLayer
-from paper_trading.decision import (
+from paper_trading.entry.policy import ExecutionPolicyLayer
+from paper_trading.entry.decision import (
     EntryAction, 
     SignalType, 
     TradeDecision, 
@@ -35,7 +35,7 @@ def test_momentum_ignition_routing_reason():
 def test_policy_layer_no_market_logic():
     """Verify that the policy layer does not perform market calculations."""
     import inspect
-    from paper_trading.execution_policy import ExecutionPolicyLayer
+    from paper_trading.entry.policy import ExecutionPolicyLayer
     
     source = inspect.getsource(ExecutionPolicyLayer)
     # Ensure no common calculation terms exist

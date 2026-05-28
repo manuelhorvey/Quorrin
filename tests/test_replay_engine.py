@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from paper_trading.engine import AssetEngine
-from paper_trading.decision import PositionIntent
+from paper_trading.entry.decision import PositionIntent
 from tests.test_engine import _SKIP_JOURNAL
 from features.registry import FEATURE_REGISTRY
 from paper_trading.config_manager import get_config
@@ -88,7 +88,7 @@ class TestPositionManagerDeterministic:
     """
 
     def test_long_position_exact_pnl(self):
-        from paper_trading.position_manager import PositionManager
+        from paper_trading.position.manager import PositionManager
         pm = PositionManager(initial_capital=10000, position_size=1.0)
 
         intent = PositionIntent(
@@ -102,7 +102,7 @@ class TestPositionManagerDeterministic:
         assert trade["pnl"] == pytest.approx(1000.0)
 
     def test_short_position_exact_pnl(self):
-        from paper_trading.position_manager import PositionManager
+        from paper_trading.position.manager import PositionManager
         pm = PositionManager(initial_capital=10000, position_size=1.0)
 
         intent = PositionIntent(
@@ -116,7 +116,7 @@ class TestPositionManagerDeterministic:
         assert trade["pnl"] == pytest.approx(10000 * (100.0 / 90.0 - 1))
 
     def test_sl_hit_exact_pnl(self):
-        from paper_trading.position_manager import PositionManager
+        from paper_trading.position.manager import PositionManager
         pm = PositionManager(initial_capital=10000, position_size=1.0)
 
         intent = PositionIntent(
@@ -134,7 +134,7 @@ class TestPositionManagerDeterministic:
         Simulate daily price checks on an open position:
         no hit until the price crosses the TP threshold.
         """
-        from paper_trading.position_manager import PositionManager
+        from paper_trading.position.manager import PositionManager
         pm = PositionManager(initial_capital=10000, position_size=1.0)
 
         intent = PositionIntent(
@@ -154,7 +154,7 @@ class TestPositionManagerDeterministic:
         """
         Short position: price keeps rising until SL hit.
         """
-        from paper_trading.position_manager import PositionManager
+        from paper_trading.position.manager import PositionManager
         pm = PositionManager(initial_capital=10000, position_size=1.0)
 
         intent = PositionIntent(

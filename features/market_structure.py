@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from paper_trading.decision import MarketStructureState
+from paper_trading.entry.decision import MarketStructureState
 
 logger = logging.getLogger("quantforge.features.market_structure")
 

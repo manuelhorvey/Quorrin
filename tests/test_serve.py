@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from paper_trading import serve_common
+from paper_trading.api import common
 
 
 class FakeResponse:
@@ -28,12 +28,12 @@ def test_try_serve_file_rejects_asset_path_traversal(tmp_path, monkeypatch):
     root.mkdir()
     secret = tmp_path / "secret.txt"
     secret.write_text("secret", encoding="utf-8")
-    monkeypatch.setattr(serve_common, "DASHBOARD_DIST", str(root))
-    monkeypatch.setattr(serve_common, "FRONTEND_DIR", str(root))
+    monkeypatch.setattr(common, "DASHBOARD_DIST", str(root))
+    monkeypatch.setattr(common, "FRONTEND_DIR", str(root))
 
     resp = FakeResponse()
 
-    assert serve_common.try_serve_file("/assets/../secret.txt", resp) is False
+    assert common.try_serve_file("/assets/../secret.txt", resp) is False
     assert resp.body == b""
 
 
@@ -43,11 +43,11 @@ def test_try_serve_file_serves_files_within_static_root(tmp_path, monkeypatch):
     asset_dir.mkdir(parents=True)
     asset = asset_dir / "app.js"
     asset.write_text("console.log('ok')", encoding="utf-8")
-    monkeypatch.setattr(serve_common, "DASHBOARD_DIST", str(root))
-    monkeypatch.setattr(serve_common, "FRONTEND_DIR", str(Path(tmp_path) / "frontend"))
+    monkeypatch.setattr(common, "DASHBOARD_DIST", str(root))
+    monkeypatch.setattr(common, "FRONTEND_DIR", str(Path(tmp_path) / "frontend"))
 
     resp = FakeResponse()
 
-    assert serve_common.try_serve_file("/assets/app.js", resp) is True
+    assert common.try_serve_file("/assets/app.js", resp) is True
     assert resp.status == 200
     assert bytes(resp.body) == b"console.log('ok')"

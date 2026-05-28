@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from paper_trading.data_fetcher import fetch_live, flatten, safe_download
+from paper_trading.ops.data_fetcher import fetch_live, flatten, safe_download
 
 logger = logging.getLogger("quantforge.satellite_runner")
 
@@ -83,7 +83,7 @@ def fetch_btc_price(assets: dict) -> pd.DataFrame | None:
     df = fetch_live("BTC-USD", min_days=100)
 
     # Patch with real-time price
-    from paper_trading.data_fetcher import fetch_realtime_price
+    from paper_trading.ops.data_fetcher import fetch_realtime_price
 
     lp = fetch_realtime_price("BTC-USD")
     if lp is not None:

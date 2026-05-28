@@ -4,7 +4,7 @@ import pytest
 
 import paper_trading.engine as engine_module
 from paper_trading.engine import PaperTradingEngine
-from paper_trading.satellite import GateDecision, HighVolSatellite
+from paper_trading.satellite.engine import GateDecision, HighVolSatellite
 
 
 def test_record_return_tracks_metrics_without_compounding_active_value():

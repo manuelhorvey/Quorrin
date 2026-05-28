@@ -1,6 +1,6 @@
 import logging
 
-from paper_trading.decision import MarketStructureState, TPGeometry, ValidityState
+from paper_trading.entry.decision import MarketStructureState, TPGeometry, ValidityState
 
 logger = logging.getLogger("quantforge.paper_trading.tp_compiler")
 
@@ -86,7 +86,7 @@ def _generate_scale_out_profile(archetype: str, convexity: float) -> list[tuple[
 
 if __name__ == "__main__":
     # Test
-    from paper_trading.decision import MarketStructureState
+    from paper_trading.entry.decision import MarketStructureState
 
     struct = MarketStructureState(0, 0, 0, 0, 1.0, 0.5)
 

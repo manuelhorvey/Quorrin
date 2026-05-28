@@ -5,7 +5,7 @@ import pytest
 import inspect
 from features.registry import FEATURE_REGISTRY
 from paper_trading.config_manager import get_config
-from paper_trading.dynamic_sltp import DynamicSLTPEngine
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine
 
 class TestPhase0Invariants:
     """

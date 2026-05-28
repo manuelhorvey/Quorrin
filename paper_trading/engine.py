@@ -17,7 +17,7 @@ from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
 
 # Re-exported from child modules for backward compatibility
-from paper_trading.data_fetcher import (  # noqa: F401
+from paper_trading.ops.data_fetcher import (  # noqa: F401
     _cache_path,
     fetch_history,
     fetch_live,
@@ -26,19 +26,19 @@ from paper_trading.data_fetcher import (  # noqa: F401
     norm_index,
     safe_download,
 )
-from paper_trading.decision import PositionIntent, PositionSide
+from paper_trading.entry.decision import PositionIntent, PositionSide
 from paper_trading.execution.paper_broker import PaperBroker
-from paper_trading.execution_bridge import ExecutionBridge
-from paper_trading.experiment_context import ExperimentContext
-from paper_trading.market_hours import is_market_closed
-from paper_trading.satellite import HighVolSatellite, SatelliteConfig
-from paper_trading.satellite_runner import (
+from paper_trading.execution.bridge import ExecutionBridge
+from paper_trading.ops.experiment_context import ExperimentContext
+from paper_trading.ops.market_hours import is_market_closed
+from paper_trading.satellite.engine import HighVolSatellite, SatelliteConfig
+from paper_trading.satellite.runner import (
     compute_btc_context,
     compute_core_returns,
     fetch_btc_price,
     fetch_macro_context,
 )
-from paper_trading.simulation_snapshot import SimulationStore, build_asset_snapshot
+from paper_trading.ops.simulation_snapshot import SimulationStore, build_asset_snapshot
 from paper_trading.state_store import _SKIP_JOURNAL, EngineSnapshot, StateStore, sanitize  # noqa: F401
 from shared.execution_config import build_execution_configs
 from shared.registry import StrategyRegistry

@@ -1,13 +1,13 @@
 import logging
 
-from paper_trading.decision import (
+from paper_trading.entry.decision import (
     EntryAction,
     MarketStructureState,
     PolicyDecision,
     TPGeometry,
     TradeDecision,
 )
-from paper_trading.deferred_entry import DeferredEntry
+from paper_trading.entry.deferred_entry import DeferredEntry
 
 logger = logging.getLogger("quantforge.paper_trading.execution_policy")
 
@@ -134,7 +134,7 @@ class ExecutionPolicyLayer:
 if __name__ == "__main__":
     # Test routing
     layer = ExecutionPolicyLayer()
-    from paper_trading.decision import SignalType
+    from paper_trading.entry.decision import SignalType
 
     dec = TradeDecision("TEST", SignalType.BUY, 2, 75.0, 0.75, 0.1, 0.15, 100.0, "2026-05-26", 1.0, "MOMENTUM_IGNITION")
     struct = MarketStructureState(0, 0, 0, 0, 1.0, 0.95)

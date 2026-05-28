@@ -4,7 +4,7 @@ import threading
 
 import numpy as np
 
-from paper_trading.drift_scoring import get_shadow_intelligence
+from paper_trading.governance.drift import get_shadow_intelligence
 
 _lock = threading.Lock()
 _cache: dict = {}

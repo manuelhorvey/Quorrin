@@ -7,12 +7,12 @@ import pytz
 
 from features.fxstreet_fetcher import confirm_pending_narrative, get_narrative_status
 from paper_trading.config_manager import get_config
-from paper_trading.health_score import compute_all as _compute_health_all
-from paper_trading.health_score import get_latest as _get_health_latest
-from paper_trading.market_hours import is_market_closed
+from paper_trading.governance.health import compute_all as _compute_health_all
+from paper_trading.governance.health import get_latest as _get_health_latest
+from paper_trading.ops.market_hours import is_market_closed
 from paper_trading.portfolio_builder import build_paper_portfolio
-from paper_trading.risk_governance import get_latest as _get_risk_latest
-from paper_trading.serve_common import (
+from paper_trading.governance.risk import get_latest as _get_risk_latest
+from paper_trading.api.common import (
     _STORE,
     CONFIDENCE_PATH,
     LOG_PATH,
@@ -20,7 +20,7 @@ from paper_trading.serve_common import (
     cache_set,
     get_vol_baselines,
 )
-from paper_trading.weekly_review import compute_weekly_review
+from paper_trading.ops.weekly_review import compute_weekly_review
 
 ET = pytz.timezone("US/Eastern")
 

@@ -38,7 +38,7 @@ from features.registry import FEATURE_REGISTRY
 from research.execution_surface.mae_mfe_analyzer import compute_mae_mfe_for_trade
 from research.execution_surface.replay_engine import ReplayConfig, ReplayRegimeConfig, replay, replay_regime
 from research.execution_surface.trade_outcome_analyzer import analyze_trade_outcomes
-from paper_trading.dynamic_sltp import DynamicSLTPEngine
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine
 from research.risk.execution_physics import (
     ExecutionConfig,
     VolRegime,

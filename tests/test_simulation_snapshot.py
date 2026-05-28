@@ -4,7 +4,7 @@ import tempfile
 import pandas as pd
 import pytest
 
-from paper_trading.simulation_snapshot import (
+from paper_trading.ops.simulation_snapshot import (
     AssetSnapshot,
     SimulationStore,
     build_asset_snapshot,

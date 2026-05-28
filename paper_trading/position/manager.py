@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import pandas as pd
 
-from paper_trading.decision import PositionIntent
+from paper_trading.entry.decision import PositionIntent
 
 logger = logging.getLogger("quantforge.position_manager")
 

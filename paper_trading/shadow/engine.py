@@ -27,9 +27,9 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from paper_trading.dynamic_sltp import DynamicSLTPEngine, SLTPResult, TrailingResult
-from paper_trading.execution_simulator import FillResult, MarketSnapshot
-from paper_trading.position_manager import PositionManager
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, SLTPResult, TrailingResult
+from paper_trading.execution.simulator import FillResult, MarketSnapshot
+from paper_trading.position.manager import PositionManager
 from shared.volatility import VolatilityPrimitive
 
 logger = logging.getLogger("quantforge.shadow_sltp")

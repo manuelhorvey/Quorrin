@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 import pytest
 from features.market_structure import MarketStructureDetector
-from paper_trading.entry_optimizer import EntryOptimizer
-from paper_trading.deferred_entry import DeferredEntry, DeferredEntryStatus
-from paper_trading.decision import SignalType, TradeDecision
+from paper_trading.entry.optimizer import EntryOptimizer
+from paper_trading.entry.deferred_entry import DeferredEntry, DeferredEntryStatus
+from paper_trading.entry.decision import SignalType, TradeDecision
 
 def test_market_structure_detection():
     # Trending up data
@@ -21,7 +21,7 @@ def test_market_structure_detection():
 
 def test_entry_optimizer_routing():
     optimizer = EntryOptimizer()
-    from paper_trading.decision import MarketStructureState
+    from paper_trading.entry.decision import MarketStructureState
     
     # Momentum Ignition + High Pressure = DEFER
     structure = MarketStructureState(

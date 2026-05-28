@@ -6,7 +6,7 @@ from features.structural_features import generate_structural_features
 from features.interaction_features import generate_interaction_features
 from features.cot_features import build_cot_features, EURUSD_COT_FEATURES
 from labels.triple_barrier import apply_triple_barrier
-from paper_trading.regime_classifier import RegimeClassifier
+from paper_trading.governance.regime import RegimeClassifier
 from data.loaders.macro_loader import MACRO_FEATURES
 from data.loaders.cot_loader import get_contract_series, align_cot_to_daily
 from data.loaders.download_cot import download_all_years

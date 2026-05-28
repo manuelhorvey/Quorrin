@@ -9,7 +9,7 @@ from features.builder import compute_macro_derived
 from features.contract import validate_no_cross_asset_leakage
 from features.registry import FEATURE_REGISTRY
 from labels.meta_labels import MetaLabelModel
-from paper_trading.data_fetcher import fetch_history, fetch_ref
+from paper_trading.ops.data_fetcher import fetch_history, fetch_ref
 
 logger = logging.getLogger("quantforge.training_pipeline")
 

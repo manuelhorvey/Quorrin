@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass, fields
 from datetime import datetime
 
-from paper_trading.decision import PositionSide
+from paper_trading.entry.decision import PositionSide
 
 logger = logging.getLogger("quantforge.trade_attribution")
 

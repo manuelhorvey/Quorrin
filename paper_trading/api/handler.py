@@ -2,8 +2,8 @@ import gzip
 import json
 import os
 
-from paper_trading.serve_common import MIME_TYPES, cache_get, get_index_html, try_serve_file
-from paper_trading.serve_routes import GET_ROUTES, GET_ROUTES_PREFIX, POST_ROUTES
+from paper_trading.api.common import MIME_TYPES, cache_get, get_index_html, try_serve_file
+from paper_trading.api.routes import GET_ROUTES, GET_ROUTES_PREFIX, POST_ROUTES
 
 
 class Handler:

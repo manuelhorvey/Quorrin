@@ -1,6 +1,6 @@
 import logging
 
-from paper_trading.decision import EntryAction, MarketStructureState, SignalType
+from paper_trading.entry.decision import EntryAction, MarketStructureState, SignalType
 
 logger = logging.getLogger("quantforge.paper_trading.entry_optimizer")
 

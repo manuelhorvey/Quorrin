@@ -13,22 +13,22 @@ from monitoring.psi_monitor import PSIMonitor, PSISnapshot
 from monitoring.validity_state_machine import (
     ValidityStateMachine as _ValidityStateMachine,
 )
-from paper_trading.asset_governance import AssetGovernance
-from paper_trading.asset_inference_pipeline import AssetInferencePipeline
+from paper_trading.governance.asset import AssetGovernance
+from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.asset_pnl_controller import AssetPnlController
-from paper_trading.asset_training_pipeline import AssetTrainingPipeline
+from paper_trading.inference.training import AssetTrainingPipeline
 from paper_trading.config_manager import get_config
-from paper_trading.data_fetcher import flatten, safe_download
-from paper_trading.decision import EntryAction, PositionIntent, PositionSide, SignalType, TradeDecision
-from paper_trading.deferred_entry import DeferredEntryStatus
-from paper_trading.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
-from paper_trading.shadow_sltp import ShadowSLTPEngine
-from paper_trading.position_manager import PositionManager
-from paper_trading.regime_classifier import RegimeClassifier
-from paper_trading.risk_governance import record_trade_outcome as _record_exit_outcome
-from paper_trading.scale_out import build_scale_out_from_config
+from paper_trading.ops.data_fetcher import flatten, safe_download
+from paper_trading.entry.decision import EntryAction, PositionIntent, PositionSide, SignalType, TradeDecision
+from paper_trading.entry.deferred_entry import DeferredEntryStatus
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
+from paper_trading.shadow.engine import ShadowSLTPEngine
+from paper_trading.position.manager import PositionManager
+from paper_trading.governance.regime import RegimeClassifier
+from paper_trading.governance.risk import record_trade_outcome as _record_exit_outcome
+from paper_trading.position.scale_out import build_scale_out_from_config
 from paper_trading.state_store import _SKIP_JOURNAL, StateStore
-from paper_trading.trade_attribution import AttributionCollector, TradeAttributionRecord
+from paper_trading.attribution.collector import AttributionCollector, TradeAttributionRecord
 from shared.registry import StrategyRegistry
 
 logger = logging.getLogger("quantforge.asset_engine")
@@ -173,8 +173,8 @@ class AssetEngine:
 
         self._archetype_classifier = ArchetypeClassifier()
         from features.market_structure import MarketStructureDetector
-        from paper_trading.entry_optimizer import EntryOptimizer
-        from paper_trading.execution_policy import ExecutionPolicyLayer
+        from paper_trading.entry.optimizer import EntryOptimizer
+        from paper_trading.entry.policy import ExecutionPolicyLayer
 
         self._structure_detector = MarketStructureDetector()
         self._entry_optimizer = EntryOptimizer()
@@ -375,7 +375,7 @@ class AssetEngine:
         # Phase 2: Reward Geometry Compilation (Frozen at entry)
         if tp_geo is None:
             # Fallback if not provided by policy layer
-            from paper_trading.tp_compiler import compute_take_profit
+            from paper_trading.entry.tp_compiler import compute_take_profit
 
             sl_dist = abs(intent.stop_loss - fill_price)
             tp_geo = compute_take_profit(
@@ -649,7 +649,7 @@ class AssetEngine:
 
     def refresh_price(self):
         # 1. Try absolute real-time price first
-        from paper_trading.data_fetcher import fetch_realtime_price
+        from paper_trading.ops.data_fetcher import fetch_realtime_price
 
         lp = fetch_realtime_price(self.ticker)
         if lp is not None:
@@ -769,14 +769,14 @@ class AssetEngine:
                         )
                         sl_dist = decision.close_price * vol * curr_sl_mult
 
-                        from paper_trading.tp_compiler import compute_take_profit
+                        from paper_trading.entry.tp_compiler import compute_take_profit
 
                         tp_geo = compute_take_profit(
                             decision.close_price, sl_dist, state, decision.archetype, structure
                         )
 
                     elif entry_action == EntryAction.DEFER:
-                        from paper_trading.deferred_entry import DeferredEntry
+                        from paper_trading.entry.deferred_entry import DeferredEntry
 
                         deferred_entry = DeferredEntry.from_decision(
                             decision, max_bars=self.config.get("entry_defer_max_bars", 5)
@@ -871,7 +871,7 @@ class AssetEngine:
                 )
                 sl_dist = float(df["close"].iloc[-1]) * vol * curr_sl_mult
 
-                from paper_trading.tp_compiler import compute_take_profit
+                from paper_trading.entry.tp_compiler import compute_take_profit
 
                 tp_geo = compute_take_profit(
                     float(df["close"].iloc[-1]), sl_dist, state, entry.decision.archetype, structure

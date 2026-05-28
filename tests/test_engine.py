@@ -440,7 +440,7 @@ class TestStopOutCooldown:
 
     def test_churn_case_skips_cooldown(self, engine):
         """Price barely touches SL and bounces — cooldown skipped."""
-        from paper_trading.decision import PositionIntent
+        from paper_trading.entry.decision import PositionIntent
 
         intent = PositionIntent(
             side="short",
@@ -459,7 +459,7 @@ class TestStopOutCooldown:
 
     def test_blowthrough_case_sets_cooldown(self, engine):
         """Price blows through SL — cooldown applied."""
-        from paper_trading.decision import PositionIntent
+        from paper_trading.entry.decision import PositionIntent
 
         intent = PositionIntent(
             side="short",

@@ -13,10 +13,10 @@ import logging
 
 import numpy as np
 
-from paper_trading.decision import PositionIntent
+from paper_trading.entry.decision import PositionIntent
 from paper_trading.execution.order_manager import OrderManager
 from paper_trading.execution.paper_broker import PaperBroker
-from paper_trading.execution_simulator import (
+from paper_trading.execution.simulator import (
     ExecutionSimulator,
     FillResult,
     MarketSnapshot,

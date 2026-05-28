@@ -27,8 +27,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from paper_trading.dynamic_sltp import DynamicSLTPEngine
-from paper_trading.scale_out import ScaleOutEngine, ScaleOutPlan, ScaleOutTier
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine
+from paper_trading.position.scale_out import ScaleOutEngine, ScaleOutPlan, ScaleOutTier
 from research.execution_surface.replay_engine import (
     ReplayConfig,
     check_barrier_hit,

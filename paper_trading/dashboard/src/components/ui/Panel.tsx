@@ -6,6 +6,7 @@ interface PanelProps {
   hover?: boolean
   padding?: 'md' | 'lg' | 'none'
   accent?: 'green' | 'yellow' | 'red' | 'init' | null
+  variant?: 'default' | 'elevated' | 'subtle'
 }
 
 const paddingMap = {
@@ -14,12 +15,19 @@ const paddingMap = {
   none: '',
 }
 
-export default function Panel({ children, className = '', hover = false, padding = 'md', accent = null }: PanelProps) {
+const variantStyles: Record<NonNullable<PanelProps['variant']>, string> = {
+  default: 'panel',
+  elevated: 'bg-elevated border border-strong shadow-card',
+  subtle: 'bg-surface/50 border border-default/30',
+}
+
+export default function Panel({ children, className = '', hover = false, padding = 'md', accent = null, variant = 'default' }: PanelProps) {
   const accentClass = accent ? `panel-accent panel-accent-${accent}` : ''
   return (
     <div
       className={[
-        'panel rounded-lg',
+        variantStyles[variant],
+        'rounded-lg',
         paddingMap[padding],
         hover ? 'panel-hover' : '',
         accentClass,

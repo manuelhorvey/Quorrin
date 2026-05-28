@@ -2,7 +2,7 @@ import { useHealthScores } from '../hooks/useHealthScores'
 import Panel from './ui/Panel'
 import SectionHeader from './ui/SectionHeader'
 import { Skeleton } from './ui/Skeleton'
-import { governanceBadge, healthColorToState } from './ui/governance'
+import { governanceBadge, governanceDot, healthColorToState, scoreToState } from './ui/governance'
 
 const COMPONENT_LABELS: Record<string, string> = {
   validity: 'Validity',
@@ -10,12 +10,6 @@ const COMPONENT_LABELS: Record<string, string> = {
   pnl_stability: 'PnL Stability',
   shadow_agreement: 'Shadow Agreement',
   stress_robustness: 'Stress Robust.',
-}
-
-function barColor(score: number): string {
-  if (score >= 0.8) return 'bg-gov-green'
-  if (score >= 0.55) return 'bg-gov-yellow'
-  return 'bg-gov-red'
 }
 
 export default function HealthScores() {
@@ -66,9 +60,7 @@ export default function HealthScores() {
               </div>
               <div className="w-full h-1 bg-panel rounded-full overflow-hidden mb-1.5">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    state === 'GREEN' ? 'bg-gov-green' : state === 'YELLOW' ? 'bg-gov-yellow' : 'bg-gov-red'
-                  }`}
+                  className={`h-full rounded-full transition-all duration-500 ${governanceDot[state]}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -84,7 +76,7 @@ export default function HealthScores() {
                   >
                     <div className="w-full h-3 bg-panel/80 rounded-sm overflow-hidden relative">
                       <div
-                        className={`absolute bottom-0 left-0 right-0 ${barColor(val)} transition-all duration-500`}
+                        className={`absolute bottom-0 left-0 right-0 ${governanceDot[scoreToState(val)]} transition-all duration-500`}
                         style={{ height: `${val * 100}%` }}
                       />
                     </div>

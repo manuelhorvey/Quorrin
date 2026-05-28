@@ -1,4 +1,5 @@
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import { governanceText } from './ui/governance'
 
 export default function Footer() {
   const { data } = usePortfolioState()
@@ -42,7 +43,7 @@ export default function Footer() {
           </span>
           <span>
             Cleared{' '}
-            <span className={p?.deployment_cleared ? 'text-gov-green font-semibold' : 'text-gov-yellow font-semibold'}>
+            <span className={(p?.deployment_cleared ? governanceText.GREEN : governanceText.YELLOW) + ' font-semibold'}>
               {p?.deployment_cleared ? 'Yes' : 'No'}
             </span>
           </span>

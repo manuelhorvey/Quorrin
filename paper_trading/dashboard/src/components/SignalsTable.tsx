@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { formatAssetPrice } from '../utils/format'
 import DataTable, { type ColumnDef } from './ui/DataTable'
@@ -7,12 +7,6 @@ import Panel from './ui/Panel'
 import SectionHeader from './ui/SectionHeader'
 import EmptyState from './ui/EmptyState'
 import { TableSkeleton } from './ui/Skeleton'
-
-function signalPill(signal?: string): string {
-  if (signal === 'BUY') return 'signal-pill signal-pill-buy'
-  if (signal === 'SELL') return 'signal-pill signal-pill-sell'
-  return 'signal-pill signal-pill-flat'
-}
 
 function confClass(conf: number): string {
   if (conf >= 60) return 'text-gov-green'
@@ -66,13 +60,31 @@ export default function SignalsTable() {
       key: 'name',
       label: 'Asset',
       sortable: true,
+      minWidth: '80px',
       render: r => <span className="font-semibold text-primary text-xs font-mono">{r.name}</span>,
     },
     {
       key: 'signal',
       label: 'Signal',
       sortable: true,
-      render: r => <span className={signalPill(r.signal)}>{r.signal === 'BUY' ? 'LONG' : r.signal === 'SELL' ? 'SHORT' : 'FLAT'}</span>,
+      minWidth: '80px',
+      render: r => {
+        if (r.signal === 'BUY') return (
+          <span className="inline-flex items-center gap-1 signal-pill signal-pill-buy">
+            <ArrowUp className="w-2.5 h-2.5" strokeWidth={2.5} /> LONG
+          </span>
+        )
+        if (r.signal === 'SELL') return (
+          <span className="inline-flex items-center gap-1 signal-pill signal-pill-sell">
+            <ArrowDown className="w-2.5 h-2.5" strokeWidth={2.5} /> SHORT
+          </span>
+        )
+        return (
+          <span className="inline-flex items-center gap-1 signal-pill signal-pill-flat">
+            <Minus className="w-2.5 h-2.5" strokeWidth={2.5} /> FLAT
+          </span>
+        )
+      },
     },
     {
       key: 'confidence',
@@ -80,7 +92,19 @@ export default function SignalsTable() {
       align: 'right',
       sortable: true,
       sortKey: r => r.confidence,
-      render: r => <span className={`font-mono tabular-nums ${confClass(r.confidence)}`}>{r.confidence.toFixed(0)}</span>,
+      render: r => (
+        <div className="flex items-center gap-1.5 justify-end">
+          <div className="w-10 h-1 bg-panel rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${confClass(r.confidence).replace('text-', 'bg-')}`}
+              style={{ width: `${r.confidence}%` }}
+            />
+          </div>
+          <span className={`font-mono tabular-nums text-[10px] ${confClass(r.confidence)}`}>
+            {r.confidence.toFixed(0)}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'price',

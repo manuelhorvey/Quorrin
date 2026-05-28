@@ -2,48 +2,23 @@ import React, { useMemo } from 'react'
 import Panel from './ui/Panel'
 import SectionHeader from './ui/SectionHeader'
 import { useGovernance } from '../hooks/useGovernance'
-import type { GovernanceState } from '../hooks/useGovernance'
+import type { GovernanceState as GovernanceData } from '../hooks/useGovernance'
+import {
+  scalarToState,
+  regimeToState,
+  narrRegimeToState,
+  validityToState,
+  governanceText,
+  governanceDot,
+  mapStateToBorder,
+  type GovernanceState,
+} from './ui/governance'
 
-function scalarColor(value: number): string {
-  if (value >= 1.0) return 'text-gov-green'
-  if (value > 0.70) return 'text-gov-yellow'
-  return 'text-gov-red'
-}
-
-function sizeColor(value: number): string {
-  if (value >= 1.0) return 'text-gov-green'
-  if (value > 0.70) return 'text-gov-yellow'
-  return 'text-gov-red'
-}
-
-function regimeColor(regime: string): string {
-  switch (regime) {
-    case 'STRESSED':
-      return 'text-gov-red'
-    case 'THIN':
-      return 'text-gov-yellow'
-    default:
-      return 'text-gov-green'
-  }
-}
-
-function narrRegimeColor(regime: string | null): string {
-  if (!regime) return 'text-muted'
-  if (regime === 'risk_off') return 'text-gov-red'
-  if (regime === 'geopol_tension') return 'text-gov-yellow'
-  if (regime === 'risk_on') return 'text-gov-green'
-  return 'text-secondary'
-}
-
-function Dot({ color }: { color: string }) {
-  return <span className={`w-1.5 h-1.5 rounded-full inline-block shrink-0 ${color}`} />
-}
-
-function validityStateColor(state: string): string {
-  if (state === 'GREEN' || state === 'green') return 'text-gov-green bg-gov-green-muted border-gov-green/20'
-  if (state === 'YELLOW' || state === 'yellow' || state === 'amber') return 'text-gov-yellow bg-gov-yellow-muted border-gov-yellow/20'
-  if (state === 'RED' || state === 'red') return 'text-gov-red bg-gov-red-muted border-gov-red/20'
-  return 'text-gov-init bg-gov-init-muted border-gov-init/20'
+const validityBadge: Record<GovernanceState, string> = {
+  GREEN: 'text-gov-green bg-gov-green-muted border-gov-green/20',
+  YELLOW: 'text-gov-yellow bg-gov-yellow-muted border-gov-yellow/20',
+  RED: 'text-gov-red bg-gov-red-muted border-gov-red/20',
+  INIT: 'text-gov-init bg-gov-init-muted border-gov-init/20',
 }
 
 function GovernanceStateCard({
@@ -51,7 +26,7 @@ function GovernanceStateCard({
   state,
 }: {
   asset: string
-  state: GovernanceState
+  state: GovernanceData
 }) {
   const rows: { label: string; sl: number; size: number; slColor: string; sizeColor: string }[] = useMemo(
     () => [
@@ -59,61 +34,65 @@ function GovernanceStateCard({
         label: 'Regime',
         sl: state.regime_sl_mult,
         size: state.regime_size_scalar,
-        slColor: scalarColor(state.regime_sl_mult),
-        sizeColor: sizeColor(state.regime_size_scalar),
+        slColor: governanceText[scalarToState(state.regime_sl_mult)],
+        sizeColor: governanceText[scalarToState(state.regime_size_scalar)],
       },
       {
         label: 'Narrative',
         sl: state.narrative_sl_mult,
         size: state.narrative_size_scalar,
-        slColor: scalarColor(state.narrative_sl_mult),
-        sizeColor: sizeColor(state.narrative_size_scalar),
+        slColor: governanceText[scalarToState(state.narrative_sl_mult)],
+        sizeColor: governanceText[scalarToState(state.narrative_size_scalar)],
       },
       {
         label: 'Liquidity',
         sl: state.liquidity_sl_mult,
         size: state.liquidity_size_scalar,
-        slColor: scalarColor(state.liquidity_sl_mult),
-        sizeColor: sizeColor(state.liquidity_size_scalar),
+        slColor: governanceText[scalarToState(state.liquidity_sl_mult)],
+        sizeColor: governanceText[scalarToState(state.liquidity_size_scalar)],
       },
       {
         label: 'Combined',
         sl: state.combined_sl_mult,
         size: state.combined_size_scalar,
-        slColor: scalarColor(state.combined_sl_mult),
-        sizeColor: sizeColor(state.combined_size_scalar),
+        slColor: governanceText[scalarToState(state.combined_sl_mult)],
+        sizeColor: governanceText[scalarToState(state.combined_size_scalar)],
       },
     ],
     [state],
   )
+
+  const regimeState = regimeToState(state.liquidity_regime)
+  const narrRegime = state.narrative_regime
+  const narrState = narrRegime ? narrRegimeToState(narrRegime) : null
 
   return (
     <div className={`bg-panel/80 border rounded-lg px-3 py-2.5 text-[11px] text-secondary hover:border-strong/80 transition-colors ${state.halted ? 'border-l-2 border-l-gov-red border-default' : 'border-default'}`}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-primary font-mono">{asset}</span>
-          <span className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${validityStateColor(state.validity_state)}`}>
+          <span className={`text-2xs font-bold px-1.5 py-0.5 rounded border ${validityBadge[validityToState(state.validity_state)]}`}>
             {state.validity_state}
           </span>
           {state.halted && (
-            <span className="flex items-center gap-1 text-2xs font-bold text-gov-red bg-gov-red-muted px-1.5 py-0.5 rounded border border-gov-red/20" title="Trading halted by governance rules">
-              <span className="w-1.5 h-1.5 rounded-full bg-gov-red state-pulse-red" />
+            <span className={`flex items-center gap-1 text-2xs font-bold ${mapStateToBorder('RED')}`} title="Trading halted by governance rules">
+              <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.RED} state-pulse-red`} />
               HALTED
             </span>
           )}
           {state.floor_active && (
-            <span className="text-2xs font-bold text-gov-yellow bg-gov-yellow-muted px-1.5 py-0.5 rounded border border-gov-yellow/20" title="Size scalar floored at 0.30x">
+            <span className={`text-2xs font-bold ${mapStateToBorder('YELLOW')}`} title="Size scalar floored at 0.30x">
               FLOOR
             </span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <Dot color={regimeColor(state.liquidity_regime)} />
+          <span className={`w-1.5 h-1.5 rounded-full inline-block shrink-0 ${governanceDot[regimeState]}`} />
           <span className="text-tertiary font-mono text-2xs">{state.liquidity_regime}</span>
-          {state.narrative_regime && (
+          {narrState && (
             <>
-              <Dot color={narrRegimeColor(state.narrative_regime)} />
-              <span className="text-tertiary font-mono text-2xs">{state.narrative_regime.replace(/_/g, ' ')}</span>
+              <span className={`w-1.5 h-1.5 rounded-full inline-block shrink-0 ${governanceDot[narrState]}`} />
+              <span className="text-tertiary font-mono text-2xs">{narrRegime!.replace(/_/g, ' ')}</span>
             </>
           )}
         </div>

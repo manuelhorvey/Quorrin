@@ -1,13 +1,14 @@
 import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, ZAxis, Cell } from 'recharts'
 import { useAttributionTrades } from '../../hooks/useAttributionTrades'
 import ChartContainer from '../ui/ChartContainer'
+import { axisTick, tooltipStyle } from '../ui/chartTheme'
 
 const ARCHETYPE_COLORS: Record<string, string> = {
-  BREAKOUT: '#22c55e',
-  MEAN_REVERSION: '#3b82f6',
-  MOMENTUM: '#a855f7',
-  VOL_EXPANSION: '#f97316',
-  UNKNOWN: '#6b7280',
+  BREAKOUT: 'var(--color-gov-green)',
+  MEAN_REVERSION: 'var(--color-accent-blue)',
+  MOMENTUM: 'var(--color-accent-purple)',
+  VOL_EXPANSION: 'var(--color-gov-yellow)',
+  UNKNOWN: 'var(--color-text-muted)',
 }
 
 export default function MaeMfeScatter() {
@@ -33,28 +34,28 @@ export default function MaeMfeScatter() {
             dataKey="mae"
             type="number"
             name="MAE"
-            tick={{ fontSize: 9 }}
+            tick={axisTick}
             axisLine={false}
             tickLine={false}
-            label={{ value: 'MAE', position: 'bottom', fontSize: 10, fill: '#6b7280' }}
+            label={{ value: 'MAE', position: 'bottom', fontSize: 10, fill: 'var(--color-text-tertiary)' }}
           />
           <YAxis
             dataKey="mfe"
             type="number"
             name="MFE"
-            tick={{ fontSize: 9 }}
+            tick={axisTick}
             axisLine={false}
             tickLine={false}
-            label={{ value: 'MFE', angle: -90, position: 'left', fontSize: 10, fill: '#6b7280' }}
+            label={{ value: 'MFE', angle: -90, position: 'left', fontSize: 10, fill: 'var(--color-text-tertiary)' }}
           />
           <ZAxis dataKey="r" range={[20, 80]} name="R" />
           <Tooltip
-            contentStyle={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 6, fontSize: 11 }}
+            contentStyle={tooltipStyle}
             formatter={(value: number, name: string) => [value.toFixed(2), name]}
           />
           <Scatter data={chartData}>
             {chartData.map((point, i) => (
-              <Cell key={point.trade_id || i} fill={ARCHETYPE_COLORS[point.archetype] ?? '#6b7280'} fillOpacity={0.7} />
+              <Cell key={point.trade_id || i} fill={ARCHETYPE_COLORS[point.archetype] ?? 'var(--color-text-muted)'} fillOpacity={0.7} />
             ))}
           </Scatter>
         </ScatterChart>

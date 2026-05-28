@@ -7,6 +7,12 @@ import { useLiquidity } from '../hooks/useLiquidity'
 import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import ConnectionStatus from './ConnectionStatus'
+import {
+  governanceBadge,
+  governanceDot,
+  governanceText,
+  type GovernanceState,
+} from './ui/governance'
 
 function ConfirmButton() {
   const [confirming, setConfirming] = useState(false)
@@ -33,19 +39,25 @@ function ConfirmButton() {
           }
           setConfirming(false)
         }}
-        className="flex items-center gap-1 px-2 py-1 rounded-md border border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow text-2xs font-medium hover:bg-gov-yellow/20 transition-colors active:scale-95 disabled:opacity-50"
+        className={`flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium hover:bg-gov-yellow/20 transition-colors active:scale-95 disabled:opacity-50 ${governanceBadge.YELLOW}`}
         title="Confirm pending macro narrative"
       >
-        <span className={`w-1.5 h-1.5 rounded-full ${confirming ? 'bg-muted' : 'bg-gov-yellow animate-pulse'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${confirming ? 'bg-muted' : governanceDot.YELLOW + ' animate-pulse'}`} />
         {confirming ? 'CONFIRMING...' : 'NARR PENDING'}
       </button>
       {error && (
-        <div className="absolute top-full mt-1 right-0 whitespace-nowrap px-2 py-1 rounded border border-gov-red/25 bg-gov-red-muted text-gov-red text-2xs font-mono">
+        <div className={`absolute top-full mt-1 right-0 whitespace-nowrap px-2 py-1 rounded border text-2xs font-mono ${governanceBadge.RED}`}>
           {error}
         </div>
       )}
     </div>
   )
+}
+
+function connectionState(isDisconnected: boolean, marketsClosed: boolean, isDelayed: boolean): GovernanceState {
+  if (isDisconnected) return 'RED'
+  if (marketsClosed || isDelayed) return 'YELLOW'
+  return 'GREEN'
 }
 
 export default function Header() {
@@ -68,13 +80,7 @@ export default function Header() {
   const serverClosed = data?.engine_status?.market_closed === true
   const marketsClosed = serverClosed || !marketsOpen
 
-  const statusClass = isDisconnected
-    ? 'border-gov-red/25 bg-gov-red-muted text-gov-red'
-    : marketsClosed
-      ? 'border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow'
-      : isDelayed
-        ? 'border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow'
-        : 'border-gov-green/25 bg-gov-green-muted text-gov-green'
+  const connState: GovernanceState = connectionState(isDisconnected, marketsClosed, isDelayed)
   const statusText = isDisconnected ? 'Disconnected' : marketsClosed ? 'CLSD' : isDelayed ? 'Delayed' : 'Live'
 
   const daysRunning = data?.portfolio?.days_running ?? 0
@@ -106,7 +112,7 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border transition-colors ${statusClass}`}>
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border transition-colors ${governanceBadge[connState]}`}>
             {marketsClosed && !isDisconnected ? (
               <Pause className="w-2.5 h-2.5" strokeWidth={2.5} />
             ) : (
@@ -125,7 +131,7 @@ export default function Header() {
           <div className="hidden sm:flex items-center gap-1.5 text-2xs text-secondary border-l border-default pl-2">
             <span className="font-mono tabular-nums">{timeStr}</span>
             <span className="text-tertiary">·</span>
-            <span className={marketsClosed ? 'text-gov-yellow font-semibold' : 'text-gov-green font-semibold'}>
+            <span className={marketsClosed ? governanceText.YELLOW + ' font-semibold' : governanceText.GREEN + ' font-semibold'}>
               {marketsClosed ? 'CLSD' : 'OPEN'}
             </span>
           </div>
@@ -144,10 +150,10 @@ export default function Header() {
 
           {narrative?.fetch_error && (
             <div
-              className="flex items-center gap-1 px-2 py-1 rounded-md border border-gov-red/25 bg-gov-red-muted text-gov-red text-2xs font-medium"
+              className={`flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium ${governanceBadge.RED}`}
               title={`Narrative fetch error: ${JSON.stringify(narrative.fetch_error)}`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-gov-red" />
+              <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.RED}`} />
               NARR ERR
             </div>
           )}
@@ -157,13 +163,13 @@ export default function Header() {
           {narrative?.active && !narrative.needs_confirmation && !narrative.fetch_error && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-default/20 bg-panel text-2xs text-tertiary font-medium">
               <span className={`w-1.5 h-1.5 rounded-full ${
-                narrative.active.overall_regime === 'risk_off' ? 'bg-gov-red' :
-                narrative.active.overall_regime === 'geopol_tension' ? 'bg-gov-yellow' :
-                narrative.active.overall_regime === 'risk_on' ? 'bg-gov-green' :
+                narrative.active.overall_regime === 'risk_off' ? governanceDot.RED :
+                narrative.active.overall_regime === 'geopol_tension' ? governanceDot.YELLOW :
+                narrative.active.overall_regime === 'risk_on' ? governanceDot.GREEN :
                 'bg-muted'
               }`} />
               {String(narrative.active.overall_regime).replace(/_/g, ' ').toUpperCase()}
-              {narrative.stale && <span className="text-gov-yellow ml-1 text-[10px]">(STALE)</span>}
+              {narrative.stale && <span className={`${governanceText.YELLOW} ml-1 text-[10px]`}>(STALE)</span>}
             </div>
           )}
 
@@ -176,9 +182,9 @@ export default function Header() {
                 .join(' | ')}
             >
               {Object.values(liquidity).some(l => l.regime === 'STRESSED') ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-gov-red" />
+                <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.RED}`} />
               ) : (
-                <span className="w-1.5 h-1.5 rounded-full bg-gov-yellow" />
+                <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.YELLOW}`} />
               )}
               LIQ {Object.values(liquidity).some(l => l.regime === 'STRESSED') ? 'STRSD' : 'THIN'}
             </div>
@@ -201,7 +207,7 @@ export default function Header() {
             title="Toggle theme"
           >
             {dark ? (
-              <Sun className="w-3 h-3 text-gov-yellow" strokeWidth={2} />
+              <Sun className={`w-3 h-3 ${governanceText.YELLOW}`} strokeWidth={2} />
             ) : (
               <Moon className="w-3 h-3 text-tertiary" strokeWidth={2} />
             )}

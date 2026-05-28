@@ -1,6 +1,14 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { formatAssetPrice } from '../utils/format'
+import {
+  confToState,
+  ddToState,
+  rrToState,
+  governanceDot,
+  governanceText,
+  type GovernanceState,
+} from './ui/governance'
 
 interface Props {
   name: string
@@ -63,9 +71,9 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
     )
   }
 
-  const confColor = info.confidence >= 60 ? 'text-gov-green' : info.confidence >= 45 ? 'text-gov-yellow' : 'text-gov-red'
-  const retColor = info.totalReturn >= 0 ? 'text-gov-green' : 'text-gov-red'
-  const ddColor = info.drawdown > -3 ? 'text-gov-green' : info.drawdown > -5 ? 'text-gov-yellow' : 'text-gov-red'
+  const confState: GovernanceState = confToState(info.confidence)
+  const retState: GovernanceState = info.totalReturn >= 0 ? 'GREEN' : 'RED'
+  const ddState: GovernanceState = ddToState(info.drawdown)
 
   return (
     <div className="relative panel rounded-lg px-4 py-3 panel-hover overflow-hidden group">
@@ -80,17 +88,17 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
           <span className="text-xs text-tertiary font-mono ml-1">${formatAssetPrice(info.price)}</span>
         )}
         <span className="ml-auto flex items-center gap-2">
-          <span className={`text-xs font-semibold ${info.signal === 'BUY' ? 'text-gov-green' : info.signal === 'SELL' ? 'text-gov-red' : 'text-muted'}`}>
+          <span className={`text-xs font-semibold ${info.signal === 'BUY' ? governanceText.GREEN : info.signal === 'SELL' ? governanceText.RED : 'text-muted'}`}>
             {info.signal}
           </span>
-          <span className={`text-xs font-mono ${confColor}`}>{info.confidence.toFixed(0)}%</span>
+          <span className={`text-xs font-mono ${governanceText[confState]}`}>{info.confidence.toFixed(0)}%</span>
         </span>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-tertiary mb-2">
-        <span className={retColor}>{info.totalReturn >= 0 ? '+' : ''}{info.totalReturn.toFixed(2)}%</span>
+        <span className={governanceText[retState]}>{info.totalReturn >= 0 ? '+' : ''}{info.totalReturn.toFixed(2)}%</span>
         <span className="text-default/50">|</span>
-        <span className={ddColor}>DD {info.drawdown.toFixed(2)}%</span>
+        <span className={governanceText[ddState]}>DD {info.drawdown.toFixed(2)}%</span>
         <span className="text-default/50">|</span>
         <span>Conf {info.meanConf.toFixed(1)}%</span>
       </div>
@@ -110,12 +118,12 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
         <div className="pt-2 border-t border-default/30">
           <div className="flex items-center justify-between text-xs text-tertiary">
             <span className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${info.pos.side === 'long' ? 'bg-gov-green' : 'bg-gov-red'}`} />
+              <span className={`w-2 h-2 rounded-full ${info.pos.side === 'long' ? governanceDot.GREEN : governanceDot.RED}`} />
               {info.pos.side.toUpperCase()} @ ${formatAssetPrice(info.pos.entry)}
             </span>
             <span className="font-mono">
               {info.pos.unrealized_pnl != null && (
-                <span className={`${info.pos.unrealized_pnl >= 0 ? 'text-gov-green' : 'text-gov-red'}`}>
+                <span className={`${info.pos.unrealized_pnl >= 0 ? governanceText.GREEN : governanceText.RED}`}>
                   {info.pos.unrealized_pnl >= 0 ? '+' : ''}{info.pos.unrealized_pnl.toFixed(2)}%
                 </span>
               )}
@@ -135,20 +143,20 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
                 <>
                   {p.tp != null && p.tp !== 0 && (
                     <span className="flex items-center gap-1 text-tertiary">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gov-green" />
+                      <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.GREEN}`} />
                       TP {formatAssetPrice(p.tp)}
-                      <span className="text-gov-green font-mono">↑{tpDist.toFixed(2)}%</span>
+                      <span className={`${governanceText.GREEN} font-mono`}>↑{tpDist.toFixed(2)}%</span>
                     </span>
                   )}
                   {p.sl != null && p.sl !== 0 && (
                     <span className="flex items-center gap-1 text-tertiary">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gov-red" />
+                      <span className={`w-1.5 h-1.5 rounded-full ${governanceDot.RED}`} />
                       SL {formatAssetPrice(p.sl)}
-                      <span className="font-mono text-gov-red">↓{slDist.toFixed(2)}%</span>
+                      <span className={`font-mono ${governanceText.RED}`}>↓{slDist.toFixed(2)}%</span>
                     </span>
                   )}
                   {rr > 0 && (
-                    <span className={`ml-auto font-mono font-semibold ${rr >= 2 ? 'text-gov-green' : rr >= 1 ? 'text-gov-yellow' : 'text-gov-red'}`}>
+                    <span className={`ml-auto font-mono font-semibold ${governanceText[rrToState(rr)]}`}>
                       {rr.toFixed(1)}:1
                     </span>
                   )}

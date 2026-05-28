@@ -11,12 +11,12 @@ interface SectionHeaderProps {
 }
 
 const accentDot: Record<NonNullable<SectionHeaderProps['accent']>, string> = {
-  emerald: 'bg-accent-emerald/60 shadow-glow-emerald',
-  blue: 'bg-accent-blue/60',
-  purple: 'bg-accent-purple/60',
-  amber: 'bg-accent-amber/60',
-  indigo: 'bg-accent-indigo/60',
-  neutral: 'bg-gov-init/50',
+  emerald: 'bg-accent-emerald',
+  blue: 'bg-accent-blue',
+  purple: 'bg-accent-purple',
+  amber: 'bg-accent-amber',
+  indigo: 'bg-accent-indigo',
+  neutral: 'bg-gov-init/60',
 }
 
 const titleSize = {
@@ -42,7 +42,7 @@ export default function SectionHeader({
       ].join(' ')}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${accentDot[accent]}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 opacity-70 ${accentDot[accent]}`} />
         <div className="min-w-0">
           <h2 className={[titleSize[size], 'truncate'].join(' ')}>{title}</h2>
           {subtitle && <p className="text-[10px] text-tertiary font-mono truncate">{subtitle}</p>}

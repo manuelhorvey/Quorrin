@@ -1,21 +1,31 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowUp, ArrowDown } from 'lucide-react'
 import { useTrades } from '../hooks/useTrades'
 import { formatAssetPrice, formatHeldDuration, safeToFixed } from '../utils/format'
+import DataTable, { type ColumnDef } from './ui/DataTable'
+import TablePagination from './ui/TablePagination'
 import Panel from './ui/Panel'
 import SectionHeader from './ui/SectionHeader'
 import EmptyState from './ui/EmptyState'
 import { TableSkeleton } from './ui/Skeleton'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import type { TradeEntry } from '../hooks/useTrades'
 
 const PAGE_SIZE = 10
 
-function reasonPill(reason?: string) {
+function reasonLabel(reason?: string): string {
   const r = reason?.toLowerCase() ?? ''
-  if (r === 'tp' || r === 'tp_hit') return 'signal-pill-buy'
-  if (r === 'sl' || r === 'sl_hit' || r === 'stop_loss') return 'signal-pill-sell'
-  if (r === 'signal_flip' || r === 'flip') return 'signal-pill-flat'
-  return 'signal-pill-flat'
+  if (r === 'tp' || r === 'tp_hit') return 'TP'
+  if (r === 'sl' || r === 'sl_hit' || r === 'stop_loss') return 'SL'
+  if (r === 'signal_flip' || r === 'flip') return 'FLIP'
+  return reason ?? '—'
+}
+
+function reasonPillClass(reason?: string): string {
+  const r = reason?.toLowerCase() ?? ''
+  if (r === 'tp' || r === 'tp_hit') return 'signal-pill signal-pill-buy'
+  if (r === 'sl' || r === 'sl_hit' || r === 'stop_loss') return 'signal-pill signal-pill-sell'
+  return 'signal-pill signal-pill-flat'
 }
 
 export default function TradeFeed() {
@@ -25,6 +35,89 @@ export default function TradeFeed() {
   const { data: portfolio } = usePortfolioState()
   const rows = useMemo(() => (trades ?? []).slice(0, PAGE_SIZE), [trades])
   const hasMore = (trades?.length ?? 0) > PAGE_SIZE
+
+  const columns: ColumnDef<TradeEntry>[] = useMemo(() => [
+    {
+      key: 'exit_date',
+      label: 'Date',
+      sortable: true,
+      minWidth: '90px',
+      render: t => <span className="font-mono text-tertiary tabular-nums">{t.exit_date?.split(' ')[0] ?? '—'}</span>,
+    },
+    {
+      key: 'asset',
+      label: 'Asset',
+      sortable: true,
+      minWidth: '80px',
+      render: t => <span className="font-medium text-primary font-mono">{t.asset ?? '—'}</span>,
+    },
+    {
+      key: 'side',
+      label: 'Side',
+      sortable: true,
+      minWidth: '80px',
+      render: t => (
+        <span className={`inline-flex items-center gap-1 signal-pill ${t.side === 'LONG' ? 'signal-pill-buy' : 'signal-pill-sell'}`}>
+          {t.side === 'LONG' ? <ArrowUp className="w-2.5 h-2.5" strokeWidth={2.5} /> : <ArrowDown className="w-2.5 h-2.5" strokeWidth={2.5} />}
+          {t.side ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'entry',
+      label: 'Entry',
+      align: 'right',
+      sortable: true,
+      sortKey: t => t.entry ?? 0,
+      render: t => <span className="font-mono text-secondary tabular-nums">${formatAssetPrice(t.entry)}</span>,
+    },
+    {
+      key: 'exit',
+      label: 'Exit',
+      align: 'right',
+      sortable: true,
+      sortKey: t => t.exit ?? 0,
+      render: t => <span className="font-mono text-secondary tabular-nums">${formatAssetPrice(t.exit)}</span>,
+    },
+    {
+      key: 'return',
+      label: 'Return',
+      align: 'right',
+      sortable: true,
+      sortKey: t => (t.return ?? 0) * 100,
+      render: t => {
+        const ret = (t.return ?? 0) * 100
+        return (
+          <span className={`font-mono tabular-nums font-semibold ${ret >= 0 ? 'text-gov-green' : 'text-gov-red'}`}>
+            {ret >= 0 ? '+' : ''}{safeToFixed(ret, 2)}%
+          </span>
+        )
+      },
+    },
+    {
+      key: 'bars',
+      label: 'Held',
+      align: 'right',
+      sortable: true,
+      sortKey: t => t.bars ?? 0,
+      render: t => (
+        <span
+          className={`font-mono tabular-nums text-tertiary${t.bars != null && t.bars < 0 ? ' text-gov-red' : ''}`}
+          title={t.bars != null && t.bars < 0 ? 'Stale data — trade timestamp predates engine start' : undefined}
+        >
+          {formatHeldDuration(t.bars)}
+        </span>
+      ),
+    },
+    {
+      key: 'reason',
+      label: 'Reason',
+      align: 'right',
+      render: t => (
+        <span className={reasonPillClass(t.reason)}>{reasonLabel(t.reason)}</span>
+      ),
+    },
+  ], [])
 
   if (isPending) return <TableSkeleton rows={4} />
 
@@ -48,104 +141,25 @@ export default function TradeFeed() {
         title="Recent Trades"
         accent="blue"
         meta={
-          <div className="flex items-center gap-2">
-            <span className="text-2xs text-tertiary font-mono tabular-nums">
-              Page {page + 1} of {hasMore ? `${page + 2}+` : page + 1} · {(trades?.length ?? 0) + offset} total
-            </span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="p-1 rounded-md border border-default hover:border-strong disabled:opacity-30 transition-colors active:scale-95"
-              >
-                <ChevronLeft className="w-3 h-3 text-secondary" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage(p => p + 1)}
-                disabled={!hasMore}
-                className="p-1 rounded-md border border-default hover:border-strong disabled:opacity-30 transition-colors active:scale-95"
-              >
-                <ChevronRight className="w-3 h-3 text-secondary" />
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            hasMore={hasMore}
+            totalItems={(trades?.length ?? 0) + offset}
+            onPrev={() => setPage(p => Math.max(0, p - 1))}
+            onNext={() => setPage(p => p + 1)}
+          />
         }
       />
-      <div className="overflow-x-auto -mx-1">
-        <table className="w-full text-xs min-w-[640px]">
-          <thead>
-            <tr className="border-b border-default">
-              <th className="table-header text-left py-2 pr-4">Date</th>
-              <th className="table-header text-left py-2 pr-4">Asset</th>
-              <th className="table-header text-left py-2 pr-4">Side</th>
-              <th className="table-header text-right py-2 pr-4">Entry</th>
-              <th className="table-header text-right py-2 pr-4">Exit</th>
-              <th className="table-header text-right py-2 pr-4">Return</th>
-              <th className="table-header text-right py-2 pr-4">Held</th>
-              <th className="table-header text-right py-2">Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((t, i) => {
-              const ret = (t.return ?? 0) * 100
-              return (
-                <tr
-                  key={`${t.asset}_${t.exit_date}_${t.entry_date}_${t.entry}_${t.exit}`}
-                  className={`border-b border-default/40 table-row-hover ${
-                    i % 2 === 1 ? 'bg-panel/30' : ''
-                  }`}
-                >
-                  <td className="py-2 pr-4 font-mono text-tertiary tabular-nums">
-                    {t.exit_date?.split(' ')[0] ?? '—'}
-                  </td>
-                  <td className="py-2 pr-4 font-medium text-primary font-mono">{t.asset ?? '—'}</td>
-                  <td className="py-2 pr-4">
-                    <span
-                      className={`signal-pill ${
-                        t.side === 'LONG' ? 'signal-pill-buy' : 'signal-pill-sell'
-                      }`}
-                    >
-                      {t.side ?? '—'}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-4 text-right font-mono text-secondary tabular-nums">
-                    ${formatAssetPrice(t.entry)}
-                  </td>
-                  <td className="py-2 pr-4 text-right font-mono text-secondary tabular-nums">
-                    ${formatAssetPrice(t.exit)}
-                  </td>
-                  <td
-                    className={`py-2 pr-4 text-right font-mono tabular-nums font-semibold ${
-                      ret >= 0 ? 'text-gov-green' : 'text-gov-red'
-                    }`}
-                  >
-                    {ret >= 0 ? '+' : ''}
-                    {safeToFixed(ret, 2)}%
-                  </td>
-                  <td
-                    className="py-2 pr-4 text-right font-mono tabular-nums text-tertiary"
-                    title={t.bars != null && t.bars < 0 ? 'Stale data — trade timestamp predates engine start' : undefined}
-                  >
-                    <span className={t.bars != null && t.bars < 0 ? 'text-gov-red' : ''}>
-                      {formatHeldDuration(t.bars)}
-                    </span>
-                  </td>
-                  <td className="py-2 text-right">
-                    <span className={`signal-pill ${reasonPill(t.reason)}`}>
-                      {t.reason === 'tp' || t.reason === 'TP' ? 'TP' :
-                       t.reason === 'sl' || t.reason === 'SL' || t.reason === 'stop_loss' ? 'SL' :
-                       t.reason === 'signal_flip' ? 'FLIP' :
-                       t.reason ?? '—'}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={rows}
+        keyExtractor={t => `${t.asset}_${t.exit_date}_${t.entry_date}_${t.entry}_${t.exit}`}
+        compact
+        sortable
+        defaultSortKey="exit_date"
+        defaultSortDir="desc"
+        storageKey="trades"
+      />
     </Panel>
   )
 }

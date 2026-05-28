@@ -15,6 +15,12 @@ const sizeMap = {
   lg: { icon: 'w-3.5 h-3.5', text: 'text-sm' },
 }
 
+const signColor: Record<string, string> = {
+  pos: 'text-gov-green',
+  neg: 'text-gov-red',
+  zero: 'text-tertiary',
+}
+
 export default function TrendIndicator({
   value, suffix = '%', precision = 2, size = 'md', colored = true, className = '',
 }: TrendIndicatorProps) {
@@ -22,7 +28,7 @@ export default function TrendIndicator({
   const isPos = value > 0
   const isNeg = value < 0
   const color = colored
-    ? (isPos ? 'text-gov-green' : isNeg ? 'text-gov-red' : 'text-tertiary')
+    ? (isPos ? signColor.pos : isNeg ? signColor.neg : signColor.zero)
     : 'text-secondary'
 
   if (value === 0) {

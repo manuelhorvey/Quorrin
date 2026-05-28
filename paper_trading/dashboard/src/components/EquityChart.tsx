@@ -64,6 +64,17 @@ export default function EquityChart() {
 
   const maxDD = minPoint && firstVal > 0 ? ((minPoint.value - firstVal) / firstVal) * 100 : 0
 
+  const latestValues = useMemo(() => {
+    if (chartData.length === 0) return {}
+    const last = chartData[chartData.length - 1]
+    const result: Record<string, number> = { portfolio: last.portfolio }
+    for (const name of assetNames) {
+      const v = (last as Record<string, unknown>)[name]
+      if (typeof v === 'number') result[name] = v
+    }
+    return result
+  }, [chartData, assetNames])
+
   const toggle = (name: string) => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -79,6 +90,7 @@ export default function EquityChart() {
         const active = selected.has(name)
         const color =
           name === 'portfolio' ? CHART_PRIMARY : CHART_PALETTE[assetNames.indexOf(name) % CHART_PALETTE.length]
+        const latest = latestValues[name]
         return (
           <button
             key={name}
@@ -96,6 +108,9 @@ export default function EquityChart() {
                 style={{ backgroundColor: active ? color : 'var(--color-text-muted)' }}
               />
               {name}
+              {active && latest != null && (
+                <span className="text-muted tabular-nums">{formatValue(latest)}</span>
+              )}
             </span>
           </button>
         )
@@ -123,95 +138,101 @@ export default function EquityChart() {
       emptyMessage="Waiting for equity history…"
       height="h-56 sm:h-64"
     >
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={chartMargin}>
-          <ChartGradientDefs />
-          <CartesianGrid {...cartesianGridProps} />
-          <XAxis
-            dataKey="t"
-            tick={axisTick}
-            interval="preserveStartEnd"
-            axisLine={{ stroke: 'var(--color-border)' }}
-            tickLine={false}
-          />
-          <YAxis
-            tick={axisTick}
-            domain={['auto', 'auto']}
-            axisLine={false}
-            tickLine={false}
-            width={48}
-            tickFormatter={v => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
-          />
-          <Tooltip
-            contentStyle={tooltipStyle}
-            labelStyle={tooltipLabelStyle}
-            itemStyle={{ fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 0' }}
-          />
-          {chartData.length > 0 && (
-            <ReferenceLine
-              y={STARTING_CAPITAL}
-              stroke="var(--color-text-muted)"
-              strokeDasharray="4 4"
-              strokeWidth={1}
-              label={{
-                value: 'Start',
-                position: 'insideBottomRight',
-                fill: 'var(--color-text-tertiary)',
-                fontSize: 9,
-                fontFamily: 'var(--font-mono)',
-              }}
+      <div className="relative h-full w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={chartMargin}>
+            <ChartGradientDefs />
+            <CartesianGrid {...cartesianGridProps} />
+            <XAxis
+              dataKey="t"
+              tick={axisTick}
+              interval="preserveStartEnd"
+              axisLine={{ stroke: 'var(--color-border)' }}
+              tickLine={false}
             />
-          )}
-          {minPoint && selected.has('portfolio') && (
-            <ReferenceDot
-              x={minPoint.date}
-              y={minPoint.value}
-              r={4}
-              fill="var(--color-gov-red)"
-              stroke="var(--color-card)"
-              strokeWidth={2}
-              label={{
-                value: `Max DD ${maxDD.toFixed(1)}%`,
-                position: 'bottom',
-                fill: 'var(--color-gov-red)',
-                fontSize: 9,
-                fontFamily: 'var(--font-mono)',
-              }}
+            <YAxis
+              tick={axisTick}
+              domain={['auto', 'auto']}
+              axisLine={false}
+              tickLine={false}
+              width={48}
+              tickFormatter={v => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
             />
-          )}
-          {selected.has('portfolio') && (
-            <Area
-              type="monotone"
-              dataKey="portfolio"
-              stroke={CHART_PRIMARY}
-              fill={getGradientFill()}
-              fillOpacity={1}
-              strokeWidth={2}
-              name="Portfolio"
-              dot={false}
-              isAnimationActive={false}
-              activeDot={{ stroke: CHART_PRIMARY, strokeWidth: 2, r: 4, fill: 'var(--color-card)' }}
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelStyle={tooltipLabelStyle}
+              itemStyle={{ fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 0' }}
+              cursor={{ stroke: 'var(--color-border-strong)', strokeWidth: 1, strokeDasharray: '3 3' }}
             />
-          )}
-          {assetNames.map((a, i) =>
-            selected.has(a) ? (
+            {chartData.length > 0 && (
+              <ReferenceLine
+                y={STARTING_CAPITAL}
+                stroke="var(--color-text-muted)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+                label={{
+                  value: 'Start',
+                  position: 'insideBottomRight',
+                  fill: 'var(--color-text-tertiary)',
+                  fontSize: 9,
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+            )}
+            {minPoint && selected.has('portfolio') && (
+              <ReferenceDot
+                x={minPoint.date}
+                y={minPoint.value}
+                r={4}
+                fill="var(--color-gov-red)"
+                stroke="var(--color-card)"
+                strokeWidth={2}
+                label={{
+                  value: `Max DD ${maxDD.toFixed(1)}%`,
+                  position: 'bottom',
+                  fill: 'var(--color-gov-red)',
+                  fontSize: 9,
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+            )}
+            {selected.has('portfolio') && (
               <Area
-                key={a}
                 type="monotone"
-                dataKey={a}
-                stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
-                fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                fillOpacity={0.04}
-                strokeWidth={1.5}
-                name={a}
+                dataKey="portfolio"
+                stroke={CHART_PRIMARY}
+                fill={getGradientFill()}
+                fillOpacity={1}
+                strokeWidth={2}
+                name="Portfolio"
                 dot={false}
                 isAnimationActive={false}
-                activeDot={{ stroke: CHART_PALETTE[i % CHART_PALETTE.length], strokeWidth: 2, r: 3, fill: 'var(--color-card)' }}
+                activeDot={{ stroke: CHART_PRIMARY, strokeWidth: 2, r: 4, fill: 'var(--color-card)' }}
               />
-            ) : null,
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
+            )}
+            {assetNames.map((a, i) =>
+              selected.has(a) ? (
+                <Area
+                  key={a}
+                  type="monotone"
+                  dataKey={a}
+                  stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
+                  fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                  fillOpacity={0.04}
+                  strokeWidth={1.5}
+                  name={a}
+                  dot={false}
+                  isAnimationActive={false}
+                  activeDot={{ stroke: CHART_PALETTE[i % CHART_PALETTE.length], strokeWidth: 2, r: 3, fill: 'var(--color-card)' }}
+                />
+              ) : null,
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 pointer-events-none select-none flex items-center justify-center overflow-hidden">
+          <span className="text-muted/[0.04] text-4xl font-bold font-mono tracking-widest">PAPER TRADING</span>
+        </div>
+      </div>
     </ChartContainer>
   )
 }

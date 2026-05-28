@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { usePortfolioState } from './hooks/usePortfolioState'
 import Header from './components/Header'
 import PortfolioSummary from './components/PortfolioSummary'
@@ -22,7 +22,7 @@ import AlertFeed from './components/AlertFeed'
 import Footer from './components/Footer'
 import LoadingScreen from './components/ui/LoadingScreen'
 import ErrorScreen from './components/ui/ErrorScreen'
-import ErrorBoundary from './components/ErrorBoundary'
+import Section from './components/ui/Section'
 import WeeklyReviewPopup from './components/WeeklyReviewPopup'
 import { useLastReview } from './hooks/useLastReview'
 import type { FilterState } from './components/FilterBar'
@@ -37,62 +37,8 @@ import TradeExecutionTable from './components/execution/TradeExecutionTable'
 import ShadowComparisonTable from './components/shadow/ShadowComparisonTable'
 import ShadowDivergenceChart from './components/shadow/ShadowDivergenceChart'
 import { useAttributionTrades } from './hooks/useAttributionTrades'
-
-const NAV_SECTIONS = [
-  { id: 'portfolio', label: 'Portfolio' },
-  { id: 'signals', label: 'Signals' },
-  { id: 'execution', label: 'Execution' },
-  { id: 'trades', label: 'Trades' },
-  { id: 'governance', label: 'Governance' },
-  { id: 'risk', label: 'Risk' },
-  { id: 'charts', label: 'Charts' },
-]
-
-function AnchorNav() {
-  const [active, setActive] = useState('portfolio')
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) setActive(entry.target.id)
-        }
-      },
-      { rootMargin: '-80px 0px -60% 0px', threshold: 0 },
-    )
-
-    for (const { id } of NAV_SECTIONS) {
-      const el = document.getElementById(id)
-      if (el) observer.observe(el)
-    }
-
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    <nav className="sticky top-[45px] sm:top-[49px] z-20 bg-app/80 backdrop-blur-md border-b border-default/60">
-      <div className="max-w-[90rem] mx-auto px-3 sm:px-6 flex items-center gap-0 overflow-x-auto scrollbar-none">
-        {NAV_SECTIONS.map(({ id, label }) => (
-          <a
-            key={id}
-            href={`#${id}`}
-            onClick={e => {
-              e.preventDefault()
-              document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
-            }}
-            className={`shrink-0 px-3 py-1.5 text-2xs font-medium transition-colors border-b-2 ${
-              active === id
-                ? 'text-primary border-accent-emerald'
-                : 'text-tertiary border-transparent hover:text-secondary hover:border-default/40'
-            }`}
-          >
-            {label}
-          </a>
-        ))}
-      </div>
-    </nav>
-  )
-}
+import AnchorNav from './components/AnchorNav'
+import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
   const { isPending, isError, isFetching } = usePortfolioState()
@@ -104,122 +50,97 @@ export default function App() {
   if (isError) return <ErrorScreen />
 
   return (
-    <div className="min-h-screen bg-app text-secondary flex flex-col">
-      <div className="fixed inset-0 pointer-events-none opacity-[0.35] dark:opacity-[0.2] grid-dot" />
-      <Header />
-      <AnchorNav />
+    <ErrorBoundary title="Application">
+      <div className="min-h-screen bg-app text-secondary flex flex-col">
+        <div className="fixed inset-0 pointer-events-none opacity-[0.35] dark:opacity-[0.2] grid-dot" />
+        <Header />
+        <AnchorNav />
 
-      <main
+        <main
         className="flex-1 max-w-[90rem] w-full mx-auto px-4 sm:px-6 py-5 sm:py-6 space-y-5 sm:space-y-6 relative animate-fade-in"
         data-fetching={isFetching ? 'true' : undefined}
       >
-        <ErrorBoundary title="Portfolio">
-          <section id="portfolio" className="anchor-nav space-y-5 sm:space-y-6">
-            <PortfolioSummary />
-            <AssetGrid />
-            <HaltConditions />
-          </section>
-        </ErrorBoundary>
+        <Section id="portfolio" errorTitle="Portfolio">
+          <PortfolioSummary />
+          <AssetGrid />
+          <HaltConditions />
+        </Section>
 
-        <ErrorBoundary title="Governance">
-          <section id="governance" className="anchor-nav space-y-5 sm:space-y-6">
-            <GovernancePanel />
-            <GovernanceStateCards />
-            <RiskParityPanel />
-            <PSIDriftCard />
-          </section>
-        </ErrorBoundary>
+        <Section id="governance" errorTitle="Governance">
+          <GovernancePanel />
+          <GovernanceStateCards />
+          <RiskParityPanel />
+          <PSIDriftCard />
+        </Section>
 
-        <ErrorBoundary title="Signals">
-          <section id="signals" className="anchor-nav">
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-5">
-              <div className="xl:col-span-3 min-w-0">
-                <SignalsTable />
-              </div>
-              <div className="xl:col-span-2 min-w-0">
-                <EquityChart />
-              </div>
+        <Section id="signals" errorTitle="Signals">
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-5">
+            <div className="xl:col-span-3 min-w-0">
+              <SignalsTable />
             </div>
-          </section>
-        </ErrorBoundary>
-
-        <ErrorBoundary title="Execution">
-          <section id="execution" className="anchor-nav space-y-4 sm:space-y-5">
-            {/* Layer 0: Persistent Filter Bar */}
-            <FilterBar assets={uniqueAssets} onChange={setFilters} />
-
-            {/* Layer 1: Execution Quality KPI Strip */}
-            <ExecutionQualityStrip />
-
-            {/* Layer 2: Attribution Overview — decomposition + scores */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
-              <AttributionBreakdownCard />
-              <PnLWaterfall />
+            <div className="xl:col-span-2 min-w-0">
+              <EquityChart />
             </div>
+          </div>
+        </Section>
 
-            {/* Layer 3: MAE / MFE Scatter */}
-            <MaeMfeScatter />
-
-            {/* Layer 4: Execution Friction — slippage + fill quality */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
-              <div className="lg:col-span-2 min-w-0">
-                <SlippageHistogram />
-              </div>
-              <div className="lg:col-span-1 min-w-0">
-                <FillQualityGauge />
-              </div>
+        <Section id="execution" errorTitle="Execution" className="space-y-4 sm:space-y-5">
+          <FilterBar assets={uniqueAssets} onChange={setFilters} />
+          <ExecutionQualityStrip />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+            <AttributionBreakdownCard />
+            <PnLWaterfall />
+          </div>
+          <MaeMfeScatter />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+            <div className="lg:col-span-2 min-w-0">
+              <SlippageHistogram />
             </div>
-
-            {/* Layer 5: Trade Execution Detail Table (with drill-down) */}
-            <TradeExecutionTable />
-
-            {/* Layer 6: Shadow Analysis — comparison + divergence */}
-            <ShadowDivergenceChart />
-            <ShadowComparisonTable />
-          </section>
-        </ErrorBoundary>
-
-        <ErrorBoundary title="Risk">
-          <section id="risk" className="anchor-nav">
-            <HealthScores />
-          </section>
-        </ErrorBoundary>
-
-        <ErrorBoundary title="Charts">
-          <section id="charts" className="anchor-nav">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
-              <div className="lg:col-span-2 min-w-0">
-                <MetricsGrid />
-              </div>
-              <div className="space-y-4 sm:space-y-5 min-w-0">
-                <ConfidenceChart />
-                <HitRateDrift />
-                <VolRegimePanel />
-              </div>
+            <div className="lg:col-span-1 min-w-0">
+              <FillQualityGauge />
             </div>
-          </section>
-        </ErrorBoundary>
+          </div>
+          <TradeExecutionTable />
+          <ShadowDivergenceChart />
+          <ShadowComparisonTable />
+        </Section>
 
-        <ErrorBoundary title="Trades">
-          <section id="trades" className="anchor-nav space-y-5 sm:space-y-6">
-            <TradeOutcomes />
-            <TradeFeed />
-          </section>
-        </ErrorBoundary>
+        <Section id="risk" errorTitle="Risk">
+          <HealthScores />
+        </Section>
 
-        <ErrorBoundary title="Alert Feed">
+        <Section id="charts" errorTitle="Charts">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+            <div className="lg:col-span-2 min-w-0">
+              <MetricsGrid />
+            </div>
+            <div className="space-y-4 sm:space-y-5 min-w-0">
+              <ConfidenceChart />
+              <HitRateDrift />
+              <VolRegimePanel />
+            </div>
+          </div>
+        </Section>
+
+        <Section id="trades" errorTitle="Trades">
+          <TradeOutcomes />
+          <TradeFeed />
+        </Section>
+
+        <Section id="alert-feed" errorTitle="Alert Feed">
           <AlertFeed />
-        </ErrorBoundary>
+        </Section>
 
-        <ErrorBoundary title="Engine Logs">
+        <Section id="engine-logs" errorTitle="Engine Logs">
           <EngineLogs />
-        </ErrorBoundary>
+        </Section>
       </main>
 
       <Footer />
 
       <WeeklyReviewPopupWrapper />
     </div>
+    </ErrorBoundary>
   )
 }
 

@@ -1,9 +1,13 @@
 import type { CSSProperties } from 'react'
 
+/* ── 10-color palette ────────────────────────────
+   Colors 1-5 are full saturation for primary series.
+   Colors 6-10 are perceptually degraded (lower saturation)
+   so they don't visually compete with the first 5. */
+
 export const CHART_PALETTE = [
   '#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa',
-  '#2dd4bf', '#fb923c', '#94a3b8', '#e879f9', '#22d3ee', '#f87171',
-  '#fb7185', '#818cf8',
+  '#6ee7b7', '#93c5fd', '#fde68a', '#f9a8d4', '#c4b5fd',
 ] as const
 
 export const CHART_PRIMARY = '#34d399'

@@ -1,4 +1,5 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { governanceText } from './governance'
 
 interface ErrorScreenProps {
   title?: string
@@ -14,7 +15,7 @@ export default function ErrorScreen({
   return (
     <div className="min-h-screen bg-app flex flex-col items-center justify-center gap-5 px-6 animate-fade-in">
       <div className="w-12 h-12 rounded-xl panel border-gov-yellow/30 flex items-center justify-center">
-        <AlertTriangle className="w-6 h-6 text-gov-yellow" strokeWidth={1.5} />
+        <AlertTriangle className={`w-6 h-6 ${governanceText.YELLOW}`} strokeWidth={1.5} />
       </div>
       <div className="text-center max-w-md">
         <h2 className="text-primary text-lg font-semibold tracking-tight">{title}</h2>

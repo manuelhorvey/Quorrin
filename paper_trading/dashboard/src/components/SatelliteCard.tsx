@@ -1,5 +1,12 @@
 import { Satellite } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import { governanceText, governanceDot } from './ui/governance'
+
+function satDdState(dd: number): 'GREEN' | 'YELLOW' | 'RED' {
+  if (dd > -5) return 'GREEN'
+  if (dd > -15) return 'YELLOW'
+  return 'RED'
+}
 
 export default function SatelliteCard() {
   const { data } = usePortfolioState()
@@ -9,7 +16,7 @@ export default function SatelliteCard() {
     return (
       <div className="panel rounded-lg p-3">
         <div className="flex items-center gap-2 mb-1">
-          <Satellite className="w-3.5 h-3.5 text-gov-yellow" strokeWidth={1.5} />
+          <Satellite className={`w-3.5 h-3.5 ${governanceText.YELLOW}`} strokeWidth={1.5} />
           <span className="text-2xs text-tertiary font-medium tracking-wide">BTC SATELLITE</span>
         </div>
         <div className="text-[11px] text-tertiary">Not initialized</div>
@@ -17,19 +24,19 @@ export default function SatelliteCard() {
     )
   }
 
-  const ddColor = sat.drawdown_pct > -5 ? 'text-gov-green' : sat.drawdown_pct > -15 ? 'text-gov-yellow' : 'text-gov-red'
-  const retColor = sat.total_return_pct >= 0 ? 'text-gov-green' : 'text-gov-red'
-  const gateColor = sat.gate_open ? 'text-gov-green' : 'text-gov-yellow'
-  const posColor = sat.position_active ? 'text-gov-green' : 'text-tertiary'
+  const ddState = satDdState(sat.drawdown_pct)
+  const retState: 'GREEN' | 'RED' = sat.total_return_pct >= 0 ? 'GREEN' : 'RED'
+  const gateGated = !sat.gate_open
+  const posActive = sat.position_active
 
   return (
     <div className="panel rounded-lg p-3 panel-hover">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <Satellite className="w-3.5 h-3.5 text-gov-amber" strokeWidth={1.5} />
+          <Satellite className={`w-3.5 h-3.5 ${governanceText.YELLOW}`} strokeWidth={1.5} />
           <span className="text-2xs text-tertiary font-medium tracking-wide">BTC SATELLITE</span>
         </div>
-        <span className={`text-2xs font-mono font-semibold ${gateColor}`}>
+        <span className={`text-2xs font-mono font-semibold ${gateGated ? governanceText.YELLOW : governanceText.GREEN}`}>
           {sat.gate_open ? 'GATE OPEN' : 'GATE CLOSED'}
         </span>
       </div>
@@ -45,19 +52,19 @@ export default function SatelliteCard() {
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] mb-2">
         <div className="flex items-baseline justify-between">
           <span className="text-tertiary">Value</span>
-          <span className={`font-mono font-semibold ${retColor}`}>
+          <span className={`font-mono font-semibold ${governanceText[retState]}`}>
             ${sat.current_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
         <div className="flex items-baseline justify-between">
           <span className="text-tertiary">Return</span>
-          <span className={`font-mono font-semibold ${retColor}`}>
+          <span className={`font-mono font-semibold ${governanceText[retState]}`}>
             {sat.total_return_pct >= 0 ? '+' : ''}{sat.total_return_pct.toFixed(2)}%
           </span>
         </div>
         <div className="flex items-baseline justify-between">
           <span className="text-tertiary">DD</span>
-          <span className={`font-mono font-semibold ${ddColor}`}>
+          <span className={`font-mono font-semibold ${governanceText[ddState]}`}>
             {sat.drawdown_pct.toFixed(2)}%
           </span>
         </div>
@@ -72,18 +79,18 @@ export default function SatelliteCard() {
       {sat.sharpe_contribution != null && (
         <div className="flex items-center justify-between text-2xs text-tertiary mb-1.5">
           <span>ΔSharpe (63d)</span>
-          <span className={`font-mono font-semibold ${sat.sharpe_contribution >= 0 ? 'text-gov-green' : 'text-gov-red'}`}>
+          <span className={`font-mono font-semibold ${sat.sharpe_contribution >= 0 ? governanceText.GREEN : governanceText.RED}`}>
             {sat.sharpe_contribution >= 0 ? '+' : ''}{sat.sharpe_contribution.toFixed(2)}
           </span>
         </div>
       )}
 
       <div className="flex items-center gap-1.5 text-2xs">
-        <span className={`w-1.5 h-1.5 rounded-full ${posColor}`} />
-        <span className={posColor}>{sat.position_active ? 'POSITION ACTIVE' : 'NO POSITION'}</span>
+        <span className={`w-1.5 h-1.5 rounded-full ${posActive ? governanceDot.GREEN : 'text-tertiary'}`} />
+        <span className={posActive ? governanceText.GREEN : 'text-tertiary'}>{posActive ? 'POSITION ACTIVE' : 'NO POSITION'}</span>
       </div>
 
-      {sat.position_active ? (
+      {posActive ? (
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-2xs mt-1 pt-1 border-t border-default/30">
           <div className="flex justify-between">
             <span className="text-tertiary">Entry</span>
@@ -97,13 +104,13 @@ export default function SatelliteCard() {
           </div>
           <div className="flex justify-between">
             <span className="text-tertiary">SL</span>
-            <span className="font-mono text-gov-red">
+            <span className={`font-mono ${governanceText.RED}`}>
               ${sat.stop_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-tertiary">TP</span>
-            <span className="font-mono text-gov-green">
+            <span className={`font-mono ${governanceText.GREEN}`}>
               ${sat.target_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
             </span>
           </div>

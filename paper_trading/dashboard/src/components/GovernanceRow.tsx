@@ -1,10 +1,10 @@
 import type { AssetState } from '../types/portfolio'
 import { ASSET_LABEL_PARAMS, LABEL_HORIZON } from '../lib/registry'
 import StatusBadge from './ui/StatusBadge'
-import StatePill from './ui/StatePill'
 import {
   prematureRateState,
   governanceText,
+  governanceDot,
   type GovernanceState,
 } from './ui/governance'
 
@@ -32,11 +32,16 @@ function metaBand(decision?: string): string {
   return '—'
 }
 
-const labelVsRunColor = (labelSl: number, runtimeSl: number): string => {
-  const gap = Math.abs(runtimeSl - labelSl)
-  if (gap > 0.5) return 'text-gov-yellow'
-  if (gap > 0.1) return 'text-secondary'
-  return 'text-gov-green'
+const labelGapStyle: Record<string, string> = {
+  high: 'text-gov-yellow',
+  mid: 'text-secondary',
+  low: 'text-gov-green',
+}
+
+function labelGapKey(gap: number): string {
+  if (gap > 0.5) return 'high'
+  if (gap > 0.1) return 'mid'
+  return 'low'
 }
 
 export default function GovernanceRow({ asset, state }: GovernanceRowProps) {
@@ -47,15 +52,12 @@ export default function GovernanceRow({ asset, state }: GovernanceRowProps) {
   const runtimeTp = state.tp_mult ?? 0
   const prematureRate = computePrematureStopRate(state)
   const classification: GovernanceState = prematureRateState(prematureRate)
+  const stateDot = governanceDot[classification]
+  const stateText = governanceText[classification]
 
   return (
     <div className="bg-panel/80 border border-default rounded-lg px-3 py-2.5 text-[11px] text-secondary hover:border-strong/80 transition-colors relative overflow-hidden">
-      <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l-sm" style={{
-        backgroundColor: classification === 'GREEN' ? 'var(--color-gov-green)'
-          : classification === 'YELLOW' ? 'var(--color-gov-yellow)'
-          : classification === 'RED' ? 'var(--color-gov-red)'
-          : 'var(--color-gov-init)'
-      }} />
+      <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-l-sm ${stateDot}`} />
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 ml-1.5">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-primary font-mono">{asset}</span>
@@ -83,7 +85,7 @@ export default function GovernanceRow({ asset, state }: GovernanceRowProps) {
         </div>
         <div>
           <span className="text-tertiary font-sans">Label/Run </span>
-          <span className={labelVsRunColor(label.sl, runtimeSl)}>
+          <span className={labelGapStyle[labelGapKey(Math.abs(runtimeSl - label.sl))]}>
             [{label.sl}/{label.pt}] / [{runtimeSl.toFixed(2)}/{runtimeTp.toFixed(2)}]
           </span>
         </div>
@@ -93,7 +95,7 @@ export default function GovernanceRow({ asset, state }: GovernanceRowProps) {
             className={
               prematureRate == null
                 ? 'text-muted'
-                : governanceText[prematureRateState(prematureRate)] + (prematureRate > 0.3 ? ' font-semibold' : '')
+                : stateText + (prematureRate > 0.3 ? ' font-semibold' : '')
             }
           >
             {prematureRate != null ? `${(prematureRate * 100).toFixed(1)}%` : '—'}

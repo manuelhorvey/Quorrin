@@ -1,6 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useShadowSummary } from '../../hooks/useShadowSummary'
 import ChartContainer from '../ui/ChartContainer'
+import { axisTick, tooltipStyle } from '../ui/chartTheme'
 
 export default function ShadowDivergenceChart() {
   const { data, isPending } = useShadowSummary()
@@ -18,6 +19,12 @@ export default function ShadowDivergenceChart() {
     divergenceRate: stats.divergence_rate,
     avgRDelta: stats.avg_r_delta,
   }))
+
+  function cellFill(rate: number): string {
+    if (rate > 0.3) return 'var(--color-gov-red)'
+    if (rate > 0.1) return 'var(--color-gov-yellow)'
+    return 'var(--color-gov-green)'
+  }
 
   return (
     <ChartContainer title="Shadow Divergence" accent="purple" isEmpty={byLabelData.length === 0}>
@@ -48,12 +55,18 @@ export default function ShadowDivergenceChart() {
             <p className="text-2xs text-tertiary mb-1">Divergence Rate by Config</p>
             <ResponsiveContainer width="100%" height="80%">
               <BarChart data={byLabelData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 1]} tick={{ fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} />
-                <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 6, fontSize: 11 }} />
+                <XAxis dataKey="name" tick={axisTick} axisLine={false} tickLine={false} />
+                <YAxis
+                  domain={[0, 1]}
+                  tick={axisTick}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
+                />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Bar dataKey="divergenceRate" radius={[2, 2, 0, 0]}>
                   {byLabelData.map((d, i) => (
-                    <Cell key={i} fill={d.divergenceRate > 0.3 ? '#ef4444' : d.divergenceRate > 0.1 ? '#f97316' : '#22c55e'} />
+                    <Cell key={i} fill={cellFill(d.divergenceRate)} />
                   ))}
                 </Bar>
               </BarChart>

@@ -2,6 +2,7 @@ import { Check, X, AlertTriangle } from 'lucide-react'
 import { useHaltStatus } from '../hooks/useHaltStatus'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { MetricCardSkeleton } from './ui/Skeleton'
+import { governanceDot, governanceText } from './ui/governance'
 
 export default function HaltConditions() {
   const { data, isPending } = usePortfolioState()
@@ -63,44 +64,37 @@ export default function HaltConditions() {
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {cards.map(c => (
-          <div
-            key={c.label}
-            className={`rounded-lg px-3.5 py-3 border transition-colors duration-200 ${
-              c.pass ? 'halt-pass' : 'halt-fail'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="metric-label">{c.label}</span>
-              <div
-                className={`p-0.5 rounded-full ${c.pass ? 'bg-gov-green/20' : 'bg-gov-red/20'}`}
-              >
-                {c.pass ? (
-                  <Check className="w-3 h-3 text-gov-green" strokeWidth={2.5} />
-                ) : (
-                  <X className="w-3 h-3 text-gov-red" strokeWidth={2.5} />
-                )}
-              </div>
-            </div>
+        {cards.map(c => {
+          const state = c.pass ? 'GREEN' : 'RED'
+          return (
             <div
-              className={`text-lg font-semibold tracking-tight metric-value ${
-                c.pass ? 'text-gov-green' : 'text-gov-red'
+              key={c.label}
+              className={`rounded-lg px-3.5 py-3 border transition-colors duration-200 ${
+                c.pass ? 'halt-pass' : 'halt-fail'
               }`}
             >
-              {c.value}
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="metric-label">{c.label}</span>
+                <div className={`p-0.5 rounded-full ${governanceDot[state]}/20`}>
+                  {c.pass ? (
+                    <Check className={`w-3 h-3 ${governanceText.GREEN}`} strokeWidth={2.5} />
+                  ) : (
+                    <X className={`w-3 h-3 ${governanceText.RED}`} strokeWidth={2.5} />
+                  )}
+                </div>
+              </div>
+              <div className={`text-lg font-semibold tracking-tight metric-value ${governanceText[state]}`}>
+                {c.value}
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-2xs text-muted">Threshold</span>
+                <span className={`text-2xs font-mono tabular-nums ${c.pass ? 'text-secondary' : governanceText.RED + '/80'}`}>
+                  {c.threshold}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-2xs text-muted">Threshold</span>
-              <span
-                className={`text-2xs font-mono tabular-nums ${
-                  c.pass ? 'text-secondary' : 'text-gov-red/80'
-                }`}
-              >
-                {c.threshold}
-              </span>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
       {haltedAny && (
         <div className="mt-2.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-gov-red-muted border border-gov-red/20 text-[11px] text-gov-red">

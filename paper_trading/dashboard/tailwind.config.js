@@ -20,6 +20,7 @@ export default {
           DEFAULT: '#08090c',
           50: '#0c0d12',
           100: '#111318',
+          150: '#141620',
           200: '#161820',
         },
         border: {
@@ -57,6 +58,11 @@ export default {
         'chart-teal': '#2dd4bf',
       },
       boxShadow: {
+        'panel-sm':   '0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 2px rgba(0,0,0,0.3)',
+        'panel-md':   '0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.35)',
+        'panel-lg':   '0 1px 0 rgba(255,255,255,0.05) inset, 0 8px 32px rgba(0,0,0,0.4)',
+        'panel-hover':'0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 40px rgba(0,0,0,0.5)',
+        'panel-modal':'0 0 0 1px rgba(255,255,255,0.04), 0 24px 80px rgba(0,0,0,0.6)',
         panel: '0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 24px rgba(0,0,0,0.35)',
         card: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 32px rgba(0,0,0,0.4)',
         'card-hover': '0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 48px rgba(0,0,0,0.5)',

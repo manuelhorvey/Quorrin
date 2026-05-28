@@ -1,5 +1,7 @@
 # ADR-006: XLF as Primary Equity Asset Over SPY/QQQ
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

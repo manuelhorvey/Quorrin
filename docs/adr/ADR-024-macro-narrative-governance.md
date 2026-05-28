@@ -1,5 +1,7 @@
 # ADR-024 — Macro Narrative Governance (Weekly LLM Overlay)
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted  
 **Date:** 2026-05  
 **Tags:** governance, risk, llm, narrative

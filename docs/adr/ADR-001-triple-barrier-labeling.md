@@ -1,5 +1,7 @@
 # ADR-001: Triple Barrier Labeling Over Simple Directional Labels
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

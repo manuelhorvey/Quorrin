@@ -1,5 +1,7 @@
 # ADR-003: Expanding Train Window Over Rolling for Walk-Forward Validation
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

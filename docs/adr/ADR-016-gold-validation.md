@@ -1,5 +1,7 @@
 # ADR-016: GC=F Validated with fwd60 + Real Yield Features
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 > **Note (May 2026):** CADJPY has since been switched from fwd60 to tb20 with augmented carry-pair features (us_jp_10y_spread, vix_delta_5, ca_jp_10y_spread, dxy_mom_21), producing avg Sharpe 1.70 vs the earlier fwd60+spread_velocity configuration. GC=F was left unchanged — its real yield / breakeven / DXY feature set remains optimal with fwd60.

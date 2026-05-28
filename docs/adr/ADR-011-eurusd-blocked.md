@@ -1,5 +1,7 @@
 # ADR-011: EURUSD Blocked Pending COT Data Integration
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Superseded — see ADR-011a for update
 
 ## Context

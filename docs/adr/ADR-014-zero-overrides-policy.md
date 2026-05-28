@@ -1,5 +1,7 @@
 # ADR-014: Zero Manual Overrides Policy During Paper Trading
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

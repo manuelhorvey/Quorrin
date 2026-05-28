@@ -1,5 +1,7 @@
 # ADR-010: Driver Atlas Framework — Asset-Specific Feature Sets
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 > **Note (May 2026):** BTC has since expanded to 10 features (added vix_delta_5, dxy_mom_21, vix_ma21, shorter momentum windows 10/21, vs_spy_21). GC=F was unblocked (see ADR-016). EURAUD, CADJPY, and USDCAD were added as full portfolio assets, with CADJPY later switched to tb20 labels (see `features/registry.py`).

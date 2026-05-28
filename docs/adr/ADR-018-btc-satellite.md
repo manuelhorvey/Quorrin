@@ -1,5 +1,7 @@
 # ADR-018: BTC Satellite Isolation With Regime Gate and Position Management
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Date:** 2026-05-18 (updated 2026-05-24)
 **Status:** Accepted
 

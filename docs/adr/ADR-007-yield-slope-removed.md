@@ -1,5 +1,7 @@
 # ADR-007: Removed yield_slope and real_yield_10y From XLF Feature Set
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

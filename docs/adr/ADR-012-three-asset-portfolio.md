@@ -1,5 +1,7 @@
 # ADR-012: Three-Asset Portfolio — XLF, BTC, NZDJPY
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Superseded
 
 > **Note (May 2026):** The portfolio has expanded to 6 assets (added EURAUD, CADJPY, USDCAD, GC=F). BTC was moved to a separate high-vol satellite bucket per ADR-018. See the current asset table in README.md and `features/registry.py` for the live allocation. The correlation and diversification methodology documented here remains the framework for all portfolio expansions.

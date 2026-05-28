@@ -1,5 +1,7 @@
 # ADR-017: Inference path lookahead investigation
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Date:** 2026-05-18
 **Status:** Investigated — no active bug
 

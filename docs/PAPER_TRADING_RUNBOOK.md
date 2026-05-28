@@ -12,7 +12,7 @@ Operational procedures for the paper trading system. This document is for the pe
 | Dashboard URL | `http://127.0.0.1:5000` |
 | Config file | `configs/paper_trading.yaml` |
 | State file | `data/live/state.json` |
-| Model pickles | `paper_trading/models/*.pkl` |
+| Model files | `paper_trading/models/*.json` |
 | Logs | stdout (redirect to file as needed) |
 | Refresh interval | 300s / 5 min (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var) |
 | Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; dashboard stays live with CLSD badge |
@@ -20,24 +20,31 @@ Operational procedures for the paper trading system. This document is for the pe
 | Market hours logic | `paper_trading/market_hours.py` — `is_market_closed()` |
 | Retrain frequency | Annual (January 1) |
 | Training window | 5-year expanding |
-| Hardening guide | `docs/HARDENING_ROADMAP.md` |
+| Hardening history | `docs/archive/research_system_v1/HARDENING_ROADMAP.md` |
 
 ### Assets
 
-**Core portfolio (8 assets):**
+**Core portfolio (13 assets promoted from walk-forward screening):**
 
-| Asset | Weight | Ticker | sl_mult | tp_mult | Dynamic SL/TP | Scale-out | Meta-label |
-|-------|--------|--------|---------|---------|:------------:|:---------:|:----------:|
-| EURAUD | 5% | EURAUD=X | 0.48 | 1.00 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
-| AUDJPY | 16% | AUDJPY=X | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
-| CHFJPY | 14% | CHFJPY=X | 0.48 | 1.00 | ATR ×1.8/2.0, period=14 | 4-tier | 0.55 |
-| EURCAD | 20% | EURCAD=X | 0.48 | 1.75 | ATR ×2.0/3.5, period=14 | 4-tier | 0.55 |
-| GBPCAD | 7% | GBPCAD=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
-| GC | 17% | GC=F | 0.30 | 1.50 | ATR ×2.5/4.0, period=14 | no | 0.55 |
-| USDCAD | 13% | USDCAD=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | no | 0.55 |
-| USDJPY | 8% | USDJPY=X | 0.48 | 1.50 | ATR ×2.0/3.0, period=14 | 4-tier | 0.55 |
+All assets use equal-risk allocation (7.7% each), `sl_mult=2.0`, `tp_mult=1.5` (except BTCUSD: `sl_mult=3.0`, `tp_mult=2.5`).
 
-**BTC satellite bucket:** 5% AUM cap, vol target 40%, drawdown limit 25%, ATR period 7, ATR ×2.5/3.0, meta-label threshold 0.50. Full position lifecycle (open → SL/TP/timeout → close) with entry/stop/target prices and exit reasons on the dashboard.
+| Asset | Ticker | sl_mult | tp_mult |
+|---|---|---|---|
+| BTCUSD | BTC-USD | 3.0 | 2.5 |
+| EURGBP | EURGBP=X | 2.0 | 1.5 |
+| GC | GC=F | 2.0 | 1.5 |
+| NZDCHF | NZDCHF=X | 2.0 | 1.5 |
+| CHFJPY | CHFJPY=X | 2.0 | 1.5 |
+| CADJPY | CADJPY=X | 2.0 | 1.5 |
+| USDCHF | USDCHF=X | 2.0 | 1.5 |
+| EURJPY | EURJPY=X | 2.0 | 1.5 |
+| EURCAD | EURCAD=X | 2.0 | 1.5 |
+| AUDCHF | AUDCHF=X | 2.0 | 1.5 |
+| USDJPY | USDJPY=X | 2.0 | 1.5 |
+| USDCAD | USDCAD=X | 2.0 | 1.5 |
+| GBPCHF | GBPCHF=X | 2.0 | 1.5 |
+
+**BTC satellite bucket:** 5% AUM cap, vol target 40%, drawdown limit 25%, macro-gated entry (VIX, DXY, vol z-score, portfolio returns, crisis regime). Managed by `paper_trading/satellite/engine.py:HighVolSatellite`.
 
 **SL/TP Architecture:** Barriers are computed by `DynamicSLTPEngine` using `shared/volatility.py:VolatilityPrimitive` with `method="atr"`. At entry, initial barriers are set. On each refresh within the first `post_adjust_interval_bars` (default 3), `post_entry_adjust()` recomputes barriers based on current ATR — vol spikes (>1.3×) tighten SL; vol collapses (<0.7×) no action. Model-validity adjustments via `regime_geometry`: YELLOW → sl×0.9, tp×0.8; RED → sl×0.8, tp×0.5.
 

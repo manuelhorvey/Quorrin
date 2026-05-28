@@ -1,5 +1,7 @@
 # ADR-023: Fast Scale-Out Profit Taking and Dynamic SL/TP Calibration
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 ## Status
 Accepted
 

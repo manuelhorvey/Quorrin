@@ -1,330 +1,256 @@
 # LIVE SYSTEM CONTRACT — IMMUTABLE SOURCE OF TRUTH
 
-This file defines the exact behavior of the production trading system.
+This file defines the exact behavior of the production paper trading system.
 Any deviation from this contract is a trading bug.
 Changes require full regression validation.
-
----
 
 ## 1. MODEL CONTRACT
 
 **Type:** `xgboost.XGBClassifier`
-**Signature:** `model.predict_proba(X: pd.DataFrame) -> np.ndarray`
-**Output shape:** `(N, 3)` — columns: `[short_prob, neutral_prob, long_prob]`
+**Objective:** `binary:logistic`
+**Architecture:** Binary classifier (HOLD dropped, {-1, 1} mapped to {0, 1})
 **Constructor:**
 ```
 n_estimators=300, max_depth=2, learning_rate=0.02,
-objective='multi:softprob', num_class=3,
 random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 ```
-**Serialization:** `pickle.dump` / `pickle.load` to `paper_trading/models/{name}_model.pkl`
+**Signature:** `model.predict(X: pd.DataFrame) -> np.ndarray`
+**Output shape:** `(N, 1)` — raw probability of LONG class
+**Pipeline expansion:** Raw output is expanded to 3-column proba `[p_short, 0, p_long]` in
+`paper_trading/inference/pipeline.py:_generate_and_apply()`
+**Serialization:** `model.save_model(path)` / `model.load_model(path)` — `.json` format
+**Path:** `paper_trading/models/{asset_name}_model.json`
 
 ---
 
 ## 2. SIGNAL THRESHOLD CONTRACT
 
-**Threshold value:** `0.45` (float)
-**Mapping (engine.py:290-294, 310):**
+**Strategy:** `FixedThresholdStrategy` (`shared/signal.py`)
+**Threshold:** `0.45` (float, default param of `generate_signal()`)
 
-| Condition | `signal` value | String label | Class label |
-|---|---|---|---|
-| `proba[:,2] > 0.45` (long, last check) | `2` | `BUY` | 2 |
-| `proba[:,0] > 0.45` (short, first check) | `0` | `SELL` | 0 |
-| Both > 0.45 | `2` (long wins — overwrites) | `BUY` | 2 |
-| Neither > 0.45 | `0` (default) | `FLAT` | 1 |
+| Condition | Signal | Label |
+|---|---|---|
+| `proba[:,2] > 0.45` AND `proba[:,0] <= 0.45` | BUY | 2 |
+| `proba[:,0] > 0.45` AND `proba[:,2] <= 0.45` | SELL | 0 |
+| BOTH `> 0.45` | BUY (long wins — order-dependent) | 2 |
+| NEITHER `> 0.45` | FLAT | 1 |
 
 **Confidence:** `confidence = max(proba[:,2], proba[:,0])`
 **Confidence output:** `round(confidence * 100, 2)` (percent, 0-100 scale)
 
 ---
 
-## 3. FEATURE CONTRACT (PER ASSET)
+## 3. FEATURE CONTRACT
 
-| Asset | Ticker | Features | Label type | Label params |
-|---|---|---|---|---|---|
-| BTC (satellite) | BTC-USD | `rate_diff, 2y_yield_delta_63, vix_delta_5, dxy_mom_21, vix_ma21, btc_mom_10, btc_mom_21, btc_vs_spy_21, btc_mom_63, btc_vs_spy_63` | tb20 | pt_sl=[2,2], vbar=20 |
-| GC | GC=F | `real_yield_delta_63, breakeven_delta_63, dxy_mom_63, gc_mom_63` | fwd60 | window=60, threshold=0.02 |
-| EURAUD | EURAUD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, euraud=x_mom_21, euraud=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| AUDJPY | AUDJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, audjpy=x_mom_21, audjpy=x_mom_63, nzdjpy_lead_3, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| USDCAD | USDCAD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, usdcad=x_mom_21, usdcad=x_mom_63, dji_lead_1` | tb20 | pt_sl=[2,2], vbar=20 |
-| CHFJPY | CHFJPY=X | `vix_ma21, vix_delta_5, us_jp_10y_spread, chfjpy=x_mom_21, chfjpy=x_mom_63` | tb20 | pt_sl=[2,2], vbar=20 |
-| EURCAD | EURCAD=X | `rate_diff, dxy_mom_21, vix_ma21, vix_delta_5, eurcad=x_mom_21, eurcad=x_mom_63` | tb20 | pt_sl=[2,2], vbar=20 |
+**Primary builder:** `features/alpha_features.py:build_alpha_features()`
+**Input:** `prices` (close series), `rate_diffs` (simulated), `dxy`, `vix`, `spx`, `commodities`
+**Data ingestion:** `features/data_fetch.py:fetch_asset_data(ticker)` — 10y yfinance
 
-**Momentum features** use `{contract_prefix}_mom_{window}` naming (e.g. `euraud=x_mom_21`), derived from the `contract_prefix` field in `features/registry.py`. **Lead-lag features** (`dji_lead_1`, `gc_lead_1`, `nzdjpy_lead_3`) are declared in `custom_features` on each asset's FeatureContract and computed from normalized leader returns shifted by the specified lag.
+### Per-asset alpha features
 
-**tb20 label:** `apply_triple_barrier(df, pt_sl=[2,2], vertical_barrier=20)` → `{-1,0,1}` → `+1` → `{0,1,2}`
-**fwd60 label:** `ret = close.pct_change(60).shift(-60)` → `2 if ret>0.02, 0 if ret<-0.02, 1 else`
+| Category | Features | Derived from |
+|---|---|---|
+| Vol-adjusted carry | `{asset}_carry_vol_adj` | Close returns × vol normalization |
+| Multi-horizon momentum | `{asset}_mom_21d`, `_63d`, `_126d`, `_252d` | Close pct_change over windows |
+| Z-score reversion | `{asset}_zscore_20` | 20-day rolling z-score of close |
+| Vol regime ratio | `{asset}_vol_ratio` | Short-term / long-term vol |
+| Day-of-week signal | `{asset}_dow_signal` | Calendar day-of-week encoding |
+| DXY momentum | `dxy_mom_21`, `dxy_mom_63` | DXY index pct_change |
+| VIX momentum | `vix_mom_21`, `vix_mom_63` | VIX pct_change |
+| SPX momentum | `spx_mom_21`, `spx_mom_63` | SPX pct_change |
+| Commodity momentum | `wti_mom_21`, `wti_mom_63` | WTI crude pct_change |
 
----
+### Archetype features (inference-only, from full-history OHLCV)
 
-## 4. POSITION SIZING CONTRACT
+Computed inline in `paper_trading/inference/pipeline.py:_generate_and_apply()` via `ta` library:
 
-**Default:** `pos_size = 1.0` (all assets except BTC)
-**BTC only:** `pos_size = _vol_scalar(df)` where:
-```
-rets = close.pct_change().dropna()
-if len(rets) < 30: return 1.0
-rv = rets.iloc[-30:].std() * sqrt(252)
-if isnan(rv) or isinf(rv): return 1.0
-scalar = 0.30 / (rv + 1e-9)
-pos_size = min(scalar, 1.0)
-```
-
-**Position sizing multiplier:** `CONFIG['position_size'] = 0.95`
-Applied in: `PositionManager.close()` → `pnl = current_value * ret * 0.95`
-Applied in: `PositionManager.compute_daily_pnl()` → `current_value * direction * ret * 0.95 * pos_size`
+| Feature | Formula | Window |
+|---|---|---|
+| `ema_spread` | (EMA20 − EMA50) / EMA50 | 20/50 |
+| `adx` | ADX(high, low, close) | 14 |
+| `rsi` | RSI(close) | 14 |
+| `bb_zscore` | (close − BB_mavg) / (BB_std / 2) | 20 |
 
 ---
 
-## 5. SL/TP CONTRACT
+## 4. DATA CONTRACT
 
-**Volatility:** `returns = log(close / close.shift(1)); vol = ewm(span=100).std(); floor = 0.01`
-**Multiplier:** Per-asset from `configs/paper_trading.yaml` `sl_mult`/`tp_mult`, adjusted by model-validity state machine multipliers.
-**Base values (research-optimized via per-regime sweep):**
+### Sources
+| Source | Data | Frequency |
+|---|---|---|
+| `yfinance` | Daily OHLCV for all assets + macro (DXY=VNYSB, VIX=^VIX, SPX=^GSPC, WTI=CL=F, TNX=^TNX) | Daily bars |
+| FRED | Not used in production pipeline | — |
 
-| Asset | sl_mult | tp_mult | Scale-out | Regime-tuned |
-|-------|---------|---------|-----------|--------------|
-| EURAUD | 0.30 | 1.00 | 4-tier | yes |
-| GC | 0.30 | 1.50 | no | yes |
-| AUDJPY | 0.30 | 1.75 | 4-tier | yes |
-| USDCAD | 0.30 | 1.50 | 4-tier | yes |
-| CHFJPY | 0.30 | 1.00 | no | yes |
-| EURCAD | 0.30 | 1.75 | 4-tier | yes |
-| BTC (satellite) | 0.58 | 1.51 | 4-tier | no (plateau default) |
+### Ingestion rules
+- `fetch_live(ticker)` — 250 days (TZ-aware → normalized to UTC date via `pipeline.py:51-56`)
+- `fetch_asset_data(name, ticker)` — 10y close + macro (TZ-naive date index)
+- `fetch_asset_ohlcv(ticker)` — 10y full OHLCV (TZ-naive date index, 0.5s rate-limited)
+- All date indices are `datetime64[ns]` at daily resolution (no intraday)
+- No FRED data — all macro derived from yfinance tickers
 
-**Regime-validity adjustment:** When model validity state is YELLOW, TP is multiplied by 0.85; when RED, TP × 0.70. SL stays at base multiplier across all states.
-
-**Formulas:**
-```
-sl_mult_effective = base_sl_mult × validity_sl_mult
-tp_mult_effective = base_tp_mult × validity_tp_mult
-
-long:  sl = entry × (1 - vol × sl_mult_effective)
-       tp = entry × (1 + vol × tp_mult_effective)
-short: sl = entry × (1 + vol × sl_mult_effective)
-       tp = entry × (1 - vol × tp_mult_effective)
-```
-
-**Dynamic SL/TP Calibration:**
-The system uses ATR-based dynamic barriers with auto-calibration at startup, matching the EWM volatility scale scaled by a `calibration_scale` factor of `1.2` (expanding barriers by 20% to support higher TP rates and maximize Sharpe ratio).
-
-**Scale-Out Strategy:**
-For assets with scale-out enabled, profit-taking is split into N tiers with archetype-specific profiles:
-- **Breakout:** 10/20/30/40 (backloaded convex)
-- **Trend pullback:** 15/20/30/35 (convex)
-- **Mean reversion:** 33/33/34 (flat, symmetrical)
-- **Vol expansion:** 10/15/25/50 (max convexity)
-- **Momentum ignition:** 10/10/30/50 (tail-heavy)
-
-Each tier closes at `accumulated_fraction × tp_mult` where `tp_mult` is computed by the regime×archetype TP compiler (`paper_trading/tp_compiler.py`).
-
-**Breakeven Stop:** After Tier 1 is filled, the stop-loss on the remaining position is automatically moved to the entry price (breakeven).
-
----
-
-## 6. PnL CONTRACT
-
-**Close trade:**
-```
-ret = (exit/entry - 1) if long else (entry/exit - 1)
-pnl = current_value * ret * 0.95
-current_value += pnl
-```
-
-**Daily mark-to-market (no open position):**
-```
-direction = 1 if signal==2 else -1 if signal==0 else 0
-ret = today_close / prev_close - 1
-pnl = current_value * direction * ret * 0.95 * pos_size
-```
-
-**SL/TP check (position held):**
-```
-long:  price <= sl → ("sl", sl);  price >= tp → ("tp", tp)
-short: price >= sl → ("sl", sl);  price <= tp → ("tp", tp)
-```
-
-**Additional exit reasons:**
-```
-time_stop:                force-closed after max_holding_days (default 30) calendar days
-portfolio_circuit_breaker: force-closed by portfolio-level drawdown limit (-15%)
+### Index normalization
+All yfinance downloads produce TZ-naive DatetimeIndex at daily resolution.
+The pipeline normalizes `fetch_live()` output by converting to UTC before stripping TZ:
+```python
+df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 ```
 
 ---
 
-## 7. PORTFOLIO ALLOCATION CONTRACT
+## 5. LABEL CONTRACT
 
-**Core portfolio (6 assets, cash buffer ~5%):**
+**Label function:** `features/labels.py:triple_barrier_labels()`
+**Input parameters** (per-asset, from `configs/paper_trading.yaml`):
+- `pt_sl`: `(tp_mult, sl_mult)` — barrier multiples of ATR
+- `vertical_barrier`: 10 bars
 
-| Asset | Ticker | Allocation | Driver cluster |
-|---|---|---|---|
-| EURCAD | EURCAD=X | 0.20 | eur_cross |
-| GC | GC=F | 0.17 | real_asset |
-| AUDJPY | AUDJPY=X | 0.16 | carry_fx |
-| CHFJPY | CHFJPY=X | 0.14 | carry_fx |
-| USDCAD | USDCAD=X | 0.13 | usd_macro |
-| EURAUD | EURAUD=X | 0.10 | eur_cross |
+**Label pipeline:**
+1. Triple-barrier touch → {-1 (SELL), 0 (HOLD), 1 (BUY)}
+2. Binary reduction: drop HOLD (0), map {-1, 1} → {0, 1}
+3. Binary XGBoost trains on {0, 1} labels only
 
-**Removed (negative/near-zero walk-forward Sharpe):** NZDJPY (-0.20), GBPJPY (0.00), ^DJI (-0.71), CADJPY (0.12, 1/5), USDJPY (0.21, 1/5), GBPUSD (0.17, 1/5), USDCHF (0.36, 1/2)
-
-**BTC satellite bucket:**
-| Property | Value |
+**Default `pt_sl` by asset:**
+| Most assets | BTCUSD |
 |---|---|
-| Allocation | 5% AUM cap (deployed on first engine tick, reset on each re-entry) |
-| Vol target | 40% annualised |
-| Drawdown limit | 25% |
-| Regime gate | 5-condition AND logic (correlation, BTC vol, VIX, DXY momentum, CRISIS) |
-| Position management | Active — opens on gate OPEN, closes on gate CLOSED, SL_HIT, or TP_HIT |
-| SL/TP formula | `stop = entry × (1 − vol × sl_mult)` / `target = entry × (1 + vol × tp_mult)` where `vol` = EWMA(span=100) of BTC daily log returns |
-| SL/TP multipliers | `sl_mult=0.58`, `tp_mult=1.51` from config (applied as vol multipliers, not raw entry %) |
-| Dashboard fields | Entry price, stop price, target price, exit reason (SL_HIT / TP_HIT / GATE_CLOSED) |
-| Per-cycle logging | `"BTC satellite: gate=OPEN\|CLOSED, position=ACTIVE\|FLAT, value=XXXX"` |
-
-**Capital:** $100,000
-**Sum constraint:** `sum(core_allocations) = 0.90` + `BTC satellite = 0.05` = `0.95 deployed` (cash buffer of ~5%)
-
-**JPY-cross cluster:** AUDJPY (0.16) + CHFJPY (0.14) = 0.30 (under 40% limit)
+| (1.5, 2.0) | (2.5, 3.0) |
 
 ---
 
-## 8. HALT CONDITIONS CONTRACT
+## 6. MODEL TRAINING CONTRACT
 
-**Default thresholds:**
-```
-drawdown: -0.08               # halt if drawdown <= -8%
-monthly_pf: 0.70              # halt if monthly profit factor < 0.70
-signal_drought: 30            # halt if no signal in 30 days
-prob_drift: 0.25              # halt if |mean_conf - 0.45| > 0.25 (requires ≥3 signals)
-```
-
-**Portfolio-level circuit breaker:**
-```
-portfolio_drawdown_limit: -0.15   # force-close ALL positions when total equity drawdown <= -15%
-```
-Triggered at the start of each `run_once()` cycle, before signal generation. Closes positions with reason `portfolio_circuit_breaker`. Tracks portfolio peak value across engine ticks.
-
-**Per-asset trade quality config (all assets):**
-```
-min_confidence: 50          # skip trade if model confidence < 50%
-max_holding_days: 30        # force-close after N calendar days, reason `time_stop`
-```
-Applied in `asset_engine._apply_decision()` (min_confidence) and `asset_engine.update_pnl()` (max_holding_days).
-
-**Per-asset override:** BTC drawdown = -0.15
-
-**Validity scoring:**
-```
-score = 0.80
-score -= 0.25 if drawdown_not_ok
-score -= 0.20 if monthly_pf_not_ok
-score -= 0.15 if drought_not_ok
-score -= 0.15 if drift_not_ok
-score = clip(0.0, 1.0, score)
-→ ValidityStateMachine.transition(score)
-```
-
-**ValidityStateMachine parameters:**
-```
-green_entry: 0.70, green_exit: 0.60
-yellow_entry: 0.45, yellow_exit: 0.40
-red_entry: 0.40, red_exit: 0.50
-inertia_alpha: 0.7, inertia_beta: 0.3
-regime_lock_periods: 5, regime_lock_window: 10
-exposure: GREEN=1.0, YELLOW=0.5, RED=0.0
-```
-
-**Execution state derived from validity:**
-```
-HALTED if any asset halted OR portfolio circuit breaker triggered
-PAUSED if average_validity_exposure < 0.5
-ACTIVE otherwise
-```
+**Pipeline:** `paper_trading/inference/training.py:AssetTrainingPipeline.train()`
+**Data window:** 10y history from yfinance, train on last `retrain_window` years (default 5)
+**Minimum samples:** 100 binary labels; 2+ unique classes
+**Train/val split:** 80/20 chronological, stratified by label if minimum class count ≥ 2
+**Post-training:**
+- Persist PSI baseline from training feature distribution
+- Train optional meta-label model (XGBoost)
+- Log feature importances + stability (Jaccard + Spearman)
+- Train optional regime-conditional model + configure ensemble
 
 ---
 
-## 9. MACRO DERIVED FEATURES CONTRACT
+## 7. INFERENCE PIPELINE CONTRACT
 
-Derived from `data/processed/macro_factors.parquet`:
-```
-rate_diff = fed_funds - ecb_rate
-2y_yield_delta_63 = us_2y.diff(63)
-dxy_mom_63 = dxy.pct_change(63)
-dxy_mom_21 = dxy.pct_change(21)
-vix_ma21 = vix.rolling(21).mean()
-vix_delta_5 = vix.diff(5)
-us_jp_10y_spread = us_10y - jp_10y
-ca_jp_10y_spread = ca_10y - jp_10y
-ca_jp_spread_mom_21 = ca_jp_10y_spread.diff(21)
-ca_jp_spread_mom_5 = ca_jp_10y_spread.diff(5)
-real_yield_delta_63 = real_yield_10y.diff(63)
-breakeven_delta_63 = breakeven_10y.diff(63)
-```
-Warmup: first 90 days dropped after derivation.
+**Pipeline:** `paper_trading/inference/pipeline.py:AssetInferencePipeline._generate_and_apply()`
+**Per-cycle (every 300s / 5 min):**
 
----
-
-## 10. ALLOWED IMPORTS
-
-Live system (`paper_trading/`) may only import:
-```
-standard library: os, sys, json, pickle, math, copy, time, threading,
-                  signal, logging, dataclasses, http.server, socketserver,
-                  abc, enum, fcntl, hashlib
-third-party: pandas, numpy, xgboost, yfinance, yaml, pytz
-intra-project:
-  features.builder, features.contract, features.registry,
-  features.archetypes
-  labels.triple_barrier
-  monitoring.validity_state_machine
-  paper_trading.* (own package)
-  execution.paper_broker
-  paper_trading.execution_bridge
-  paper_trading.execution_simulator
-  paper_trading.slippage_model
-  paper_trading.fill_model
-  paper_trading.latency_model
-  paper_trading.execution_policy
-  paper_trading.entry_optimizer
-  paper_trading.deferred_entry
-  paper_trading.tp_compiler
-  paper_trading.trade_attribution
-  shared.execution_config
-  shared.registry
-  quantforge (setup_logging)
-```
-
-**SAFE shared interfaces:** shared.model, shared.signal, shared.sizing, shared.pnl, shared.features, shared.registry
-
-**FORBIDDEN at runtime:** execution.*, portfolio.*, risk.*, signals.*,
-models.*, diagnostics.*, equity.*, backtests.*, scripts.*,
-data.weekly_pipeline, data.loaders.*, features.{base,regime,structural,
-interaction,cot,pair_specific,mean_reversion,trend,volatility,cross_asset},
-archive.*, configs.driver_atlas
+1. `fetch_live(ticker)` — 250 days OHLCV
+2. Normalize index to UTC TZ-naive
+3. `refresh_price()` — patch last close with real-time or 5d fallback
+4. `ffill()` close column
+5. `fetch_asset_data()` — 10y close + macro
+6. `build_alpha_features()` — produce alpha_df with ~30 feature columns
+7. `fetch_asset_ohlcv()` — 10y full OHLCV for archetype features
+8. Compute archetype features (ema_spread, adx, rsi, bb_zscore)
+9. PSI drift check (rolling 21d vs baseline; skipped on first cycle)
+10. XGBoost predict → 3-column proba expansion
+11. Optional regime ensemble blend (if regime model + ensemble configured)
+12. Optional meta-label inference
+13. `FixedThresholdStrategy.compute()` → signal + decision
+14. Archetype classification → `TradeDecision`
+15. `_apply_decision()` → policy routing → entry/position management
 
 ---
 
-## 11. DATA SOURCES CONTRACT
+## 8. PORTFOLIO CONTRACT
 
-| Data | Source | Path | Format |
+**Builder:** `paper_trading/portfolio_builder.py:build_paper_portfolio()`
+**Source:** `configs/paper_trading.yaml`
+
+### Current assets (13 promoted)
+| Asset | Ticker | sl_mult | tp_mult |
 |---|---|---|---|
-| Asset prices | yfinance | live fetch | OHLCV DataFrame |
-| Macro factors | `data/processed/macro_factors.parquet` | `compute_macro_derived()` | Parquet → derived columns |
-| SPY reference | yfinance | `fetch_ref('SPY')` | OHLCV DataFrame |
-| Cached models | disk | `paper_trading/models/{name}_model.pkl` | pickle |
-| Engine state | disk | `data/live/state.json` | JSON |
-| Trade journal | disk | `data/live/trade_journal.parquet` | Parquet |
-| Equity curve | disk | `data/live/equity_history.json` | JSON |
+| BTCUSD | BTC-USD | 3.0 | 2.5 |
+| EURGBP | EURGBP=X | 2.0 | 1.5 |
+| GC | GC=F | 2.0 | 1.5 |
+| NZDCHF | NZDCHF=X | 2.0 | 1.5 |
+| CHFJPY | CHFJPY=X | 2.0 | 1.5 |
+| CADJPY | CADJPY=X | 2.0 | 1.5 |
+| USDCHF | USDCHF=X | 2.0 | 1.5 |
+| EURJPY | EURJPY=X | 2.0 | 1.5 |
+| EURCAD | EURCAD=X | 2.0 | 1.5 |
+| AUDCHF | AUDCHF=X | 2.0 | 1.5 |
+| USDJPY | USDJPY=X | 2.0 | 1.5 |
+| USDCAD | USDCAD=X | 2.0 | 1.5 |
+| GBPCHF | GBPCHF=X | 2.0 | 1.5 |
+
+### BTC satellite
+- 5% AUM cap, vol target 40%, drawdown limit 25%
+- Macro gate (VIX, DXY, vol z-score, portfolio returns, crisis regime)
+- Managed by `paper_trading/satellite/engine.py:HighVolSatellite`
 
 ---
 
-## 12. REFRESH CONTRACT
+## 9. POSITION SIZING CONTRACT
 
-**Interval:** 300 seconds (5 minutes, configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)
-**On each refresh:** run_once() → save_state()
-**On startup:** Load cached models or train, initialize broker+execution configs, run_once(), save_state(), start HTTP server
-**HTTP server:** port 5000, daemon thread, endpoints:
-  `/` → index.html (static)
-  `/state.json` → EngineSnapshot JSON
-  `/trades.json` → recent trades (Parquet or snapshot)
-  `/equity_history.json` → equity curve
-  `/logs` → tail of engine.log
+**Strategy:** Equal-risk weights via `shared/sizing.py:compute_equal_risk_weights()`
+**Capital utilization cap:** `configs/paper_trading.yaml:position_size` (default 0.95)
+**Per-asset allocation:** Determined by `PaperBroker` from `execution_configs`
+**Size scalar chain:**
+```
+final_size = base × governance_scalar × meta_confidence_scalar
+```
+- Governance scalar: validity state machine (GREEN=1.0, YELLOW=0.5, RED=0.0)
+- Meta-confidence scalar: `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0]
+
+---
+
+## 10. ASSET SCREENING & PROMOTION CONTRACT
+
+**Screening pipeline:**
+1. `scripts/walk_forward_backtest.py --tickers` — 3y window, 1y step, 5 folds, per-asset pt_sl
+2. `scripts/score_tickers.py` — composite score (IC + hit rate + consistency + bidirectionality)
+3. `scripts/generate_promotion_report.py` — classification (GREEN/YELLOW/RED) + YAML config block
+
+**Promotion criteria:**
+| Condition | Threshold |
+|---|---|
+| IC | > 0.03 |
+| Hit rate | > 0.40 |
+| FLAT rate | < 70% |
+| Positive fold rate | ≥ 50% |
+| Long signal rate | > 5% |
+| Short signal rate | > 5% |
+
+**Output:** `walkforward/promotion_report.json`, `walkforward/PROMOTION_REPORT.md`
+
+---
+
+## 11. GOVERNANCE CONTRACT
+
+Seven layered governance mechanisms, each independently configurable:
+
+| Layer | Frequency | Effect | Config key |
+|---|---|---|---|
+| Validity state machine | Per tick | Exposure 0–100% | `halt.*` |
+| Feature stability | Per retrain | Validity penalty | — |
+| Meta-labeling (XGBoost) | Per signal | Size scalar [0–1] | `meta_labeling` |
+| Macro narrative | Weekly | SL +10%, size −20% | `narrative_config` |
+| Liquidity regime | Per signal | SL +15/30%, size −15/30%, halt | `liquidity_config` |
+| PSI drift | Per cycle | Validity penalty, halt at 3+ SEVERE | — |
+| Portfolio drawdown | Per cycle | Circuit breaker at −15% | `portfolio_drawdown_limit` |
+
+See `docs/GOVERNANCE_LAYER.md` for full detail.
+
+---
+
+## 12. SYSTEM INVARIANTS
+
+1. No train/serve skew — same alpha feature builder in training and inference
+2. No look-ahead — labels computed from future data only in training, never in inference
+3. TZ-naive date alignment — all pipeline indices normalized to UTC date
+4. Per-asset model independence — each asset has its own XGBoost binary model
+5. Strict signal/execution separation — model produces probabilities only; execution resolved by policy layer
+6. Worst-wins penalty aggregation — most negative governance penalty applied, not averaged
+7. Frozen execution contract — PolicyDecision → FillResult → AttributionRecord is immutable causal chain
+8. Single entry authority — `_can_enter()` is the sole gate for all entry sources
+9. Binary signal — model trains on {-1, 1} labels only; HOLD dropped
+10. Walk-forward validated — every promoted asset passes 3yr expanding window backtest
+
+---
+
+## 13. DISCLAIMER
+
+Paper trading system only. No live capital execution. Not financial advice.
+Past walk-forward performance is not indicative of future results.

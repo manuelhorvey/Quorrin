@@ -1,5 +1,7 @@
 # ADR-005: Macro Expert Head With Protected Weight in Ensemble
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 **Status:** Accepted
 
 ## Context

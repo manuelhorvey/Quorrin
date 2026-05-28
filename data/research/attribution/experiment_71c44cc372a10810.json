@@ -1,0 +1,41 @@
+{
+  "experiment_id": "71c44cc372a10810",
+  "created_at": "2026-05-28T12:21:43.168553+00:00",
+  "asset_universe": [
+    "AUDCHF",
+    "BTCUSD",
+    "CADJPY",
+    "CHFJPY",
+    "EURCAD",
+    "EURGBP",
+    "EURJPY",
+    "GBPCHF",
+    "GC",
+    "NZDCHF",
+    "USDCAD",
+    "USDCHF",
+    "USDJPY"
+  ],
+  "execution_config_hash": "44136fa355b3678a",
+  "component_hashes": {
+    "label_kernel": "b44ac5c0a2d47736",
+    "label_generator": "1c1d61372356076c",
+    "archetype_classifier": "2c9dee82b5ec3316",
+    "feature_registry": "b565e085bfe283db",
+    "entry_optimizer": "d77fe4895a38b01a",
+    "decision_models": "0df5cc442bd16378",
+    "execution_policy": "34147729f5eca592",
+    "tp_compiler": "5660d0eecc7a5d1d",
+    "scale_out": "323fd5db537d23a2",
+    "deferred_entry": "e9e56c1908a96965",
+    "execution_simulator": "c92332ac1b6fc542",
+    "slippage_model": "342dc4c9af58e79c",
+    "fill_model": "f5a3e6818a7ea205",
+    "latency_model": "2a8cab593d806cf0",
+    "trade_attribution": "e93adad0c93c092b",
+    "dynamic_sltp": "7417b64161672935",
+    "execution_bridge": "c366d173b3d5641d",
+    "execution_config": "b03a8b115e72adaa",
+    "execution_config_instance": "44136fa355b3678a"
+  }
+}

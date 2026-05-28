@@ -1,5 +1,7 @@
 # ADR-011: Known Issues Scheduled for January 2027 Retrain
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 ## Status
 
 Accepted — documented during May 2026 codebase review. Fixes deferred to avoid

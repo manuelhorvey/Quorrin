@@ -1,5 +1,7 @@
 # Architecture Decision Records
 
+> **⚠ Historical Context Notice** — This ADR describes a research-stage decision that influenced system evolution. Some referenced components may no longer exist in the current production system.
+
 This directory contains Architecture Decision Records (ADRs) for QuantForge.
 
 ADRs document key architectural and design decisions, including context, options considered, and the chosen approach.

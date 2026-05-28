@@ -15,6 +15,9 @@ from features.fxstreet_fetcher import (
 )
 from paper_trading.asset_engine import AssetEngine
 from paper_trading.config_manager import get_config
+from paper_trading.entry.decision import PositionIntent, PositionSide
+from paper_trading.execution.bridge import ExecutionBridge
+from paper_trading.execution.paper_broker import PaperBroker
 
 # Re-exported from child modules for backward compatibility
 from paper_trading.ops.data_fetcher import (  # noqa: F401
@@ -26,11 +29,9 @@ from paper_trading.ops.data_fetcher import (  # noqa: F401
     norm_index,
     safe_download,
 )
-from paper_trading.entry.decision import PositionIntent, PositionSide
-from paper_trading.execution.paper_broker import PaperBroker
-from paper_trading.execution.bridge import ExecutionBridge
 from paper_trading.ops.experiment_context import ExperimentContext
 from paper_trading.ops.market_hours import is_market_closed
+from paper_trading.ops.simulation_snapshot import SimulationStore, build_asset_snapshot
 from paper_trading.satellite.engine import HighVolSatellite, SatelliteConfig
 from paper_trading.satellite.runner import (
     compute_btc_context,
@@ -38,7 +39,6 @@ from paper_trading.satellite.runner import (
     fetch_btc_price,
     fetch_macro_context,
 )
-from paper_trading.ops.simulation_snapshot import SimulationStore, build_asset_snapshot
 from paper_trading.state_store import _SKIP_JOURNAL, EngineSnapshot, StateStore, sanitize  # noqa: F401
 from shared.execution_config import build_execution_configs
 from shared.registry import StrategyRegistry
@@ -455,7 +455,8 @@ class PaperTradingEngine:
             if was_active and not sat.position_active and sat._last_exit_reason is not None:
                 exit_price = current_price
                 pnl_pct = (exit_price / sat_entry - 1.0) if sat_entry else 0.0
-                r_mult = pnl_pct / abs((exit_price - sat_stop) / sat_entry) if sat_stop and sat_entry else 0.0
+                risk_pct = abs(sat_entry - sat_stop) / sat_entry if sat_stop and sat_entry else 0.0
+                r_mult = pnl_pct / risk_pct if risk_pct > 0 else 0.0
                 entry_dt = str(sat_entry_date) if sat_entry_date else str(datetime.now(tz=ET).date())
                 exit_dt = str(datetime.now(tz=ET).date())
                 trade = {

@@ -13,22 +13,22 @@ from monitoring.psi_monitor import PSIMonitor, PSISnapshot
 from monitoring.validity_state_machine import (
     ValidityStateMachine as _ValidityStateMachine,
 )
-from paper_trading.governance.asset import AssetGovernance
-from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.asset_pnl_controller import AssetPnlController
-from paper_trading.inference.training import AssetTrainingPipeline
+from paper_trading.attribution.collector import AttributionCollector, TradeAttributionRecord
 from paper_trading.config_manager import get_config
-from paper_trading.ops.data_fetcher import flatten, safe_download
 from paper_trading.entry.decision import EntryAction, PositionIntent, PositionSide, SignalType, TradeDecision
 from paper_trading.entry.deferred_entry import DeferredEntryStatus
-from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
-from paper_trading.shadow.engine import ShadowSLTPEngine
-from paper_trading.position.manager import PositionManager
+from paper_trading.governance.asset import AssetGovernance
 from paper_trading.governance.regime import RegimeClassifier
 from paper_trading.governance.risk import record_trade_outcome as _record_exit_outcome
+from paper_trading.inference.pipeline import AssetInferencePipeline
+from paper_trading.inference.training import AssetTrainingPipeline
+from paper_trading.ops.data_fetcher import flatten, safe_download
+from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
+from paper_trading.position.manager import PositionManager
 from paper_trading.position.scale_out import build_scale_out_from_config
+from paper_trading.shadow.engine import ShadowSLTPEngine
 from paper_trading.state_store import _SKIP_JOURNAL, StateStore
-from paper_trading.attribution.collector import AttributionCollector, TradeAttributionRecord
 from shared.registry import StrategyRegistry
 
 logger = logging.getLogger("quantforge.asset_engine")
@@ -166,6 +166,9 @@ class AssetEngine:
         self._regime_adjusted_entry: bool = False
         self._churn_ratio_threshold = self.config.get("churn_ratio_threshold", 0.50)
         self._initial_settlement_done: bool = False
+        self._last_signal_flip_cycle: int = -self.config.get("min_flip_interval_bars", 3) * 2
+        self._min_flip_interval_bars = self.config.get("min_flip_interval_bars", 3)
+        self._cycle_counter: int = 0
         self._training = AssetTrainingPipeline(self)
         self._pnl = AssetPnlController(self)
         self._inference = AssetInferencePipeline(self)
@@ -577,6 +580,8 @@ class AssetEngine:
             pass
 
         self.position = None
+        if reason == "signal_flip":
+            self._last_signal_flip_cycle = self._cycle_counter
         self.current_value = self.pos_mgr.current_value
         self.trade_log = list(self.pos_mgr.trade_log)
         self._save_trade_journal(trade)
@@ -645,6 +650,11 @@ class AssetEngine:
         if side in self._pending_entries:
             return False, "pending_entry_exists"
 
+        # D. Signal flip cooldown — prevent churn from rapid flip-reentry
+        cycles_since_flip = self._cycle_counter - self._last_signal_flip_cycle
+        if cycles_since_flip < self._min_flip_interval_bars:
+            return False, f"signal_flip_cooldown_{cycles_since_flip}"
+
         return True, "ok"
 
     def refresh_price(self):
@@ -674,6 +684,7 @@ class AssetEngine:
 
     def _apply_decision(self, decision: TradeDecision, df):
         today = decision.timestamp
+        self._cycle_counter += 1
         current_side = self.pos_mgr.current_side()
 
         # Phase 6: Store prediction metadata for attribution at close

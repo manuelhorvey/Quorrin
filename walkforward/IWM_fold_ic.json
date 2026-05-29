@@ -1,0 +1,53 @@
+{
+  "ticker": "IWM",
+  "folds": [
+    {
+      "fold": 0,
+      "train_start": "2017-06-05",
+      "train_end": "2018-11-15",
+      "test_start": "2018-11-26",
+      "test_end": "2020-05-26",
+      "ic": 0.0813,
+      "hit_rate": 0.4549
+    },
+    {
+      "fold": 1,
+      "train_start": "2017-06-05",
+      "train_end": "2020-05-18",
+      "test_start": "2020-05-27",
+      "test_end": "2021-12-01",
+      "ic": -0.092,
+      "hit_rate": 0.4132
+    },
+    {
+      "fold": 2,
+      "train_start": "2017-06-05",
+      "train_end": "2021-11-23",
+      "test_start": "2021-12-02",
+      "test_end": "2023-06-02",
+      "ic": 0.0348,
+      "hit_rate": 0.5139
+    },
+    {
+      "fold": 3,
+      "train_start": "2017-06-05",
+      "train_end": "2023-05-25",
+      "test_start": "2023-06-05",
+      "test_end": "2024-11-18",
+      "ic": 0.1296,
+      "hit_rate": 0.4653
+    },
+    {
+      "fold": 4,
+      "train_start": "2017-06-05",
+      "train_end": "2024-11-08",
+      "test_start": "2024-11-19",
+      "test_end": "2026-05-13",
+      "ic": 0.3585,
+      "hit_rate": 0.6181
+    }
+  ],
+  "mean_ic": 0.1024,
+  "positive_folds": 4,
+  "total_folds": 5
+}

@@ -1,0 +1,53 @@
+{
+  "ticker": "ES",
+  "folds": [
+    {
+      "fold": 0,
+      "train_start": "2017-06-19",
+      "train_end": "2018-11-21",
+      "test_start": "2018-11-30",
+      "test_end": "2020-06-10",
+      "ic": 0.0049,
+      "hit_rate": 0.3517
+    },
+    {
+      "fold": 1,
+      "train_start": "2017-06-19",
+      "train_end": "2020-06-03",
+      "test_start": "2020-06-11",
+      "test_end": "2021-12-16",
+      "ic": 0.3374,
+      "hit_rate": 0.5103
+    },
+    {
+      "fold": 2,
+      "train_start": "2017-06-19",
+      "train_end": "2021-12-09",
+      "test_start": "2021-12-17",
+      "test_end": "2023-06-07",
+      "ic": 0.0,
+      "hit_rate": 0.4931
+    },
+    {
+      "fold": 3,
+      "train_start": "2017-06-19",
+      "train_end": "2023-05-31",
+      "test_start": "2023-06-08",
+      "test_end": "2024-10-23",
+      "ic": 0.2387,
+      "hit_rate": 0.5138
+    },
+    {
+      "fold": 4,
+      "train_start": "2017-06-19",
+      "train_end": "2024-10-08",
+      "test_start": "2024-10-24",
+      "test_end": "2026-05-08",
+      "ic": 0.0556,
+      "hit_rate": 0.5276
+    }
+  ],
+  "mean_ic": 0.1273,
+  "positive_folds": 4,
+  "total_folds": 5
+}

@@ -197,7 +197,7 @@ def run_walk_forward():
     print(f'  Min 20 trades/win: {"FAIL" if low_trades else "PASS"}')
 
     if passed_2022 and passed_2023 and positive_windows >= 5 and not low_pf and not low_trades:
-        print('\n  >>> ALL GATES PASSED. PROCEED TO QQQ. <<<')
+        print('\n  >>> ALL GATES PASSED. <<<')
     else:
         print('\n  >>> GATES NOT MET. Review results. <<<')
 

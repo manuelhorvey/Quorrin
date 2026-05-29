@@ -61,66 +61,76 @@ execution:
 assets:
   BTCUSD:
     ticker: BTC-USD
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 3.0
     tp_mult: 2.5
   EURGBP:
     ticker: EURGBP=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   GC:
     ticker: GC=F
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   NZDCHF:
     ticker: NZDCHF=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   CHFJPY:
     ticker: CHFJPY=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   CADJPY:
     ticker: CADJPY=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   USDCHF:
     ticker: USDCHF=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   EURJPY:
     ticker: EURJPY=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   EURCAD:
     ticker: EURCAD=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   AUDCHF:
     ticker: AUDCHF=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   USDJPY:
     ticker: USDJPY=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   USDCAD:
     ticker: USDCAD=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
   GBPCHF:
     ticker: GBPCHF=X
-    allocation: 0.077
+    allocation: 0.065
     sl_mult: 2.0
     tp_mult: 1.5
+  ES:
+    ticker: ES=F
+    allocation: 0.077
+    sl_mult: 2.0
+    tp_mult: 2.5
+  NQ:
+    ticker: NQ=F
+    allocation: 0.078
+    sl_mult: 2.0
+    tp_mult: 2.5

@@ -1,6 +1,20 @@
 {
   "green": [
     {
+      "ticker": "^VIX",
+      "score": 98.2,
+      "ic": 0.3875,
+      "hit_rate": 0.541,
+      "flat_rate": 0.232,
+      "long_rate": 0.5951,
+      "short_rate": 0.173,
+      "positive_ic_folds": 5,
+      "total_folds": 5,
+      "criteria_met": true,
+      "status": "GREEN",
+      "symbol": "GREEN  \u2713 PROMOTE"
+    },
+    {
       "ticker": "BTCUSD",
       "score": 80.9,
       "ic": 0.2264,
@@ -8,6 +22,34 @@
       "flat_rate": 0.268,
       "long_rate": 0.608,
       "short_rate": 0.124,
+      "positive_ic_folds": 4,
+      "total_folds": 5,
+      "criteria_met": true,
+      "status": "GREEN",
+      "symbol": "GREEN  \u2713 PROMOTE"
+    },
+    {
+      "ticker": "IWM",
+      "score": 79.3,
+      "ic": 0.1024,
+      "hit_rate": 0.4931,
+      "flat_rate": 0.4076,
+      "long_rate": 0.5222,
+      "short_rate": 0.0701,
+      "positive_ic_folds": 4,
+      "total_folds": 5,
+      "criteria_met": true,
+      "status": "GREEN",
+      "symbol": "GREEN  \u2713 PROMOTE"
+    },
+    {
+      "ticker": "ES",
+      "score": 76.9,
+      "ic": 0.1273,
+      "hit_rate": 0.4793,
+      "flat_rate": 0.3276,
+      "long_rate": 0.5972,
+      "short_rate": 0.0752,
       "positive_ic_folds": 4,
       "total_folds": 5,
       "criteria_met": true,
@@ -29,6 +71,20 @@
       "symbol": "GREEN  \u2713 PROMOTE"
     },
     {
+      "ticker": "NQ",
+      "score": 67.9,
+      "ic": 0.0932,
+      "hit_rate": 0.4569,
+      "flat_rate": 0.3472,
+      "long_rate": 0.5445,
+      "short_rate": 0.1084,
+      "positive_ic_folds": 3,
+      "total_folds": 5,
+      "criteria_met": true,
+      "status": "GREEN",
+      "symbol": "GREEN  \u2713 PROMOTE"
+    },
+    {
       "ticker": "GC",
       "score": 66.7,
       "ic": 0.127,
@@ -44,6 +100,20 @@
     }
   ],
   "yellow": [
+    {
+      "ticker": "^DJI",
+      "score": 70.4,
+      "ic": 0.0913,
+      "hit_rate": 0.4754,
+      "flat_rate": 0.2976,
+      "long_rate": 0.6609,
+      "short_rate": 0.0415,
+      "positive_ic_folds": 4,
+      "total_folds": 5,
+      "criteria_met": false,
+      "status": "YELLOW",
+      "symbol": "YELLOW \u25d0 WATCH"
+    },
     {
       "ticker": "NZDCHF",
       "score": 70.0,
@@ -139,6 +209,20 @@
       "positive_ic_folds": 3,
       "total_folds": 5,
       "criteria_met": false,
+      "status": "YELLOW",
+      "symbol": "YELLOW \u25d0 WATCH"
+    },
+    {
+      "ticker": "CL",
+      "score": 52.7,
+      "ic": 0.0644,
+      "hit_rate": 0.4246,
+      "flat_rate": 0.4119,
+      "long_rate": 0.4316,
+      "short_rate": 0.1565,
+      "positive_ic_folds": 3,
+      "total_folds": 5,
+      "criteria_met": true,
       "status": "YELLOW",
       "symbol": "YELLOW \u25d0 WATCH"
     },
@@ -426,9 +510,9 @@
     }
   ],
   "summary": {
-    "total": 30,
-    "green": 3,
-    "yellow": 11,
+    "total": 36,
+    "green": 7,
+    "yellow": 13,
     "red": 16
   }
 }

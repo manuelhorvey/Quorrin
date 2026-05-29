@@ -3,7 +3,7 @@ Driver Atlas — Asset-specific feature clusters, exclusion list, and research q
 
 Each ticker belongs to a driver cluster that determines which features are relevant.
 The cluster taxonomy (ADR-010) is:
-  - yield_equity     (XLF, QQQ)       → rate_diff, yield_delta, vs_SPY momentum
+   - yield_equity     (XLF)            → rate_diff, yield_delta, vs_SPY momentum
   - carry_fx         (NZDJPY, AUDJPY) → VIX, bilateral yield spread, carry momentum
   - momentum_crypto  (BTC-USD, ETH-USD) → momentum features, vol scaling
   - bilateral_fx     (USDCAD, EURUSD) → bilateral rate diff, commodity, cross-asset
@@ -28,7 +28,6 @@ class AssetCluster(TypedDict, total=False):
 DRIVER_CLUSTERS: dict[str, str] = {
     # Yield-sensitive equities
     "XLF": "yield_equity",
-    "QQQ": "yield_equity",
     # Carry FX
     "NZDJPY=X": "carry_fx",
     # Momentum crypto

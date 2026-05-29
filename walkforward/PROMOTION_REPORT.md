@@ -1,26 +1,38 @@
 # Promotion Report — Walk-Forward Screening
 
-*Generated: 2026-05-28 12:14*
+*Generated: 2026-05-29 01:07*
 
 ## 1. Executive Summary
 
-- **Total tickers screened:** 30
-- **GREEN (promote):** 3
-- **YELLOW (watch):**  11
+- **Total tickers screened:** 36
+- **GREEN (promote):** 7
+- **YELLOW (watch):**  13
 - **RED (skip):**      16
 
 **Top 3 tickers:**
-  1. **BTCUSD** — score 80.9/100, IC 0.2264, hit rate 48.3%, 4/5 positive folds
-  2. **EURGBP** — score 69.0/100, IC 0.1104, hit rate 41.5%, 4/5 positive folds
-  3. **GC** — score 66.7/100, IC 0.1270, hit rate 40.4%, 4/5 positive folds
+  1. **^VIX** — score 98.2/100, IC 0.3875, hit rate 54.1%, 5/5 positive folds
+  2. **BTCUSD** — score 80.9/100, IC 0.2264, hit rate 48.3%, 4/5 positive folds
+  3. **IWM** — score 79.3/100, IC 0.1024, hit rate 49.3%, 4/5 positive folds
 
 ## 2. GREEN — Promote to Live Dashboard
+
+### ^VIX
+
+**Score:** 98.2/100  |  **IC:** 0.3875  |  **Hit Rate:** 54.1%  |  **Flat Rate:** 23.2%
+**Positive IC folds:** 5/5  |  **Long:** 59.5%  |  **Short:** 17.3%
+**Recommendation:** PROMOTE — consistent edge across 5/5 folds, bidirectional signal (long 59.5%, short 17.3%)
 
 ### BTCUSD
 
 **Score:** 80.9/100  |  **IC:** 0.2264  |  **Hit Rate:** 48.3%  |  **Flat Rate:** 26.8%
 **Positive IC folds:** 4/5  |  **Long:** 60.8%  |  **Short:** 12.4%
 **Recommendation:** PROMOTE — consistent edge across 4/5 folds, bidirectional signal (long 60.8%, short 12.4%)
+
+### IWM
+
+**Score:** 79.3/100  |  **IC:** 0.1024  |  **Hit Rate:** 49.3%  |  **Flat Rate:** 40.8%
+**Positive IC folds:** 4/5  |  **Long:** 52.2%  |  **Short:** 7.0%
+**Recommendation:** PROMOTE — consistent edge across 4/5 folds, bidirectional signal (long 52.2%, short 7.0%)
 
 ### EURGBP
 
@@ -35,6 +47,12 @@
 **Recommendation:** PROMOTE — consistent edge across 4/5 folds, bidirectional signal (long 42.3%, short 19.9%)
 
 ## 3. YELLOW — Watch List
+
+### ^DJI
+
+**Score:** 70.4/100  |  **IC:** 0.0913  |  **Hit Rate:** 47.5%  |  **Flat Rate:** 29.8%
+**Positive IC folds:** 4/5
+**Note:** short rate 4.2% <= 5%
 
 ### NZDCHF
 
@@ -77,6 +95,12 @@
 **Score:** 54.3/100  |  **IC:** 0.0808  |  **Hit Rate:** 36.4%  |  **Flat Rate:** 44.8%
 **Positive IC folds:** 3/5
 **Note:** hit rate 36.4% below 40%
+
+### CL
+
+**Score:** 52.7/100  |  **IC:** 0.0644  |  **Hit Rate:** 42.5%  |  **Flat Rate:** 41.2%
+**Positive IC folds:** 3/5
+**Note:** multiple criteria missed
 
 ### USDCHF
 
@@ -127,13 +151,25 @@ Paste this into `configs/paper_trading.yaml`:
 
 ```yaml
 assets:
-  - ticker: BTC-USD
+  - ticker: ^VIX
+    slug: ^VIX
+    allocation: 0.143   # equal weight across 7 GREEN assets
+  - ticker: BTCUSD
     slug: BTCUSD
-    allocation: 0.333   # equal weight across 3 GREEN assets
-  - ticker: EURGBP=X
+    allocation: 0.143   # equal weight across 7 GREEN assets
+  - ticker: IWM
+    slug: IWM
+    allocation: 0.143   # equal weight across 7 GREEN assets
+   - ticker: ES
+    slug: ES
+    allocation: 0.143   # equal weight across 7 GREEN assets
+  - ticker: NQ
+    slug: NQ
+    allocation: 0.143   # equal weight across 7 GREEN assets
+  - ticker: EURGBP
     slug: EURGBP
-    allocation: 0.333   # equal weight across 3 GREEN assets
-  - ticker: GC=F
+    allocation: 0.143   # equal weight across 7 GREEN assets
+  - ticker: GC
     slug: GC
-    allocation: 0.333   # equal weight across 3 GREEN assets
+    allocation: 0.143   # equal weight across 7 GREEN assets
 ```

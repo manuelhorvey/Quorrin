@@ -95,6 +95,8 @@ def build_engine(n_assets: int, n_workers: int, skip_validation: bool, quick: bo
     # Force optimisations on
     cfg.optimizations["async_diagnostics"] = True
     cfg.optimizations["truncate_inference"] = "auto"
+    # Disable circuit breaker — synthetic data can trip drawdown limits
+    cfg.portfolio_drawdown_limit = None
 
     from paper_trading.engine import PaperTradingEngine
 
@@ -222,6 +224,47 @@ def run_sweep(args) -> None:
                 f.write(json.dumps(r) + "\n")
 
 
+def run_profiled(args) -> None:
+    """Run one full cycle under cProfile and dump results."""
+    import cProfile
+    import pstats
+
+    tickers = DEFAULT_TICKERS[: args.assets]
+    from benchmarks.mock_data import MockDataFixture
+
+    mock = MockDataFixture(tickers, n_bars=args.bars)
+    mock.install()
+
+    try:
+        engine = build_engine(args.assets, args.workers, args.skip_validation, args.quick)
+
+        if not args.quick:
+            engine.initialize()
+
+        # One warm-up cycle (populates caches)
+        engine.run_once()
+
+        prof_path = args.profile
+        prof = cProfile.Profile()
+        prof.enable()
+        engine.run_once()
+        prof.disable()
+
+        prof.dump_stats(prof_path)
+        print(json.dumps({"event": "profile_saved", "path": prof_path}), flush=True)
+
+        # Print top callers by cumulative time
+        stats = pstats.Stats(prof).sort_stats("cumtime")
+        stats.print_stats(30)
+
+        # Print top by total time (self-time, excludes children)
+        print("\n=== By total time (self) ===")
+        stats.sort_stats("time").print_stats(20)
+
+    finally:
+        mock.uninstall()
+
+
 def main():
     parser = argparse.ArgumentParser(description="QuantForge hot-path microbenchmark")
     parser.add_argument("--assets", type=int, default=15, help="number of assets (default: 15)")
@@ -229,13 +272,16 @@ def main():
     parser.add_argument("--cycles", type=int, default=5, help="warm cycles after cold run (default: 5)")
     parser.add_argument("--bars", type=int, default=500, help="synthetic OHLCV bars per asset (default: 500)")
     parser.add_argument("--output", type=str, default="", help="path to write JSONL results")
+    parser.add_argument("--profile", type=str, default="", help="path to write cProfile .prof file")
     parser.add_argument("--skip-validation", action="store_true", help="force truncation on")
     parser.add_argument("--quick", action="store_true", help="skip full model training, use dummy models")
     parser.add_argument("--sweep", action="store_true", help="sweep asset x worker grid")
 
     args = parser.parse_args()
 
-    if args.sweep:
+    if args.profile:
+        run_profiled(args)
+    elif args.sweep:
         run_sweep(args)
     else:
         run_benchmark(args)

@@ -594,24 +594,28 @@ class StateStore:
             reason_col = "exit_exit_reason"
 
             r_values = df.get("exit_realized_r", df.get("realized_r", 0))
+            reason_series = df.get(reason_col) if reason_col in df.columns else pd.Series(dtype=object)
+            has_reason = len(reason_series) > 0
             snapshot["overall"] = {
                 "n_trades": len(df),
                 "avg_r": float(r_values.mean()),
                 "win_rate": float((r_values > 0).mean()),
-                "tp_rate": float((df.get(reason_col, "") == "tp").mean()),
-                "sl_rate": float((df.get(reason_col, "") == "sl").mean()),
+                "tp_rate": float((reason_series == "tp").mean()) if has_reason else 0.0,
+                "sl_rate": float((reason_series == "sl").mean()) if has_reason else 0.0,
             }
 
             by_arch = {}
             if arch_col in df.columns:
                 for arch, grp in df.groupby(arch_col):
                     grp_r = grp.get("exit_realized_r", 0)
+                    grp_reason = grp.get(reason_col) if reason_col in grp.columns else pd.Series(dtype=object)
+                    grp_has_reason = len(grp_reason) > 0
                     by_arch[arch] = {
                         "n": len(grp),
                         "avg_r": float(grp_r.mean()),
                         "win_rate": float((grp_r > 0).mean()),
-                        "tp_rate": float((grp.get(reason_col, "") == "tp").mean()),
-                        "sl_rate": float((grp.get(reason_col, "") == "sl").mean()),
+                        "tp_rate": float((grp_reason == "tp").mean()) if grp_has_reason else 0.0,
+                        "sl_rate": float((grp_reason == "sl").mean()) if grp_has_reason else 0.0,
                         "avg_entry_slippage": float(grp.get("friction_entry_slippage_bps", 0).mean()),
                         "avg_mae": float(grp.get("exit_mae", 0).mean()),
                         "avg_mfe": float(grp.get("exit_mfe", 0).mean()),

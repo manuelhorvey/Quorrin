@@ -21,7 +21,7 @@ def vol_adjusted_carry(price: pd.Series, rate_diff: pd.Series, vol_window: int =
     (global distribution hindsight). Each observation is clipped by
     thresholds that only depend on prior data.
     """
-    log_returns = np.log(price.astype(float) / price.astype(float).shift(1))
+    log_returns = np.log(price / price.shift(1))
     realized_vol = log_returns.rolling(vol_window).std() * np.sqrt(252)
     carry_to_vol = rate_diff.reindex(price.index) / realized_vol.replace(0, np.nan)
     lo = carry_to_vol.expanding(min_periods=vol_window).quantile(0.05)
@@ -41,7 +41,7 @@ def momentum_features(price: pd.Series, horizons: list = None) -> pd.DataFrame:
         horizons = [21, 63, 126, 252]
     mom = pd.DataFrame(index=price.index)
     for h in horizons:
-        ret = np.log(price.astype(float) / price.astype(float).shift(h + 1))
+        ret = np.log(price / price.shift(h + 1))
         mom[f"mom_{h}d"] = ret.clip(-0.20, 0.20)
     return mom
 
@@ -69,7 +69,7 @@ def vol_regime_ratio(price: pd.Series, short_window: int = 5, long_window: int =
     Brunnermeier, Nagel & Pedersen (2008) JFE.
     Expected decay: 5-10 days.
     """
-    log_returns = np.log(price.astype(float) / price.astype(float).shift(1))
+    log_returns = np.log(price / price.shift(1))
     short_vol = log_returns.rolling(short_window).std()
     long_vol = log_returns.rolling(long_window).std()
     ratio = short_vol / long_vol.replace(0, np.nan)
@@ -84,7 +84,7 @@ def dxy_momentum(dxy_price: pd.Series, horizon: int = 21) -> pd.Series:
     USD-short pairs (EUR, AUD, GBP) weaken when USD strengthens.
     Expected decay: 5-20 days.
     """
-    ret = np.log(dxy_price.astype(float) / dxy_price.astype(float).shift(horizon + 1))
+    ret = np.log(dxy_price / dxy_price.shift(horizon + 1))
     return ret.clip(-0.05, 0.05)
 
 
@@ -97,7 +97,7 @@ def commodity_momentum(commodity_price: pd.Series, horizon: int = 21) -> pd.Seri
     Chen & Rogoff (2003) JIE.
     Expected decay: 5-15 days.
     """
-    ret = np.log(commodity_price.astype(float) / commodity_price.astype(float).shift(horizon + 1))
+    ret = np.log(commodity_price / commodity_price.shift(horizon + 1))
     return ret.clip(-0.10, 0.10)
 
 
@@ -110,7 +110,7 @@ def vix_momentum(vix_price: pd.Series, horizon: int = 5) -> pd.Series:
     Brunnermeier, Nagel & Pedersen (2008).
     Expected decay: 2-10 days.
     """
-    return vix_price.astype(float).pct_change(horizon)
+    return vix_price.pct_change(horizon)
 
 
 def spx_momentum(spx_price: pd.Series, horizon: int = 5) -> pd.Series:
@@ -121,7 +121,7 @@ def spx_momentum(spx_price: pd.Series, horizon: int = 5) -> pd.Series:
     SPX returns lead FX risk appetite with ~1 day lag.
     Expected decay: 1-5 days.
     """
-    ret = spx_price.astype(float).pct_change(horizon)
+    ret = spx_price.pct_change(horizon)
     return ret.clip(-0.05, 0.05)
 
 
@@ -139,7 +139,7 @@ def cot_net_positioning(
     Use as regime context, not entry signal.
     Expected decay: 1-4 weeks.
     """
-    normalized = net_spec_long.astype(float) / open_interest.astype(float).replace(0, np.nan)
+    normalized = net_spec_long / open_interest.replace(0, np.nan)
     roll_mean = normalized.rolling(lookback, min_periods=26).mean()
     roll_std = normalized.rolling(lookback, min_periods=26).std()
     z = (normalized - roll_mean) / roll_std.replace(0, np.nan)
@@ -168,6 +168,46 @@ def day_of_week_signal(price: pd.Series) -> pd.Series:
     return result
 
 
+def _compute_shared_features(
+    dxy: pd.Series | None = None,
+    vix: pd.Series | None = None,
+    spx: pd.Series | None = None,
+    commodities: pd.DataFrame | None = None,
+    cot_data: pd.DataFrame | None = None,
+    index: pd.Index | None = None,
+) -> dict[str, pd.Series]:
+    features: dict[str, pd.Series] = {}
+    if dxy is not None:
+        v = dxy_momentum(dxy)
+        if index is not None:
+            v = v.reindex(index)
+        features["dxy_mom_21d"] = v
+    if vix is not None:
+        v = vix_momentum(vix)
+        if index is not None:
+            v = v.reindex(index)
+        features["vix_mom_5d"] = v
+    if spx is not None:
+        v = spx_momentum(spx)
+        if index is not None:
+            v = v.reindex(index)
+        features["spx_mom_5d"] = v
+    if commodities is not None:
+        for comm in commodities.columns:
+            v = commodity_momentum(commodities[comm])
+            if index is not None:
+                v = v.reindex(index)
+            features[f"{comm.upper()}_mom_21d"] = v
+    if cot_data is not None:
+        for pair in cot_data.columns:
+            if index is not None or pair in (cot_data.columns if cot_data is not None else []):
+                v = cot_data[pair]
+                if index is not None:
+                    v = v.reindex(index)
+                features[f"{pair}_cot_z"] = v
+    return features
+
+
 def build_alpha_features(
     prices: pd.DataFrame,
     rate_diffs: pd.DataFrame,
@@ -176,6 +216,7 @@ def build_alpha_features(
     spx: pd.Series | None = None,
     commodities: pd.DataFrame | None = None,
     cot_data: pd.DataFrame | None = None,
+    shared_features: dict[str, pd.Series] | None = None,
 ) -> pd.DataFrame:
     """
     Assembles alpha features for all assets into a single DataFrame.
@@ -183,13 +224,17 @@ def build_alpha_features(
     Per-asset columns prefixed with {ASSET}_ (uppercase asset name).
     Cross-asset columns shared across all rows.
 
+    Pass pre-computed *shared_features* (from _compute_shared_features)
+    to avoid recomputing cross-asset features for every asset in the
+    same inference cycle.
+
     Returns a DataFrame with no NaN rows (ffill then dropna at end).
     """
     features = pd.DataFrame(index=prices.index)
 
     for pair in prices.columns:
         asset_upper = pair.upper()
-        close = prices[pair].astype(float)
+        close = prices[pair]
 
         # Align rate_diff to this asset's price index
         rd = (
@@ -208,34 +253,24 @@ def build_alpha_features(
         features[f"{asset_upper}_vol_ratio"] = vol_regime_ratio(close)
         features[f"{asset_upper}_dow_signal"] = day_of_week_signal(close)
 
-    # Cross-asset features
-    if dxy is not None:
-        features["dxy_mom_21d"] = dxy_momentum(dxy).reindex(features.index)
+    # Cross-asset features (reuse pre-computed if provided)
+    if shared_features is not None:
+        for name, series in shared_features.items():
+            features[name] = series.reindex(features.index)
     else:
-        logger.warning("dxy is None — skipping dxy_mom_21d feature")
-
-    if vix is not None:
-        features["vix_mom_5d"] = vix_momentum(vix).reindex(features.index)
-    else:
-        logger.warning("vix is None — skipping vix_mom_5d feature")
-
-    if spx is not None:
-        features["spx_mom_5d"] = spx_momentum(spx).reindex(features.index)
-    else:
-        logger.warning("spx is None — skipping spx_mom_5d feature")
-
-    if commodities is not None:
-        for comm in commodities.columns:
-            features[f"{comm.upper()}_mom_21d"] = commodity_momentum(commodities[comm]).reindex(features.index)
-    else:
-        logger.warning("commodities is None — skipping commodity features")
-
-    if cot_data is not None:
-        for pair in cot_data.columns:
-            if pair in prices.columns:
-                asset_upper = pair.upper()
-                features[f"{asset_upper}_cot_z"] = cot_data[pair].reindex(features.index)
-    else:
-        logger.info("cot_data is None — skipping COT features")
+        if dxy is not None:
+            features["dxy_mom_21d"] = dxy_momentum(dxy).reindex(features.index)
+        if vix is not None:
+            features["vix_mom_5d"] = vix_momentum(vix).reindex(features.index)
+        if spx is not None:
+            features["spx_mom_5d"] = spx_momentum(spx).reindex(features.index)
+        if commodities is not None:
+            for comm in commodities.columns:
+                features[f"{comm.upper()}_mom_21d"] = commodity_momentum(commodities[comm]).reindex(features.index)
+        if cot_data is not None:
+            for pair in cot_data.columns:
+                if pair in prices.columns:
+                    asset_upper = pair.upper()
+                    features[f"{asset_upper}_cot_z"] = cot_data[pair].reindex(features.index)
 
     return features.ffill().dropna()

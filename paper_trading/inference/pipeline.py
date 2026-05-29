@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from datetime import datetime
 
 import numpy as np
@@ -29,15 +30,24 @@ logger = logging.getLogger("quantforge.inference_pipeline")
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ET = pytz.timezone("US/Eastern")
 
+# Max indicator lookback from alpha_features.py:
+#   momentum_features(horizons=[21,63,126,252]) with shift(h+1) → 253
+#   day_of_week_signal rolling(252, min_periods=63) → 252
+# UPDATE THIS if any indicator lookback exceeds 252 + 1
+_MAX_INDICATOR_LOOKBACK = 253
+
 
 class AssetInferencePipeline:
     def __init__(self, asset):
         self.asset = asset
+        self._truncation_validated = False
 
     def generate_signal(self, threshold=0.45):
         return self._generate_and_apply(threshold)
 
     def _generate_and_apply(self, threshold=0.45):
+        _t0 = time.perf_counter()
+
         asset = self.asset
         asset._ensure_position_synced()
         if not asset._trained:
@@ -62,6 +72,8 @@ class AssetInferencePipeline:
         asset.price_data = df
         asset._refresh_liquidity(df)
         df["close"] = df["close"].ffill()
+
+        _t_fetch = time.perf_counter()
 
         # ── Build alpha features ──
         from features.alpha_features import build_alpha_features
@@ -101,6 +113,8 @@ class AssetInferencePipeline:
             bb_std = bb.bollinger_hband() - bb_mavg
             archetype_df["bb_zscore"] = ((ohlcv["close"] - bb_mavg) / (bb_std / 2)).reindex(alpha_idx)
 
+        _t_features = time.perf_counter()
+
         for col in ["adx", "rsi", "bb_zscore", "ema_spread"]:
             if col in archetype_df.columns and archetype_df[col].isna().any():
                 n_nan = archetype_df[col].isna().sum()
@@ -138,7 +152,21 @@ class AssetInferencePipeline:
             except Exception as e:
                 logger.debug("%s: PSI drift skipped: %s", asset.name, e)
 
-        raw = asset._model_iface.predict(asset.model, x)
+        # ── Inference truncation validation (first cycle only) ──
+        if not self._truncation_validated:
+            self._validate_inference_truncation(asset, x)
+            self._truncation_validated = True
+
+        # ── Inference truncation (predict only on latest row) ──
+        _infer_start = time.perf_counter()
+        if getattr(asset, "_truncate_inference", False):
+            x_infer = x.iloc[-1:]
+            features_infer = features_df.iloc[-1:]
+        else:
+            x_infer = x
+            features_infer = features_df
+
+        raw = asset._model_iface.predict(asset.model, x_infer)
         # Binary model -> expand to 3-column format for pipeline compatibility
         if raw.shape[1] == 2:
             proba = np.column_stack([1.0 - raw[:, 1], np.zeros(raw.shape[0]), raw[:, 1]])
@@ -152,10 +180,10 @@ class AssetInferencePipeline:
         if ensemble is not None and getattr(asset, "_regime_model", None) is not None:
             regime_feats = getattr(asset, "regime_feature_names", None)
             if regime_feats:
-                regime_available = [c for c in regime_feats if c in features_df.columns]
+                regime_available = [c for c in regime_feats if c in features_infer.columns]
                 if regime_available:
                     try:
-                        regime_raw = asset._regime_model.predict_proba(features_df)
+                        regime_raw = asset._regime_model.predict_proba(features_infer[regime_available])
                         regime_p_long = regime_raw[:, 1]
                         base_p_long = raw[:, 1]
                         three_col, ensemble_signals = ensemble.combine_and_expand(base_p_long, regime_p_long)
@@ -173,9 +201,11 @@ class AssetInferencePipeline:
         asset._last_meta_proba = None
         if asset._meta_label_model is not None and asset._meta_label_model._trained:
             try:
-                asset._last_meta_proba = asset._meta_label_model.predict_proba(x, proba)
+                asset._last_meta_proba = asset._meta_label_model.predict_proba(x_infer, proba)
             except Exception as e:
                 logger.debug("%s: meta-label inference failed: %s", asset.name, e)
+
+        _t_infer = time.perf_counter()
 
         sizing_cfg = asset._sizing_config(df["close"])
         if asset.config.get("regime_sizing"):
@@ -355,6 +385,19 @@ class AssetInferencePipeline:
         except Exception:
             logger.debug("%s: shadow learning feedback skipped", asset.name)
 
+        _t_total = time.perf_counter()
+        _fetch_time = _t_fetch - _t0
+        _feat_time = _t_features - _t_fetch
+        _infer_time = _t_infer - _t_features
+        _apply_time = _t_total - _t_infer
+        logger.debug(
+            "PIPELINE_BENCHMARK %s: fetch=%.3fs feat=%.3fs infer=%.3fs apply=%.3fs total=%.3fs "
+            "truncate=%s rows=%d",
+            asset.name, _fetch_time, _feat_time, _infer_time, _apply_time, _t_total - _t0,
+            getattr(asset, "_truncate_inference", False),
+            len(x),
+        )
+
         asset._reg.validate_strategies(
             asset.name,
             {
@@ -367,6 +410,45 @@ class AssetInferencePipeline:
         )
 
         return asset._decision_to_dict(decision)
+
+    def _validate_inference_truncation(self, asset, x: pd.DataFrame) -> None:
+        """Validate that predict(x.iloc[-1:]) matches predict(x)[-1].
+
+        Runs once on the first data cycle. Disables truncation if the
+        model interface produces different predictions for the last row
+        when given only that row vs the full history (indicating a
+        stateful/context-dependent model).
+        """
+        if len(x) < _MAX_INDICATOR_LOOKBACK + 1:
+            logger.warning(
+                "%s: insufficient rows (%d) for truncation validation — disabling",
+                asset.name, len(x),
+            )
+            asset._truncate_inference = False
+            return
+
+        x_warm = x.iloc[_MAX_INDICATOR_LOOKBACK:]
+        try:
+            full = asset._model_iface.predict(asset.model, x_warm)
+            truncated = asset._model_iface.predict(asset.model, x_warm.iloc[-1:])
+        except Exception as e:
+            logger.warning("%s: truncation validation failed — %s", asset.name, e)
+            asset._truncate_inference = False
+            return
+
+        max_diff = float(np.max(np.abs(full[-1:] - truncated)))
+        if max_diff > 1e-6:
+            logger.warning(
+                "%s: inference truncation diff=%.2e (>=1e-6) — disabling truncation",
+                asset.name, max_diff,
+            )
+            asset._truncate_inference = False
+        else:
+            logger.info(
+                "%s: inference truncation validated (diff=%.2e, rows=%d)",
+                asset.name, max_diff, len(x),
+            )
+            asset._truncate_inference = True
 
     def _record_inference_proxies(self, proba: np.ndarray, x: pd.DataFrame, signal: str) -> None:
         """Store macro vs blend directions for adaptive weight feedback on trade close."""

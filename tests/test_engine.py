@@ -202,8 +202,8 @@ class TestPaperTradingEngineState:
                 "feature_stability": {},
                 "drawdown": 0,
             },
-            check_halt_conditions=lambda: {"halted": False},
-            update_validity=lambda: {"state": "GREEN", "exposure": 1.0},
+            check_halt_conditions=lambda *a, **kw: {"halted": False},
+            update_validity=lambda *a, **kw: {"state": "GREEN", "exposure": 1.0},
         )
         engine = PaperTradingEngine.__new__(PaperTradingEngine)
         engine.assets = {"TEST": asset}

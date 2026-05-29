@@ -1,5 +1,7 @@
 import logging
 import os
+import statistics
+import time
 from datetime import datetime
 from enum import Enum
 
@@ -17,9 +19,6 @@ from paper_trading.config_manager import get_config
 from paper_trading.entry.decision import PositionIntent, PositionSide
 from paper_trading.execution.bridge import ExecutionBridge
 from paper_trading.execution.paper_broker import PaperBroker
-from paper_trading.orchestrator.actor import AssetActor
-from paper_trading.orchestrator.engine import EngineOrchestrator
-from paper_trading.replay.wal import WalWriter
 
 # Re-exported from child modules for backward compatibility
 from paper_trading.ops.data_fetcher import (  # noqa: F401
@@ -34,6 +33,9 @@ from paper_trading.ops.data_fetcher import (  # noqa: F401
 from paper_trading.ops.experiment_context import ExperimentContext
 from paper_trading.ops.market_hours import is_market_closed
 from paper_trading.ops.simulation_snapshot import SimulationStore, build_asset_snapshot
+from paper_trading.orchestrator.actor import AssetActor
+from paper_trading.orchestrator.engine import EngineOrchestrator
+from paper_trading.replay.wal import WalWriter
 from paper_trading.satellite.engine import HighVolSatellite, SatelliteConfig
 from paper_trading.satellite.runner import (
     compute_btc_context,
@@ -114,6 +116,13 @@ class PaperTradingEngine:
         self._sim_store = SimulationStore(BASE)
         self._rebalance_last_day: datetime | None = None
         self._rebalance_weights: dict[str, float] = {}
+
+        # Performance benchmark state
+        self._cycle_times: list[float] = []
+        self._cycle_times_maxlen = 1000
+        self._cached_mtm_total: float | None = None
+        self._cached_mtm_cycle: int = 0
+        self._cycle_count: int = 0
 
         # Fault-isolated actor orchestrator (Phase 5)
         self._orchestrator = EngineOrchestrator(
@@ -302,7 +311,34 @@ class PaperTradingEngine:
             except Exception as e:
                 logger.error("%s: training FAILED - %s", name, e)
 
+    def _compute_mtm_total(self) -> float:
+        """Compute total portfolio MTM with cycle-level caching.
+
+        Invalidated once per run_once() cycle to avoid redundant O(N)
+        iterations over all assets.
+        """
+        if not hasattr(self, "_cached_mtm_total"):
+            self._cached_mtm_total = None
+            self._cached_mtm_cycle = 0
+            self._cycle_count = 0
+        if self._cached_mtm_total is not None and self._cached_mtm_cycle == self._cycle_count:
+            return self._cached_mtm_total
+        mtm = sum(a.mtm_value for a in self.assets.values())
+        if self.satellite is not None:
+            mtm += self.satellite.current_value
+        self._cached_mtm_total = mtm
+        self._cached_mtm_cycle = self._cycle_count
+        return mtm
+
     def run_once(self):
+        _t0 = time.perf_counter()
+        if not hasattr(self, "_cycle_count"):
+            self._cycle_count = 0
+            self._cached_mtm_total = None
+            self._cached_mtm_cycle = 0
+            self._cycle_times = []
+        self._cycle_count += 1
+
         if is_market_closed():
             logger.debug("Market closed — core assets skipped")
             return self._run_satellite_only()
@@ -322,9 +358,7 @@ class PaperTradingEngine:
         results: dict[str, object] = {}
 
         # ── Portfolio drawdown check (BEFORE any new trading) ────────
-        mtm = sum(a.mtm_value for a in self.assets.values())
-        if self.satellite is not None:
-            mtm += self.satellite.current_value
+        mtm = self._compute_mtm_total()
         if self.portfolio_peak_value is None or mtm > self.portfolio_peak_value:
             self.portfolio_peak_value = mtm
         portfolio_dd = (
@@ -387,12 +421,18 @@ class PaperTradingEngine:
                 pass  # signals already captured in results
             # Future: route trades, snapshots, attribution to state store
 
+        _t1 = time.perf_counter()
+
         # ── Narrative refresh ──────────────────────────────────────────
         self._refresh_narrative()
+
+        _t2 = time.perf_counter()
 
         # ── Periodic risk-parity rebalance ─────────────────────────────
         if self._should_rebalance():
             self._rebalance_portfolio()
+
+        _t3 = time.perf_counter()
 
         # ── Satellite run ──────────────────────────────────────────────
         if self.satellite is not None:
@@ -410,6 +450,27 @@ class PaperTradingEngine:
         })
 
         self.last_update = datetime.now(tz=ET)
+
+        # ── Cycle benchmark ───────────────────────────────────────────
+        _elapsed = time.perf_counter() - _t0
+        self._cycle_times.append(_elapsed)
+        if len(self._cycle_times) > self._cycle_times_maxlen:
+            self._cycle_times = self._cycle_times[-self._cycle_times_maxlen:]
+        _orch_time = _t1 - _t0
+        _narr_time = _t2 - _t1
+        _rebal_time = _t3 - _t2
+        _sat_time = _elapsed - (_t3 - _t0)
+        if len(self._cycle_times) % 20 == 0:
+            recent = self._cycle_times[-100:]
+            p50 = statistics.median(recent)
+            p95 = sorted(recent)[int(len(recent) * 0.95)]
+            logger.info(
+                "BENCHMARK: cycle=%.3fs  orch=%.3fs  narr=%.3fs  rebal=%.3fs  sat=%.3fs  "
+                "p50=%.3fs  p95=%.3fs  n=%d",
+                _elapsed, _orch_time, _narr_time, _rebal_time, _sat_time,
+                p50, p95, len(recent),
+            )
+
         return results
 
     def _run_satellite(self, results: dict) -> None:
@@ -601,7 +662,7 @@ class PaperTradingEngine:
             return
 
         # Compute governance-adjusted vols per asset
-        total_value = sum(a.mtm_value for a in self.assets.values())
+        total_value = self._compute_mtm_total()
 
         adjusted = returns.copy()
         for col in adjusted.columns:
@@ -651,8 +712,8 @@ class PaperTradingEngine:
         for name, asset in self.assets.items():
             asset.refresh_price()
             metrics = asset.get_metrics()
-            halt = asset.check_halt_conditions()
-            validity = asset.update_validity()
+            halt = asset.check_halt_conditions(metrics=metrics)
+            validity = asset.update_validity(halt=halt)
             overall_validity += validity.get("exposure", 0.0)
             if halt["halted"]:
                 any_halted = True
@@ -687,7 +748,7 @@ class PaperTradingEngine:
                 "stop_out_last_side": getattr(asset, "_last_stop_out_side", None),
                 "stop_out_last_date": (str(d) if (d := getattr(asset, "_last_stop_out_date", None)) else None),
             }
-        total_value = sum(a.mtm_value for a in self.assets.values())
+        total_value = self._compute_mtm_total()
         rp_weights = {}
         rp_allocations = {}
         if self._rebalance_weights:
@@ -718,7 +779,7 @@ class PaperTradingEngine:
         tc = get_config().capital or sum(a.initial_capital for a in self.assets.values())
 
         # mtm_total = sum of all assets MTM + satellite MTM + cash buffer
-        mtm_total = sum(a.mtm_value for a in self.assets.values())
+        mtm_total = self._compute_mtm_total()
         sat_unrealized = 0.0
         if self.satellite is not None:
             mtm_total += self.satellite.current_value

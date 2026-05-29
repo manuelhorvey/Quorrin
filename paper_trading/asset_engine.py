@@ -1184,8 +1184,8 @@ class AssetEngine:
         if self.state_store is not None:
             self.state_store.append_confidence_bucket(bucket)
 
-    def update_validity(self):
-        halt = self.check_halt_conditions()
+    def update_validity(self, halt: dict | None = None):
+        halt = self.check_halt_conditions() if halt is None else halt
         score = 0.80
         if not halt["drawdown_ok"]:
             score -= 0.25
@@ -1239,8 +1239,8 @@ class AssetEngine:
         }
         return result
 
-    def check_halt_conditions(self):
-        metrics = self.get_metrics()
+    def check_halt_conditions(self, metrics: dict | None = None):
+        metrics = self.get_metrics() if metrics is None else metrics
         dd = metrics.get("drawdown", 0) / 100
         if pd.isna(dd):
             dd = 0
@@ -1262,7 +1262,6 @@ class AssetEngine:
         if len(self.prob_history) < 3:
             pass  # not enough signals to measure drift — skip
         prob_drift_limit = hc.get("prob_drift", 0.25)
-        metrics = self.get_metrics()
         mean_conf = metrics.get("mean_confidence", 0) / 100
         if pd.isna(mean_conf):
             mean_conf = 0

@@ -19,6 +19,8 @@ data/shadow_feedback/
 data/shadow_learning/
 data/sandbox/
 data/research/
+.ruff_cache/
+.hypothesis/
 paper_trading/dashboard/node_modules/
 paper_trading/dashboard/dist/
 paper_trading/dashboard/tsconfig.tsbuildinfo

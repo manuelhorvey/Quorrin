@@ -72,6 +72,16 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 class PaperTradingEngine:
     def __init__(self, state_store=None):
+        from tools.import_guard import verify_feature_pipeline
+
+        report = verify_feature_pipeline()
+        if report["status"] != "CLEAN":
+            logger.warning(
+                "Import firewall: %d forbidden module(s) loaded — %s",
+                len(report["forbidden_modules_loaded"]),
+                ", ".join(report["forbidden_modules_loaded"]),
+            )
+
         self.state_store = state_store or _STORE
         self.assets = {}
         self.start_date = datetime.now(tz=ET)

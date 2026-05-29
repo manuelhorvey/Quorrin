@@ -1,6 +1,5 @@
 import logging
 
-from shared.features import DefaultFeaturePipeline
 from shared.model import XGBoostModel
 from shared.pnl import DefaultPnLStrategy
 from shared.signal import FixedThresholdStrategy
@@ -13,7 +12,6 @@ _BASELINE_CLASSES = {
     "signal": FixedThresholdStrategy,
     "sizing": VolTargetSizing,
     "pnl": DefaultPnLStrategy,
-    "features": DefaultFeaturePipeline,
 }
 
 
@@ -43,7 +41,7 @@ class StrategyRegistry:
             self._signal.setdefault(asset, FixedThresholdStrategy())
             self._sizing.setdefault(asset, VolTargetSizing())
             self._pnl.setdefault(asset, DefaultPnLStrategy())
-            self._features.setdefault(asset, DefaultFeaturePipeline())
+            self._features.setdefault(asset, None)
 
     def get_model(self, asset: str):
         if asset not in self._models:
@@ -66,9 +64,7 @@ class StrategyRegistry:
         return self._pnl[asset]
 
     def get_features(self, asset: str):
-        if asset not in self._features:
-            self._features[asset] = DefaultFeaturePipeline()
-        return self._features[asset]
+        return self._features.get(asset)
 
     def register_model(self, asset: str, impl) -> None:
         self._assert_baseline("model", impl)

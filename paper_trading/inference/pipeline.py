@@ -6,9 +6,7 @@ import numpy as np
 import pandas as pd
 import pytz
 
-from features.contract import validate_no_cross_asset_leakage
 from features.regime_features import generate_regime_features
-from features.registry import FEATURE_REGISTRY
 from paper_trading.entry.decision import SignalType, TradeDecision
 from paper_trading.governance.drift import get_shadow_intelligence as _get_drift
 from paper_trading.governance.risk import evaluate as _risk_evaluate

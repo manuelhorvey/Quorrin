@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 
-from features.builder import build_features, compute_macro_derived
-from features.contract import FeatureContract
 from shared.pnl import DefaultPnLStrategy
 from shared.signal import FixedThresholdStrategy
 from shared.sizing import VolTargetSizing
@@ -92,14 +90,4 @@ def compute_sl_tp(
     return sl, tp
 
 
-def compute_features(
-    df: pd.DataFrame,
-    macro: pd.DataFrame,
-    ref: pd.DataFrame | None,
-    contract: FeatureContract,
-) -> pd.DataFrame:
-    return build_features(df, macro, ref, contract)
 
-
-def compute_macro_derived_wrapper(macro_df: pd.DataFrame) -> pd.DataFrame:
-    return compute_macro_derived(macro_df)

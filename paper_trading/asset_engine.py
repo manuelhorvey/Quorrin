@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytz
 
-from features.builder import build_features, model_path
 from labels.meta_labels import MetaLabelModel
 from monitoring.importance_tracker import ImportanceStore, StabilityResult
 from monitoring.psi_monitor import PSIMonitor, PSISnapshot
@@ -80,7 +79,7 @@ class AssetEngine:
         self.last_signal_date = None
         self.trades = []
         self.prob_history = []
-        self.model_path = model_path(ticker)
+        self.model_path = os.path.join(BASE, "paper_trading", "models", f"{contract.name}_model.pkl")
         self._trained = False
         self.position = None
         self.trade_log = []
@@ -221,9 +220,6 @@ class AssetEngine:
 
     def _refresh_liquidity(self, df) -> None:
         self.governance.refresh_liquidity(df)
-
-    def _build_features(self, df, ref, macro):
-        return build_features(df, macro, ref, self.contract)
 
     def _effective_capital(self) -> float:
         if self.initial_capital <= 0:

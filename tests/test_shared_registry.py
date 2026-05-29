@@ -5,7 +5,6 @@ from shared.model import XGBoostModel
 from shared.signal import FixedThresholdStrategy
 from shared.sizing import VolTargetSizing
 from shared.pnl import DefaultPnLStrategy
-from shared.features import DefaultFeaturePipeline
 
 
 # ── StrategyRegistry ─────────────────────────────────────────────────────────
@@ -30,7 +29,7 @@ def test_register_defaults_creates_entries():
     assert isinstance(registry.get_signal("EURUSD"), FixedThresholdStrategy)
     assert isinstance(registry.get_sizing("EURUSD"), VolTargetSizing)
     assert isinstance(registry.get_pnl("EURUSD"), DefaultPnLStrategy)
-    assert isinstance(registry.get_features("EURUSD"), DefaultFeaturePipeline)
+    assert registry.get_features("EURUSD") is None
 
 
 def test_get_model_creates_on_demand():
@@ -57,10 +56,10 @@ def test_get_pnl_creates_on_demand():
     assert isinstance(pnl, DefaultPnLStrategy)
 
 
-def test_get_features_creates_on_demand():
+def test_get_features_returns_none_by_default():
     registry = StrategyRegistry.get_instance()
     features = registry.get_features("UNKNOWN")
-    assert isinstance(features, DefaultFeaturePipeline)
+    assert features is None
 
 
 def test_register_model():
@@ -103,7 +102,7 @@ def test_validate_strategies_does_not_crash():
         "_signal": FixedThresholdStrategy(),
         "_sizing": VolTargetSizing(),
         "_pnl": DefaultPnLStrategy(),
-        "_feature_pipeline": DefaultFeaturePipeline(),
+        "_feature_pipeline": None,
     }
     registry.validate_strategies("EURUSD", strategies)
 

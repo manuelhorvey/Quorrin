@@ -44,11 +44,11 @@ class Handler:
                     params[k] = v
         return params
 
-    def do_HEAD(self):
+    def do_HEAD(self):  # noqa: N802
         self._send_body = False
         self.do_GET()
 
-    def do_GET(self):
+    def do_GET(self):  # noqa: N802
         qs = self.path.split("?", 1)
         path = qs[0]
         query = self._parse_query(qs[1] if len(qs) > 1 else "")
@@ -107,7 +107,7 @@ class Handler:
         self.send_response(404)
         self.end_headers()
 
-    def do_POST(self):
+    def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length > 0 else b""
         path = self.path.split("?")[0]

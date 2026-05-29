@@ -10,8 +10,8 @@ _sizing_strategy = VolTargetSizing()
 _pnl_strategy = DefaultPnLStrategy()
 
 
-def compute_proba(model, X: pd.DataFrame) -> np.ndarray:
-    return model.predict_proba(X)
+def compute_proba(model, x: pd.DataFrame) -> np.ndarray:
+    return model.predict_proba(x)
 
 
 def compute_signals(

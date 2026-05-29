@@ -95,7 +95,7 @@ def analyze_model_distribution(
 
 def analyze_feature_impact(
     model,
-    X_row: pd.DataFrame,
+    x_row: pd.DataFrame,
     feature_names: list,
     baseline_proba: np.ndarray,
 ) -> list:
@@ -105,9 +105,9 @@ def analyze_feature_impact(
         impacts = []
 
         for feat in feature_names[:20]:
-            if feat not in X_row.columns:
+            if feat not in x_row.columns:
                 continue
-            perturbed = X_row.copy()
+            perturbed = x_row.copy()
             perturbed[feat] = 0.0
             perturbed_proba = model.predict_proba(perturbed)
             perturbed_conf = float(perturbed_proba[0, baseline_class])

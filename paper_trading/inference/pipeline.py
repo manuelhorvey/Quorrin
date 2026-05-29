@@ -121,7 +121,7 @@ class AssetInferencePipeline:
         if not available:
             raise ValueError(f"No alpha feature columns found for {asset.name}")
 
-        X = alpha_df[available]
+        x = alpha_df[available]
         features_df = pd.concat([alpha_df, archetype_df], axis=1)
 
         # PSI drift: skip first cycle (warm-up), then rolling 21d vs baseline
@@ -133,15 +133,14 @@ class AssetInferencePipeline:
                 if latest_df is not None and not latest_df.empty:
                     top10 = latest_df[latest_df["rank"] <= 10]
                     top_features = [(r["feature"], r["importance_score"]) for r in top10.to_dict("records")]
-                    X_current = X.tail(21)
-                    asset._last_psi_drift = asset._psi_monitor.compute_drift(asset.name, X_current, top_features)
+                    x_current = x.tail(21)
+                    asset._last_psi_drift = asset._psi_monitor.compute_drift(asset.name, x_current, top_features)
             except Exception as e:
                 logger.debug("%s: PSI drift skipped: %s", asset.name, e)
 
-        raw = asset._model_iface.predict(asset.model, X)
+        raw = asset._model_iface.predict(asset.model, x)
         # Binary model -> expand to 3-column format for pipeline compatibility
         if raw.shape[1] == 2:
-            p_long = raw[:, 1].reshape(-1, 1)
             proba = np.column_stack([1.0 - raw[:, 1], np.zeros(raw.shape[0]), raw[:, 1]])
         elif raw.shape[1] >= 3:
             proba = raw[:, :3]
@@ -174,7 +173,7 @@ class AssetInferencePipeline:
         asset._last_meta_proba = None
         if asset._meta_label_model is not None and asset._meta_label_model._trained:
             try:
-                asset._last_meta_proba = asset._meta_label_model.predict_proba(X, proba)
+                asset._last_meta_proba = asset._meta_label_model.predict_proba(x, proba)
             except Exception as e:
                 logger.debug("%s: meta-label inference failed: %s", asset.name, e)
 
@@ -189,7 +188,7 @@ class AssetInferencePipeline:
             asset._current_regime = "neutral"
             pos_size = asset._sizing_strategy.compute(df["close"], sizing_cfg)
 
-        result = asset._signal_strategy.compute(proba, X.index, threshold, df["close"], pos_size)
+        result = asset._signal_strategy.compute(proba, x.index, threshold, df["close"], pos_size)
 
         # ── Ensemble breakdown logging ──
         asset._ensemble_breakdown = {}
@@ -239,7 +238,7 @@ class AssetInferencePipeline:
             except Exception as e:
                 logger.debug("%s: archetype classification failed: %s", asset.name, e)
 
-        self._record_inference_proxies(proba, X, result.signal_type)
+        self._record_inference_proxies(proba, x, result.signal_type)
         asset.signal_data = result.signal_data
 
         latest = asset.signal_data.iloc[-1]
@@ -269,7 +268,7 @@ class AssetInferencePipeline:
 
         trace_decision(
             asset=asset.name,
-            features={k: round(float(v), 6) for k, v in X.iloc[-1].items()},
+                features={k: round(float(v), 6) for k, v in x.iloc[-1].items()},
             proba=[float(proba[-1, 0]), float(proba[-1, 1]), float(proba[-1, 2])],
             threshold=threshold,
             signal=decision.signal,
@@ -280,7 +279,7 @@ class AssetInferencePipeline:
             halt_flags=asset.check_halt_conditions(),
         )
 
-        _shadow_signal_df = _w.compute_signals(proba, X.index, threshold)
+        _shadow_signal_df = _w.compute_signals(proba, x.index, threshold)
         _shadow_latest = _shadow_signal_df.iloc[-1]
         _shadow_stype, _shadow_conf, _shadow_conf_pct = _w.signal_type_and_confidence(
             int(_shadow_latest["signal"]),
@@ -316,7 +315,7 @@ class AssetInferencePipeline:
             _mod_div = diag.analyze_model_distribution(asset.name, _proba_list)
             _feat_drivers = diag.analyze_feature_impact(
                 asset.model,
-                X.iloc[[-1]],
+                x.iloc[[-1]],
                 asset.features,
                 proba[-1:],
             )
@@ -369,7 +368,7 @@ class AssetInferencePipeline:
 
         return asset._decision_to_dict(decision)
 
-    def _record_inference_proxies(self, proba: np.ndarray, X: pd.DataFrame, signal: str) -> None:
+    def _record_inference_proxies(self, proba: np.ndarray, x: pd.DataFrame, signal: str) -> None:
         """Store macro vs blend directions for adaptive weight feedback on trade close."""
         asset = self.asset
         asset._last_macro_dir = None
@@ -377,13 +376,13 @@ class AssetInferencePipeline:
         asset._entry_signal_dir = 1 if signal == "BUY" else (-1 if signal == "SELL" else 0)
 
         macro_head = getattr(asset.model, "macro_head", None) if asset.model else None
-        if macro_head is None or X.empty:
+        if macro_head is None or x.empty:
             return
         try:
-            macro_cols = [c for c in macro_head.features if c in X.columns]
+            macro_cols = [c for c in macro_head.features if c in x.columns]
             if len(macro_cols) < 3:
                 return
-            macro_probs = macro_head.predict_proba(X.iloc[[-1]][macro_cols])[0]
+            macro_probs = macro_head.predict_proba(x.iloc[[-1]][macro_cols])[0]
             asset._last_macro_dir = int(np.argmax(macro_probs)) - 1
             asset._last_blend_dir = int(np.argmax(proba[-1])) - 1
         except Exception:

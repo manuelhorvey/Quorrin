@@ -79,7 +79,7 @@ class AssetTrainingPipeline:
         if len(train) < 200:
             train = features
 
-        X = train[asset._alpha_feature_cols]
+        x = train[asset._alpha_feature_cols]
         y = train["label"].astype(int)
         y_binary = _prepare_binary_labels(y, asset.name)
 
@@ -90,15 +90,15 @@ class AssetTrainingPipeline:
             logger.warning("%s: binary labels only one class — skipping", asset.name)
             return
 
-        X_binary = X.loc[y_binary.index]
+        x_binary = x.loc[y_binary.index]
         y_vals = y_binary.values
 
         from sklearn.model_selection import train_test_split
 
         min_class = y_binary.value_counts().min()
         strat = y_binary if min_class >= 2 else None
-        X_tr, X_ev, y_tr, y_ev = train_test_split(
-            X_binary,
+        x_tr, x_ev, y_tr, y_ev = train_test_split(
+            x_binary,
             y_vals,
             test_size=0.2,
             random_state=42,
@@ -115,7 +115,7 @@ class AssetTrainingPipeline:
             tree_method="hist",
             verbosity=0,
         )
-        model.fit(X_tr, y_tr, eval_set=[(X_ev, y_ev)], verbose=False)
+        model.fit(x_tr, y_tr, eval_set=[(x_ev, y_ev)], verbose=False)
 
         asset.model = model
         asset._trained = True
@@ -127,7 +127,7 @@ class AssetTrainingPipeline:
 
         # Persist PSI baseline
         try:
-            asset._psi_monitor.persist_baseline(asset.name, X)
+            asset._psi_monitor.persist_baseline(asset.name, x)
         except Exception as e:
             logger.warning("%s: failed to persist PSI baseline: %s", asset.name, e)
 
@@ -137,7 +137,7 @@ class AssetTrainingPipeline:
                 threshold=asset.config.get("meta_labeling", {}).get("threshold", 0.55),
             )
             try:
-                primary_pred = model.predict_proba(X_binary)
+                primary_pred = model.predict_proba(x_binary)
                 full_train = train.copy()
                 full_train["label"] = y
                 asset._meta_label_model.train(full_train, primary_pred, asset._alpha_feature_cols, asset.name)
@@ -193,17 +193,17 @@ class AssetTrainingPipeline:
             if len(available) < 3:
                 logger.warning("%s: too few regime features available — skipping regime model", asset.name)
                 return
-            X_regime = features_df[available].reindex(train_features.index).dropna()
-            y_regime_raw = train_features["label"].astype(int).reindex(X_regime.index).dropna()
+            x_regime = features_df[available].reindex(train_features.index).dropna()
+            y_regime_raw = train_features["label"].astype(int).reindex(x_regime.index).dropna()
             y_regime = _prepare_binary_labels(y_regime_raw, asset.name)
-            common = X_regime.index.intersection(y_regime.index)
+            common = x_regime.index.intersection(y_regime.index)
             if len(common) < 100:
                 logger.warning("%s: insufficient binary regime data (%d) — skipping", asset.name, len(common))
                 return
             if y_regime.loc[common].nunique() < 2:
                 logger.warning("%s: regime labels only one class — skipping", asset.name)
                 return
-            regime_model.train(X_regime.loc[common], y_regime.loc[common], available)
+            regime_model.train(x_regime.loc[common], y_regime.loc[common], available)
             asset._regime_model = regime_model
         else:
             return

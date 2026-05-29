@@ -44,7 +44,7 @@ class RegimeConditionalModel:
 
     def train(
         self,
-        X: pd.DataFrame,
+        x: pd.DataFrame,
         y: pd.Series,
         feature_names: list[str],
     ) -> None:
@@ -69,7 +69,7 @@ class RegimeConditionalModel:
             tree_method="hist",
             verbosity=0,
         )
-        self._model.fit(X[self._feature_names], y_int)
+        self._model.fit(x[self._feature_names], y_int)
         self._trained = True
 
         path = self._base_path()
@@ -79,19 +79,19 @@ class RegimeConditionalModel:
             f.write("\n".join(feature_names))
         logger.info(
             "regime model trained on %d samples, %d features -> %s.json",
-            len(X),
+            len(x),
             len(feature_names),
             path,
         )
 
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+    def predict_proba(self, x: pd.DataFrame) -> np.ndarray:
         if not self._trained or self._model is None:
             raise RuntimeError("regime model not trained — call train() first")
-        raw = self._model.predict_proba(X[self._feature_names])
+        raw = self._model.predict_proba(x[self._feature_names])
         return raw  # shape (n, 2): column 0 = P(SHORT), column 1 = P(LONG)
 
-    def predict_long_prob(self, X: pd.DataFrame) -> np.ndarray:
-        raw = self.predict_proba(X)
+    def predict_long_prob(self, x: pd.DataFrame) -> np.ndarray:
+        raw = self.predict_proba(x)
         return raw[:, 1].reshape(-1, 1)  # shape (n, 1): P(LONG)
 
     def load(self) -> bool:

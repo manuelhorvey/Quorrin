@@ -153,7 +153,10 @@ def _generate_explanations(drift_scores: dict, risk_flags: list, sl_rate: float 
         "SIGNAL_INSTABILITY": "Signal flip rate increased beyond historical percentile (mismatch rate {score:.2f})",
         "PNL_DEGRADATION": "PnL divergence exceeds expected baseline variance (MAE {score:.2f})",
         "FEATURE_UNSTABLE": "Feature stability declining, Jaccard similarity dropping (stability {score:.2f})",
-        "REGIME_SHIFT": "Regime classification mismatch increasing vs historical distribution (consistency {score:.2f})",
+        "REGIME_SHIFT": (
+            "Regime classification mismatch increasing vs historical distribution "
+            "(consistency {score:.2f})"
+        ),
         "ELEVATED_SL_HITS": "SL hit rate elevated ({score:.1%}) — consider wider stops or lower sizing",
         "EXCESSIVE_SL_HITS": "SL hit rate critical ({score:.1%}) — halting, stops too tight or model broken",
     }

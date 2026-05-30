@@ -24,13 +24,15 @@ QuantForge operates as a **factor-style allocation system**: 30+ tickers are scr
 ```
 
 | Layer | Description |
-|---|---|
+|---|---|---|
 | **Screening** | 30 tickers via walk-forward (3y window, 1y step, 5 folds, per-asset pt_sl) |
 | **Scoring** | Composite score: IC + hit rate + consistency + bidirectionality |
-| **Feature Engineering** | Alpha features: vol-adjusted carry, multi-horizon momentum, z-score reversion, vol regime, DOW + cross-asset (DXY/VIX/SPX/WTI mom) |
+| **Feature Engineering** | Alpha features: vol-adjusted carry, multi-horizon momentum, z-score reversion, vol regime, DOW + cross-asset (DXY/VIX/SPX/WTI mom). Macro tickers batched into single `yf.download` with TTL cache (300s). |
 | **Models** | Binary XGBoost (binary:logistic, 300 trees, depth=2, lr=0.02) per asset |
 | **Archetype Classification** | 5 pure-feature market structure archetypes from OHLCV (EMA spread, ADX, RSI, BB z-score) |
-| **Execution** | EntryOptimizer → ExecutionPolicy → PositionManager with 7-layer governance |
+| **Inference** | Vectorized triple-barrier (`sliding_window_view` + broadcast + argmax). Async diagnostics via daemon consumer thread. Inference truncation with behavioral validation (500d → 250d for hot path). Model hot-swap re-validation on object identity change. |
+| **Execution** | EntryOptimizer → ExecutionPolicy → PositionManager with 7-layer governance. All 13 assets run in parallel via `ThreadPoolExecutor(max_workers=8)`. |
+| **State** | SQLite-backed state store (WAL mode, 5 tables, O(1) append) with periodic WAL checkpoint. Legacy JSON snapshots preserved for backward compatibility. |
 | **Monitoring** | PSI drift, feature stability, narrative governance, liquidity regime, validity state machine |
 
 ## Current Portfolio
@@ -83,15 +85,18 @@ All data normalized to TZ-naive date index. No FRED data — macro derived from 
 ### Model Pipeline
 
 ```
-1. fetch_live(ticker)           → 250d OHLCV, TZ-normalized
+1. fetch_live(ticker)           → 500d OHLCV, TZ-normalized
 2. refresh_price()               → patch last close (realtime or 5d fallback)
-3. fetch_asset_data()            → 10y close + macro
+3. fetch_asset_data()            → 10y close + macro (batched yf.download, TTL 300s)
 4. build_alpha_features()        → alpha_df (~30 feature cols)
-5. fetch_asset_ohlcv()           → 10y OHLCV for archetype
-6. XGBoost predict               → binary → 3-col proba expansion
-7. Archetype classification      → 5 types from OHLCV
-8. FixedThresholdStrategy(0.45)  → BUY/SELL/FLAT
-9. EntryOptimizer → Policy → Position management
+5. fetch_asset_ohlcv()           → 10y OHLCV for archetype (no rate-limit sleep)
+6. Inference truncation          → 500d → 250d with behavioral validation
+7. Model hot-swap validation     → re-validate full chain on object identity change
+8. XGBoost predict               → binary → 3-col proba expansion
+9. Archetype classification      → 5 types from OHLCV
+10. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
+11. Async diagnostics enqueue    → model/feature snapshots off hot path
+12. EntryOptimizer → Policy → Position management (via parallel orchestrator)
 ```
 
 ### Training
@@ -109,8 +114,10 @@ All data normalized to TZ-naive date index. No FRED data — macro derived from 
 ### Execution Pipeline
 
 ```
-TradeDecision → EntryOptimizer → ExecutionPolicyLayer → _can_enter() gate
+TradeDecision (13 assets in parallel via EngineOrchestrator) 
+    → EntryOptimizer → ExecutionPolicyLayer → _can_enter() gate
     → _open_position() → PositionManager (SL/TP/scale-out) → Attribution
+    → HealthMonitor tracks per-asset HEALTHY/DEGRADED/HALTED
 ```
 
 Seven-layer governance: validity state machine, feature stability, meta-labeling, macro narrative (weekly LLM), liquidity regime, PSI drift, portfolio drawdown.
@@ -144,6 +151,7 @@ export FRED_API_KEY=your_key
 | `scripts/score_tickers.py` | Score tickers and produce promotion report |
 | `scripts/generate_promotion_report.py` | Generate markdown report + YAML config block |
 | `scripts/train_all_assets.py` | Force-retrain all assets |
+| `benchmarks/microbenchmark.py` | Hot-path microbenchmark (cold/warm cycles, sweep, profile) |
 
 ## Governance Layers
 
@@ -167,6 +175,9 @@ export FRED_API_KEY=your_key
 - Frozen execution contract — PolicyDecision → FillResult → AttributionRecord immutable chain
 - Seven-layer governance — independently configurable, worst-wins aggregation
 - Per-asset pt_sl — `tp_mult`/`sl_mult` from config, applied at label time and runtime
+- Inference truncation symmetry — training uses 5y data; live inference fetches 500d, truncates to 250d for XGB
+- SQLite state store — all persistent state in single WAL-mode database
+- Parallel asset isolation — 13 AssetEngine instances execute independently via ThreadPoolExecutor
 
 ## Project Structure
 
@@ -184,17 +195,25 @@ paper_trading/         # Live trading engine
 ├── engine.py          # PaperTradingEngine (orchestrator)
 ├── asset_engine.py    # AssetEngine (per-asset lifecycle)
 ├── portfolio_builder.py # Portfolio construction from YAML config
+├── state_store.py     # SQLite-backed state store (5 tables, WAL mode)
 ├── inference/
-│   ├── pipeline.py    # Live inference pipeline
+│   ├── pipeline.py    # Live inference pipeline (truncation, async diagnostics)
+│   ├── async_diagnostics.py  # Diagnostics daemon thread (off-hot-path)
 │   └── training.py    # Binary XGBoost training pipeline
 ├── entry/             # Entry optimizer, policy, TP compiler
 ├── position/          # Position manager, dynamic SL/TP, scale-out
 ├── governance/        # Narrative, liquidity, regime, drift
 ├── execution/         # Paper broker, bridge
+├── orchestrator/      # EngineOrchestrator, AssetActor, health state machine
 ├── shadow/            # Counterfactual replay engine
 ├── satellite/         # BTC satellite engine
 ├── ops/               # Data fetcher, diagnostics, tracer
-└── attribution/       # Trade attribution collector
+├── api/               # REST API routes (state, trades, attribution, execution quality)
+└── dashboard/         # React SPA frontend (Vite)
+benchmarks/            # Hot-path microbenchmark harness
+├── microbenchmark.py  # CLI: cold/warm cycles, asset × worker sweep, profiling
+├── mock_data.py       # MockDataFixture (synthetic OHLCV at yfinance boundary)
+└── README.md          # Reference numbers and usage
 scripts/               # Research + ops scripts
 ├── walk_forward_backtest.py  # Multi-ticker walk-forward screening
 ├── score_tickers.py          # Promotion scoring
@@ -207,7 +226,7 @@ monitoring/            # PSI drift, validity state machine
 ## Known Constraints
 
 - Paper trading only (no live capital)
-- Data limited to Yahoo Finance + FRED
+- Data limited to Yahoo Finance (no FRED in production)
 - JPY/CHF crosses may show NaN prices on first cycle (incomplete daily bar)
 - Ensemble system disabled by default (`ensemble.enabled: false` in config)
 - 16 of 30 screened tickers classified RED (not promoted)

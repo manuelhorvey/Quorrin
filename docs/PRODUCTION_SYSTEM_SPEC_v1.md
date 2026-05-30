@@ -59,14 +59,30 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
                               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    INFERENCE LAYER (per cycle, every 300s)               │
+│  Parallel asset fetch (ThreadPoolExecutor, max_workers=8)               │
 │                                                                         │
 │  ┌─────────────┐   ┌──────────────────┐   ┌───────────────────┐        │
 │  │ fetch_live  │──▶│ alpha+archetype  │──▶│ XGBoost predict   │        │
-│  │ 250d OHLCV  │   │ features         │   │ binary → 3-col    │        │
-│  │ + realtime  │   │                  │   │ proba expansion   │        │
-│  │ price patch │   │                  │   └───────────────────┘        │
-│  └─────────────┘   └──────────────────┘            │                    │
-│                                                    ▼                    │
+│  │ 500d OHLCV  │   │ features         │   │ binary → 3-col    │        │
+│  │ (truncated  │   │                  │   │ proba expansion   │        │
+│  │  to 250d    │   └──────────────────┘   └───────────────────┘        │
+│  │  for XGB)   │         │                          │                  │
+│  │ + realtime  │         │                          │                  │
+│  │ price patch │         ▼                          ▼                  │
+│  └─────────────┘   ┌───────────────┐   ┌─────────────────────┐         │
+│                    │ AsyncDiagnos- │   │ Archetype           │         │
+│                    │ tics Queue    │   │ classification     │         │
+│                    │ (daemon)      │   │ 5 types from OHLCV  │         │
+│                    │ → 8 heavy     │   └─────────────────────┘         │
+│                    │   imports     │              │                    │
+│                    │   off hotpath │              ▼                    │
+│                    └───────────────┘   ┌─────────────────────┐         │
+│                                        │ FixedThreshold     │         │
+│                                        │ Strategy(0.45)     │         │
+│                                        │ BUY/SELL/FLAT      │         │
+│                                        └─────────────────────┘         │
+│                                              │                          │
+│                                              ▼                          │
 │  ┌──────────────────┐   ┌──────────────────┐   ┌───────────────────┐   │
 │  │ Position Manager │◀──│ EntryOptimizer   │◀──│ FixedThreshold   │   │
 │  │ SL/TP/scale-out  │   │ + Policy Layer   │   │ Strategy(0.45)   │   │
@@ -80,7 +96,8 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 │                                                                         │
 │  13 assets, equal-risk weights (7.7% each)                              │
 │  + BTC satellite (5% AUM cap, macro gate)                               │
-│  PaperBroker → state.json → dashboard                                   │
+│  SQLite state store (WAL mode): trades, attribution, equity_history     │
+│  PaperBroker → StateStore → state.json + state.db → dashboard           │
 │  7-layer governance overlay                                             │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -210,26 +227,31 @@ Format: XGBoost `.json` (not pickle)
 
 **Frequency**: Every 300 seconds (configurable via `QUANTFORGE_REFRESH_INTERVAL`)
 
+**Parallel execution**: 13 AssetEngine instances run via ThreadPoolExecutor (max_workers=8) in phases: REFRESH+Signal (parallel), VALIDITY (sequential), PORTFOLIO health, PERSIST.
+
 **Steps**:
-1. `fetch_live(ticker)` — 250 days OHLCV
+1. `fetch_live(ticker)` — 500 days OHLCV (yfinance `period="500d"`)
 2. Normalize index to UTC TZ-naive date (fixes FX cross date shift)
 3. `refresh_price()` — real-time price via `fast_info` or 5d fallback
 4. `ffill()` close column
-5. `fetch_asset_data()` — 10y close + macro
+5. `fetch_asset_data()` — 10y close + macro (macro tickers batched into single `yf.download` call, TTL cache 300s)
 6. `build_alpha_features()` — alpha_df (~30 feature cols)
-7. `fetch_asset_ohlcv()` — 10y full OHLCV (0.5s rate-limited)
+7. `fetch_asset_ohlcv()` — 10y full OHLCV (no rate-limit sleep)
 8. Archetype features from OHLCV: ema_spread, ADX(14), RSI(14), BB_zscore(20)
 9. PSI drift check (rolling 21d vs baseline; skipped first cycle)
-10. XGBoost predict → 3-column proba expansion:
+10. Inference truncation: 500d → 250d via `_truncate_to_window()`, with behavioral validation (window size, date range, NaN ratio)
+11. Model hot-swap validation: checks object identity change (`model is not last_model`) and re-validates full inference chain on swap
+12. XGBoost predict → 3-column proba expansion:
     ```python
     if raw.shape[1] == 2:  # binary model
         proba = np.column_stack([1.0 - raw[:,1], zeros, raw[:,1]])
     ```
-11. Optional regime ensemble blend (disabled unless `ensemble.enabled: true`)
-12. Optional meta-label inference
-13. `FixedThresholdStrategy(threshold=0.45)` → SignalType (BUY/SELL/FLAT)
-14. Archetype classification → `TradeDecision(close_price, confidence, probs, ...)`
-15. `_apply_decision()` → EntryOptimizer → ExecutionPolicyLayer → PositionManager
+13. Optional regime ensemble blend (disabled unless `ensemble.enabled: true`)
+14. Optional meta-label inference
+15. `FixedThresholdStrategy(threshold=0.45)` → SignalType (BUY/SELL/FLAT)
+16. Archetype classification → `TradeDecision(close_price, confidence, probs, ...)`
+17. DiagnosticsSnapshot enqueues model/feature snapshots off hot path via async daemon consumer (8 heavy imports removed from inference thread)
+18. `_apply_decision()` → EntryOptimizer → ExecutionPolicyLayer → PositionManager
 
 ### 5.2 Signal Contract
 
@@ -323,6 +345,7 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 In-memory TTL cache per download type:
 - OHLCV: 60s TTL
 - Realtime price: 5s TTL
+- Macro data (DXY, VIX, SPX, WTI, TNX): 300s TTL, batched into single `yf.download` call
 
 ---
 
@@ -338,6 +361,9 @@ In-memory TTL cache per download type:
 8. **Worst-wins governance**: Most negative penalty applied, not averaged
 9. **Per-asset pt_sl**: Barrier geometry from config, applied label-time and runtime
 10. **.json serialization**: No pickle in production
+11. **Inference truncation symmetry**: Training uses 5y data; live inference fetches 500d, truncates to 250d for XGBoost (matching training window)
+12. **SQLite state store**: All persistent state in single WAL-mode database; legacy JSON/parquet files are read-only fallbacks
+13. **Parallel asset isolation**: 13 AssetEngine instances execute independently via ThreadPoolExecutor; health monitor tracks per-asset DEGRADED/HALTED states independently
 
 ---
 
@@ -354,9 +380,15 @@ In-memory TTL cache per download type:
 | `paper_trading/engine.py` | Engine orchestrator |
 | `paper_trading/asset_engine.py` | Per-asset lifecycle |
 | `paper_trading/portfolio_builder.py` | Portfolio from config |
+| `paper_trading/state_store.py` | SQLite state persistence (5 tables, WAL mode) |
 | `paper_trading/inference/pipeline.py` | Live inference pipeline |
 | `paper_trading/inference/training.py` | Binary XGBoost training |
+| `paper_trading/inference/async_diagnostics.py` | Deferred diagnostics (daemon consumer queue) |
+| `paper_trading/orchestrator/engine.py` | Parallel asset orchestration (ThreadPoolExecutor) |
+| `paper_trading/orchestrator/actor.py` | Per-asset actor with health state |
+| `paper_trading/orchestrator/health.py` | Portfolio-level health monitor + circuit breaker |
 | `paper_trading/models/` | Trained models (.json) |
+| `benchmarks/microbenchmark.py` | Isolated performance benchmark (`--state-dir`) |
 | `scripts/walk_forward_backtest.py` | Multi-ticker screening |
 | `scripts/score_tickers.py` | Promotion scoring |
 | `scripts/generate_promotion_report.py` | Report + YAML generation |
@@ -374,6 +406,8 @@ In-memory TTL cache per download type:
 5. **16/30 tickers RED** — not promoted; reflects weak IC for most FX pairs
 6. **No FRED** — macro derived from yfinance tickers only; no FRED API dependency in production
 7. **JPY/CHF cross TZ issue** — fixed via UTC normalization in pipeline
+8. **Attribution table schema gap** — `attribution` table in SQLite lacks friction columns (`friction_fill_qty_ratio`, `friction_gap_fill`, `friction_partial_fill`, `friction_latency_bars`) that exist in `trades` table. Frontend uses nullish defaults (`??`) as workaround.
+9. **Benchmark isolation** — `microbenchmark.py --state-dir` uses temp directory by default; must never point at production `data/live/`
 
 ---
 

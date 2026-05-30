@@ -8,6 +8,7 @@ Project documentation for the QuantForge cross-sectional factor ranking and pape
 |-------|-------------|
 | [`PAPER_TRADING_RUNBOOK.md`](PAPER_TRADING_RUNBOOK.md) | Daily/weekly ops, halt responses, troubleshooting |
 | [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) | Architecture, components, data flow |
+| [`PRODUCTION_SYSTEM_SPEC_v1.md`](PRODUCTION_SYSTEM_SPEC_v1.md) | Canonical system spec: architecture, pipeline, invariants, constraints |
 | [`GOVERNANCE_LAYER.md`](GOVERNANCE_LAYER.md) | 7-layer governance: validity, narrative, liquidity, PSI, halt chain |
 | [`FEATURES.md`](FEATURES.md) | Alpha features, data ingestion, archetype features, regime features, labeling |
 | [`LIVE_CONTRACT.md`](../LIVE_CONTRACT.md) | Immutable production system contract (model, feature, data, label specs) |
@@ -18,9 +19,12 @@ Project documentation for the QuantForge cross-sectional factor ranking and pape
 |---|---|---|
 | Screening | `scripts/walk_forward_backtest.py`, `score_tickers.py` | Multi-ticker walk-forward backtest, promotion scoring |
 | Training | `paper_trading/inference/training.py` | Binary XGBoost training with alpha features |
-| Inference | `paper_trading/inference/pipeline.py` | Live pipeline: OHLCV → alpha features → XGBoost → decision |
+| Inference | `paper_trading/inference/pipeline.py` | Live pipeline: OHLCV → alpha features → XGBoost → decision (inference truncation, async diagnostics) |
+| Async diagnostics | `paper_trading/inference/async_diagnostics.py` | DiagnosticsSnapshot + DiagnosticsQueue daemon thread (8 heavy imports deferred off hot path) |
+| State store | `paper_trading/state_store.py` | SQLite-backed persistent state (WAL mode, 5 tables, O(1) append) |
 | Portfolio | `paper_trading/portfolio_builder.py` | 13-asset equal-risk portfolio from YAML config |
-| Engine | `paper_trading/engine.py` | Paper trading orchestrator (300s cycle) |
+| Engine | `paper_trading/engine.py` | Paper trading orchestrator (300s cycle, parallel asset fetch) |
+| Benchmark | `benchmarks/microbenchmark.py` | Network-independent hot-path microbenchmark with synthetic mock data |
 
 ### Historical Research Archives
 

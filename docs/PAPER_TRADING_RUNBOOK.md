@@ -11,16 +11,19 @@ Operational procedures for the paper trading system. This document is for the pe
 | Start command | `./monitor_all` |
 | Dashboard URL | `http://127.0.0.1:5000` |
 | Config file | `configs/paper_trading.yaml` |
-| State file | `data/live/state.json` |
+| State file (JSON) | `data/live/state.json` |
+| State store (SQLite) | `data/live/state.db` (5 tables: trades, attribution, shadow_trades, confidence_buckets, equity_history) |
 | Model files | `paper_trading/models/*.json` |
 | Logs | stdout (redirect to file as needed) |
 | Refresh interval | 300s / 5 min (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var) |
-| Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; dashboard stays live with CLSD badge |
+| Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; core assets skipped, BTC satellite-only polling via `_run_satellite_only()` |
 | Weekend polling | Reduced to every 120s (state) / 5 min (secondary endpoints) |
-| Market hours logic | `paper_trading/market_hours.py` — `is_market_closed()` |
+| Market hours logic | `paper_trading/ops/market_hours.py` — `is_market_closed()` |
 | Retrain frequency | Annual (January 1) |
 | Training window | 5-year expanding |
+| Feature build window | 500d (inference truncation validates and trims to 250d for XGBoost hot path) |
 | Hardening history | `docs/archive/research_system_v1/HARDENING_ROADMAP.md` |
+| Benchmarks | `benchmarks/README.md` (reference: 1.63s warm p50 for 15 assets, 8 workers) |
 
 ### Assets
 
@@ -690,10 +693,18 @@ Project Root/
 │   └── paper_trading.yaml        # Assets, halt, vol_baselines, execution_config
 ├── data/
 │   ├── live/
-│   │   ├── state.json            # Current portfolio and asset state
-│   │   ├── trade_journal.parquet  # Trade journal with exit reasons
-│   │   ├── equity_history.parquet # Equity curve over time
-│   │   └── trade_outcomes.json   # Aggregated TP/SL/win rates
+│   │   ├── state.json            # Current portfolio and asset state (EngineSnapshot)
+│   │   ├── state.db              # SQLite state store (WAL mode, O(1) append)
+│   │   │   ├── trades            # Trade journal with exit reasons
+│   │   │   ├── attribution       # 4-domain attribution records
+│   │   │   ├── shadow_trades     # Counterfactual shadow trade records
+│   │   │   ├── confidence_buckets # Per-asset confidence histogram buckets
+│   │   │   └── equity_history    # Portfolio equity over time
+│   │   ├── trade_outcomes.json   # Aggregated TP/SL/win rates (cached from SQLite)
+│   │   ├── analytics_snapshot.json # Precomputed analytics (5-cycle gated)
+│   │   ├── equity_history.json   # Legacy equity curve
+│   │   ├── review_log.json       # Weekly review acknowledgment log
+│   │   └── cache/                # Per-ticker OHLCV parquet cache
 │   ├── research/
 │   │   ├── lead_lag_matrix.parquet
 │   │   ├── lead_lag_edges.yaml
@@ -703,34 +714,41 @@ Project Root/
 │   └── processed/
 │       ├── macro_factors.parquet # FRED macro data
 │       └── walkforward_summary.csv  # 30-asset walk-forward ranking
+├── benchmarks/                   # Hot-path microbenchmark
+│   ├── microbenchmark.py         # CLI: cold/warm cycles, sweep, profile
+│   ├── mock_data.py              # MockDataFixture (synthetic OHLCV at yfinance boundary)
+│   └── README.md                 # Reference numbers and usage
 ├── paper_trading/
 │   ├── engine.py                 # PaperTradingEngine + PaperBroker
 │   ├── asset_engine.py           # Per-asset lifecycle + _can_enter() entry gate
-│   ├── state_store.py            # Parquet persistence + analytics snapshot
-│   ├── serve_routes.py           # REST API route registry (30+ endpoints)
-│   ├── serve.py                  # HTTP server entry point
-│   ├── execution_bridge.py       # Slippage-aware fills for AssetEngine
-│   ├── market_hours.py           # Weekend detection: is_market_closed()
-│   ├── serve_common.py           # Shared serve utilities
-│   ├── trade_attribution.py      # 4-domain AttributionCollector
-│   ├── shadow_sltp.py            # ShadowSLTPEngine (counterfactual replay)
-│   └── models/
-│       ├── BTC_model.pkl
-│       ├── GC_model.pkl
-│       ├── EURAUD_model.pkl
-│       ├── GBPCAD_model.pkl
-│       └── USDCAD_model.pkl
-├── scripts/
-│   ├── run_extended_history_pipeline.py  # Backfill + extended_predictions stubs
-│   ├── train_all_assets.py       # 30-asset training pipeline
-│   ├── walk_forward_all.py       # Walk-forward for all assets
-│   ├── gbpcad_walk_forward.py    # GBPCAD-specific walk-forward validation
-│   └── gc_walk_forward.py        # GC=F-specific fwd60 validation
-├── risk/
-│   └── position_sizing.py        # Volatility-scaled sizing
-├── monitoring/
-│   └── validity_state_machine.py # GREEN/YELLOW/RED state machine
-└── monitor_all                    # Entry point script
+│   ├── state_store.py            # SQLite state store (5 tables, WAL mode)
+│   ├── inference/
+│   │   ├── pipeline.py           # Live inference pipeline (truncation, async diag)
+│   │   ├── async_diagnostics.py  # DiagnosticsSnapshot + DaignosticsQueue daemon
+│   │   └── training.py           # Binary XGBoost training pipeline
+│   ├── orchestrator/
+│   │   ├── engine.py             # EngineOrchestrator (ThreadPoolExecutor, phases 1-4)
+│   │   ├── actor.py              # AssetActor (run_cycle lifecycle)
+│   │   └── health.py             # HealthMonitor (validity, drawdown, signal drought)
+│   ├── api/
+│   │   ├── routes.py             # REST API route handlers (30+ endpoints)
+│   │   ├── common.py             # Shared cache, MIME types, vol baselines
+│   │   └── server.py             # HTTP server entry point
+│   ├── dashboard/                # React SPA (Vite + TypeScript)
+│   │   ├── src/components/       # React components
+│   │   └── dist/                 # Built frontend
+│   ├── entry/                    # Entry optimizer, policy, TP compiler
+│   ├── position/                 # Position manager, dynamic SL/TP, scale-out
+│   ├── governance/               # Narrative, liquidity, regime, drift
+│   ├── execution/                # Paper broker, bridge
+│   ├── shadow/                   # Counterfactual replay engine
+│   ├── satellite/                # BTC satellite engine
+│   ├── ops/                      # Data fetcher, diagnostics, tracer
+│   └── models/                   # Per-asset XGBoost model files
+├── scripts/                      # Backtesting, training, scoring, migrations
+├── shared/                       # Pluggable strategy interfaces, execution config
+├── monitoring/                   # PSI drift, validity state machine
+└── monitor_all                   # Entry point script
 ```
 
 ## Appendix: Troubleshooting

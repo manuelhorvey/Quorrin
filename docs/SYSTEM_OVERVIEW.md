@@ -24,19 +24,21 @@ Architecture, component responsibilities, and data flow for the QuantForge cross
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    LIVE INFERENCE (every 300s)                       │
+│  Parallel asset fetch (ThreadPoolExecutor, max_workers=8)           │
 │                                                                     │
 │  ┌─────────────┐    ┌──────────────────┐    ┌────────────────┐     │
 │  │ fetch_live  │───▶│ build_alpha_     │───▶│ XGBoost        │     │
-│  │ 250d OHLCV  │    │ features()       │    │ binary predict │     │
-│  └─────────────┘    └──────────────────┘    └────────────────┘     │
-│        │                                       │                    │
-│        ▼                                       ▼                    │
-│  ┌─────────────┐    ┌──────────────────┐    ┌────────────────┐     │
-│  │ fetch_asset_│───▶│ Archetype        │───▶│ FixedThreshold │     │
-│  │ ohlcv() 10y │    │ features (OHLCV) │    │ Strategy(0.45) │     │
-│  └─────────────┘    └──────────────────┘    └────────────────┘     │
-│                                                    │                │
-│                                                    ▼                │
+│  │ 500d OHLCV  │    │ features()       │    │ binary predict │     │
+│  │ (truncated  │    └──────────────────┘    └────────────────┘     │
+│  │  to 250d    │                              │    │               │
+│  │  for XGB)   │                              │    ▼               │
+│  └─────────────┘    ┌──────────────────┐    ┌────────────────┐     │
+│                     │ AsyncDiagnostics │    │ Archetype      │     │
+│                     │ Queue (daemon)   │    │ features       │     │
+│                     │ → 8 heavy imports│    │ (OHLCV)        │     │
+│                     │   off hot path   │    └────────────────┘     │
+│                     └──────────────────┘         │                  │
+│                                                   ▼                 │
 │  ┌──────────────┐    ┌──────────────┐    ┌────────────────┐        │
 │  │ Entry        │───▶│ Execution    │───▶│ Position       │        │
 │  │ Optimizer    │    │ Policy Layer │    │ Manager        │        │
@@ -45,8 +47,11 @@ Architecture, component responsibilities, and data flow for the QuantForge cross
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    PORTFOLIO (13 assets)                             │
-│  Equal-risk allocation → PaperBroker → state.json → dashboard      │
+│                    STATE PERSISTENCE                                 │
+│  SQLite state store (WAL mode, O(1) append):                        │
+│  trades, attribution, shadow_trades, confidence_buckets,            │
+│  equity_history → trade_outcomes.json (cached aggregates)          │
+│  state.json (EngineSnapshot) → dashboard                            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +62,7 @@ Architecture, component responsibilities, and data flow for the QuantForge cross
 | Module | Key Exports | Purpose |
 |---|---|---|
 | `alpha_features.py` | `build_alpha_features()` | Alpha feature factory: vol-adjusted carry, multi-horizon momentum (21/63/126/252d), z-score reversion (20d), vol regime ratio, day-of-week signal + cross-asset (DXY/VIX/SPX/WTI momentum) |
-| `data_fetch.py` | `fetch_asset_data()`, `fetch_asset_ohlcv()`, `fetch_yf_series()` | YFinance ingestion: asset close + macro (10y), full OHLCV (10y), TZ-naive date normalization |
+| `data_fetch.py` | `fetch_asset_data()`, `fetch_asset_ohlcv()`, `fetch_yf_series()`, `_fetch_macro_batch()` | YFinance ingestion: asset close + macro (10y), full OHLCV (10y), TZ-naive date normalization. Macro tickers batched into single `yf.download` call. TTL cache (300s) for macro data. Removed 0.5s hard sleep. |
 | `labels.py` | `triple_barrier_labels()`, `PurgedWalkForwardFolds` | Vol-scaled triple-barrier labeling with purged walk-forward CV |
 | `regime_features.py` | `generate_regime_features()`, `compute_hurst()`, `compute_kaufman_er()` | Regime detection: Hurst exponent, KER, ADX, vol z-score, compression ratio, session vol profile |
 | `archetypes.py` | `ArchetypeClassifier`, `SetupArchetype` | 5 pure-feature market structure archetypes (MOMENTUM_IGNITION, MEAN_REVERSION, BREAKOUT_TEST, VOL_EXPANSION, UNKNOWN) |
@@ -80,11 +85,13 @@ Architecture, component responsibilities, and data flow for the QuantForge cross
 |---|---|---|
 | `PaperTradingEngine` | `engine.py` | Top-level orchestrator: manages 13 AssetEngine instances + BTC satellite; `run_once()` cycle every 300s |
 | `AssetEngine` | `asset_engine.py` | Per-asset lifecycle: inference, position management, governance, halt conditions |
-| `AssetInferencePipeline` | `inference/pipeline.py` | Live inference: OHLCV fetch → alpha features → XGBoost → archetype → decision |
+| `AssetInferencePipeline` | `inference/pipeline.py` | Live inference: OHLCV fetch → alpha features → XGBoost → archetype → decision. Inference truncation (500d → 250d) with behavioral validation. Model hot-swap re-validation on object identity change. |
 | `AssetTrainingPipeline` | `inference/training.py` | On-demand training: yfinance → alpha features → binary XGBoost → model save |
+| `DiagnosticsSnapshot` | `inference/async_diagnostics.py` | Deferred diagnostics: captures model/feature snapshots on hot path, processes off-thread via daemon consumer queue. 8 heavy imports removed from inference hot path. |
 | `EnsembleSignal` | `inference/ensemble.py` | Optional regime ensemble blend (disabled by default) |
 | `RegimeConditionalModel` | `inference/regime_model.py` | Optional regime-conditional XGBoost (disabled by default) |
 | `PortfolioBuilder` | `portfolio_builder.py` | Builds asset registry from `configs/paper_trading.yaml` |
+| `StateStore` | `state_store.py` | SQLite-backed persistent state (WAL mode). 5 tables: trades, attribution, shadow_trades, confidence_buckets, equity_history. O(1) append, periodic WAL checkpoint. Falls back to legacy JSON files. |
 | `EntryOptimizer` | `entry/optimizer.py` | Evaluate signal + archetype + structure → ENTER/DEFER/SKIP |
 | `ExecutionPolicyLayer` | `entry/policy.py` | Unified policy routing with POLICY_MAP dispatch |
 | `PositionManager` | `position/manager.py` | Position lifecycle (open/close/SL/TP/scale-out) |
@@ -94,6 +101,9 @@ Architecture, component responsibilities, and data flow for the QuantForge cross
 | `ShadowSLTPEngine` | `shadow/engine.py` | Counterfactual SL/TP replay on live tape |
 | `AttributionCollector` | `attribution/collector.py` | Observe-only 4-domain trade attribution |
 | `HighVolSatellite` | `satellite/engine.py` | BTC satellite with macro gate |
+| `EngineOrchestrator` | `orchestrator/engine.py` | Orchestrates parallel asset execution (ThreadPoolExecutor, max_workers=8). Phases: REFRESH+Signal (parallel), VALIDITY (sequential), PORTFOLIO health, PERSIST. |
+| `AssetActor` | `orchestrator/actor.py` | Actor wrapper around each asset. Tracks health state (HEALTHY/DEGRADED/HALTED), cycle timing, exposure. |
+| `HealthMonitor` | `orchestrator/health.py` | Portfolio-level health computation: drawdown, vol spike, signal drought, halt ratio. Emergency circuit breaker at 50% halt ratio. |
 
 ### Governance (`paper_trading/governance/`, `monitoring/`)
 
@@ -131,23 +141,24 @@ graph LR
 
 ```mermaid
 graph TD
-    A[yfinance 5min] --> B[fetch_live: 250d OHLCV]
+    A[yfinance 5min] --> B[fetch_live: 500d OHLCV]
     B --> C[TZ-normalize to UTC date]
     C --> D[refresh_price: realtime or 5d fallback]
     D --> E[ffill close column]
     E --> F[fetch_asset_data: 10y close + macro]
-    F --> G[build_alpha_features]
+    F --> F1[macro batched via yf.download<br>TTL cache 300s]
+    F1 --> G[build_alpha_features]
     G --> H[fetch_asset_ohlcv: 10y OHLCV]
     H --> I[archetype features: ema_spread, ADX, RSI, BB]
     I --> J[XGBoost predict binary]
     J --> K[3-col proba expansion]
-    K --> L[optional regime ensemble blend]
-    L --> M[optional meta-label inference]
-    M --> N[FixedThresholdStrategy(0.45)]
-    N --> O[archetype classification]
-    O --> P[TradeDecision]
-    P --> Q[_apply_decision]
-    Q --> R[EntryOptimizer → Policy → Position]
+    K --> L[FixedThresholdStrategy(0.45)]
+    L --> M[archetype classification]
+    M --> N[TradeDecision]
+    N --> O[inference truncation: 500d→250d<br>model hot-swap validation]
+    O --> P[_apply_decision]
+    P --> Q[EntryOptimizer → Policy → Position]
+    R[DiagnosticsSnapshot<br>async daemon queue<br>8 heavy imports off hotpath] -.-> J
 ```
 
 ### 3. Training Pipeline
@@ -168,11 +179,9 @@ graph LR
 
 | Store | Format | Purpose |
 |---|---|---|
-| `state.json` | JSON | Atomic engine state |
-| `trade_journal.parquet` | Parquet | Trade journal with exit reasons |
-| `attribution.parquet` | Parquet | 4-domain attribution records |
-| `shadow_trades.parquet` | Parquet | Shadow counterfactual outcomes |
-| `equity_history.parquet` | Parquet | Equity curve |
+| `state.json` | JSON | EngineSnapshot serialization → dashboard |
+| `state.db` (SQLite) | SQLite (WAL mode) | 5 persistent tables: trades, attribution, shadow_trades, confidence_buckets, equity_history |
+| `trade_outcomes.json` | JSON | Cached aggregate outcomes (rebuilt from SQLite on demand) |
 
 ## Configuration
 
@@ -184,6 +193,7 @@ graph LR
 - Narrative governance config
 - Liquidity governance config
 - Per-asset regime geometry (GREEN/YELLOW/RED sl/tp multipliers)
+- Engine orchestrator (parallel asset fetch, max_workers)
 
 ## Key Entry Points
 
@@ -194,5 +204,6 @@ graph LR
 | Generate promotion report | `python scripts/generate_promotion_report.py` |
 | Start paper trading + dashboard | `./monitor_all` |
 | Force-retrain all assets | `python scripts/train_all_assets.py` |
+| Run microbenchmark | `python benchmarks/microbenchmark.py --state-dir /tmp/bench-state` |
 | Run tests | `pytest tests/ -q --tb=short` |
 | Dashboard URL | `http://127.0.0.1:5000` |

@@ -1,19 +1,18 @@
 import pytest
 import pandas as pd
 import numpy as np
-from labels.triple_barrier import apply_triple_barrier, get_volatility
+from labels.triple_barrier import apply_triple_barrier
+from shared.volatility import compute_atr_pct
 
 
-class TestGetVolatility:
-    def test_returns_series(self):
-        close = pd.Series(np.random.randn(200).cumsum() + 100, name="close")
-        vol = get_volatility(close)
+class TestComputeAtrPct:
+    def test_returns_series(self, sample_price_data):
+        vol = compute_atr_pct(sample_price_data, period=14)
         assert isinstance(vol, pd.Series)
         assert len(vol) > 0
 
-    def test_positive_values(self):
-        close = pd.Series(np.random.randn(200).cumsum() + 100, name="close")
-        vol = get_volatility(close)
+    def test_positive_values(self, sample_price_data):
+        vol = compute_atr_pct(sample_price_data, period=14)
         assert (vol > 0).all()
 
 

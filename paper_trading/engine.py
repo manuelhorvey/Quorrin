@@ -797,7 +797,9 @@ class PaperTradingEngine:
                         "entry": s.entry_price,
                         "sl": s.stop_price,
                         "tp": s.target_price,
-                    } if s.position_active else None,
+                    }
+                    if s.position_active
+                    else None,
                 },
                 "halt": {"halted": False},
                 "execution_state": "ACTIVE",
@@ -890,9 +892,9 @@ class PaperTradingEngine:
             "allocations": {n: a.allocation for n, a in self.assets.items()},
             "deployment_cleared": True,
             "open_positions": sum(a.pos_mgr.has_position() for a in self.assets.values())
-                + (1 if self.satellite is not None and self.satellite.position_active else 0),
+            + (1 if self.satellite is not None and self.satellite.position_active else 0),
             "closed_trades": sum(len(a.trade_log) for a in self.assets.values())
-                + (self.satellite.closed_trades if self.satellite is not None else 0),
+            + (self.satellite.closed_trades if self.satellite is not None else 0),
             "execution_state": exec_state.value,
             "average_validity_exposure": round(overall_validity / n, 4),
             "satellite_allocation_pct": round(satellite_pct, 2),

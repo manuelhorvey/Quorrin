@@ -66,7 +66,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 
 class PaperTradingEngine:
-    def __init__(self, state_store=None, wal_writer=None):
+    def __init__(self, state_store=None, wal_writer=None, config=None):
         from tools.import_guard import verify_feature_pipeline
 
         report = verify_feature_pipeline()
@@ -95,7 +95,8 @@ class PaperTradingEngine:
             )
         saved_positions = (snapshot.open_positions or {}) if snapshot else {}
 
-        cfg = get_config()
+        cfg = config or get_config()
+        self._engine_cfg = cfg
         self.execution_configs = build_execution_configs(cfg.assets, defaults=cfg.execution_defaults)
         self.broker = PaperBroker(
             initial_capital=cfg.capital,
@@ -140,7 +141,7 @@ class PaperTradingEngine:
     def _build_asset_registry(self) -> None:
         from paper_trading.portfolio_builder import build_paper_portfolio as _build_paper_portfolio
 
-        portfolio = _build_paper_portfolio(get_config().halt)
+        portfolio = _build_paper_portfolio(self._engine_cfg.halt)
         _reg = StrategyRegistry.get_instance()
         _reg.register_defaults(list(portfolio.keys()))
         for name, spec in portfolio.items():
@@ -163,7 +164,7 @@ class PaperTradingEngine:
         universe = tuple(sorted(self.assets.keys()))
         ctx = ExperimentContext.initialize(
             asset_universe=universe,
-            execution_config=get_config().execution_defaults,
+            execution_config=self._engine_cfg.execution_defaults,
         )
         export_dir = os.path.join(BASE, "data", "research", "attribution")
         for name, asset in self.assets.items():
@@ -317,7 +318,7 @@ class PaperTradingEngine:
                     ctx.freeze.experiment_id,
                 )
 
-        pd_limit = get_config().portfolio_drawdown_limit
+        pd_limit = self._engine_cfg.portfolio_drawdown_limit
         results: dict[str, object] = {}
 
         # ── Portfolio drawdown check (BEFORE any new trading) ────────

@@ -62,13 +62,15 @@ class AssetEngine:
         retrain_window=None,
         execution_bridge=None,
         market_data_service=None,
+        engine_config=None,
     ):
         self.ticker = ticker
         self.name = name
         self.contract = contract
         self.features = list(contract.features)
         self.allocation = allocation
-        engine_cfg = get_config()
+        engine_cfg = engine_config or get_config()
+        self._engine_cfg = engine_cfg
         self.initial_capital = initial_capital if initial_capital is not None else engine_cfg.capital * allocation
         self.capital_base = self.initial_capital
         self.halt_config = halt_config or dict(engine_cfg.halt)

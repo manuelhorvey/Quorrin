@@ -3,238 +3,544 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Status](https://img.shields.io/badge/status-paper%20trading-green)
 ![WalkForward](https://img.shields.io/badge/walk--forward-30%20assets%20screened-success)
-![Portfolio](https://img.shields.io/badge/portfolio-13%20assets%20%7C%20BTC%20satellite-blue)
+![Portfolio](https://img.shields.io/badge/portfolio-15%20live%20assets-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/QuantForge/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/QuantForge)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
-Cross-sectional FX/commodity/crypto factor ranking system with walk-forward validated asset screening, binary XGBoost per-asset models, and a live paper trading execution layer.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset machine learning models, governance-driven execution, and replay-oriented state architecture.
 
-## System Overview
+---
 
-QuantForge operates as a **factor-style allocation system**: 30+ tickers are screened via expanding-window walk-forward backtests, scored on IC/hit rate/consistency, and promoted to a live paper portfolio. Each promoted asset runs an independent binary XGBoost model conditioned on alpha features (vol-adjusted carry, multi-horizon momentum, z-score reversion, vol regime, cross-asset macro momentum) with archetype-aware execution and 7-layer governance.
+# Design Philosophy
 
-```
-┌─────────────┐    ┌──────────────┐    ┌────────────┐    ┌─────────────────┐
-│ Screening   │───▶│ Promotion    │───▶│ Live       │───▶│ Portfolio       │
-│ 30 tickers  │    │ GREEN/YELLOW │    │ Inference  │    │ 15 assets       │
-│ walk-fwd    │    │ RED          │    │ binary XGB │    │ equal-risk wts  │
-└─────────────┘    └──────────────┘    └────────────┘    └─────────────────┘
-```
+QuantForge is built around a simple principle:
 
-| Layer | Description |
-|---|---|---|
-| **Screening** | 30 tickers via walk-forward (3y window, 1y step, 5 folds, per-asset pt_sl) 15 promoted |
-| **Scoring** | Composite score: IC + hit rate + consistency + bidirectionality |
-| **Feature Engineering** | Alpha features: vol-adjusted carry, multi-horizon momentum, z-score reversion, vol regime, DOW + cross-asset (DXY/VIX/SPX/WTI mom). Macro tickers batched into single `yf.download` with TTL cache (300s). |
-| **Models** | Binary XGBoost (binary:logistic, 300 trees, depth=2, lr=0.02) per asset |
-| **Archetype Classification** | 5 pure-feature market structure archetypes from OHLCV (EMA spread, ADX, RSI, BB z-score) |
-| **Inference** | Vectorized triple-barrier (`sliding_window_view` + broadcast + argmax). Async diagnostics via daemon consumer thread. Inference truncation with behavioral validation (500d → 250d for hot path). Model hot-swap re-validation on object identity change. |
-| **Execution** | EntryOptimizer → ExecutionPolicy → PositionManager with 7-layer governance. All 15 assets run in parallel via `ThreadPoolExecutor(max_workers=8)`. |
-| **State** | SQLite-backed state store (WAL mode, 5 tables, O(1) append) with periodic WAL checkpoint. Legacy JSON snapshots preserved for backward compatibility. |
-| **Monitoring** | PSI drift, feature stability, narrative governance, liquidity regime, validity state machine |
+> alpha is fragile; infrastructure robustness matters more.
 
-## Current Portfolio
+The system prioritizes:
 
-**15 live assets** promoted from 30-ticker screening (risk-parity allocation):
+* walk-forward validation,
+* deterministic execution,
+* train/serve symmetry,
+* replayability,
+* governance layering,
+* per-asset isolation,
+* and operational observability
 
-| Asset | Ticker | Allocation | sl_mult | tp_mult | Walk-forward score | Walk-forward IC |
-|---|---|---|---|---|---|---|
-| BTCUSD | BTC-USD | 6.5% | 3.0 | 2.5 | 80.9 / 100 | 0.2264 |
-| EURGBP | EURGBP=X | 6.5% | 2.0 | 1.5 | 69.0 / 100 | 0.1104 |
-| GC | GC=F | 6.5% | 2.0 | 1.5 | 66.7 / 100 | 0.1270 |
-| NZDCHF | NZDCHF=X | 6.5% | 2.0 | 1.5 | 70.0 / 100 | 0.1080 |
-| CHFJPY | CHFJPY=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| CADJPY | CADJPY=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| USDCHF | USDCHF=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| EURJPY | EURJPY=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| EURCAD | EURCAD=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| AUDCHF | AUDCHF=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| USDJPY | USDJPY=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| USDCAD | USDCAD=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| GBPCHF | GBPCHF=X | 6.5% | 2.0 | 1.5 | YELLOW | — |
-| ES | ES=F | 7.7% | 2.0 | 2.5 | 76.9 / 100 | 0.1273 |
-| NQ | NQ=F | 7.8% | 2.0 | 2.5 | 67.9 / 100 | 0.0932 |
+over maximizing in-sample returns.
 
-**BTC satellite:** 5% AUM cap, vol target 40%, macro-gated entry (VIX, DXY, vol z-score, portfolio returns, crisis regime), managed by `HighVolSatellite`.
+Every promoted asset must survive expanding-window validation before entering the live paper portfolio. Runtime execution is treated as a state-machine and systems-engineering problem rather than purely a signal-generation problem.
 
-## Architecture
+---
 
-### Data Ingestion
+# System Lifecycle
 
-```
-yfinance ──▶ fetch_asset_data(name, ticker) ──▶ prices, dxy, vix, spx, wti, tnx
-           └── fetch_asset_ohlcv(ticker)     ──▶ full OHLCV for archetype features
+```text
+Research Universe
+        ↓
+Walk-Forward Screening
+        ↓
+Asset Selection
+        ↓
+Per-Asset Model Training
+        ↓
+Live Inference
+        ↓
+Governance Filters
+        ↓
+Execution
+        ↓
+State Persistence + Replay
 ```
 
-All data normalized to TZ-naive date index. No FRED data — macro derived from yfinance tickers (DX-Y.NYB, ^VIX, ^GSPC, CL=F, ^TNX).
+---
 
-### Feature Engineering
+# Core Properties
 
-**Alpha features** (`features/alpha_features.py:build_alpha_features()`):
-- Vol-adjusted carry (close returns × vol normalization)
-- Multi-horizon momentum (21/63/126/252 day windows)
-- Z-score reversion (20-day rolling z-score of close)
-- Vol regime ratio (short-term / long-term vol)
-- Day-of-week signal
-- Cross-asset momentum (DXY, VIX, SPX, WTI over 21/63d)
+* Walk-forward validated before deployment
+* Per-asset model independence
+* Deterministic execution contracts
+* Replay-oriented state persistence
+* Governance-first exposure control
+* Parallel isolated asset engines
+* Train/serve feature symmetry
+* Immutable execution attribution chain
+* Single centralized entry authority
+* Failure-domain isolation across assets
 
-**Archetype features** (inference-only, from full-history OHLCV):
-- EMA spread (EMA20 − EMA50) / EMA50
-- ADX(14), RSI(14), BB z-score(20)
+---
 
-### Model Pipeline
+# System Overview
 
+QuantForge operates as a factor-style allocation and execution platform.
+
+A universe of 30+ FX, commodity, equity-index, and crypto tickers is screened using expanding-window walk-forward backtests. Assets are scored on directional consistency, information coefficient, hit rate, and regime robustness before being promoted into the live paper portfolio.
+
+Each promoted asset runs an independent binary XGBoost model conditioned on:
+
+* volatility-adjusted carry,
+* multi-horizon momentum,
+* z-score reversion,
+* volatility regime behavior,
+* and cross-asset macro momentum.
+
+Execution is governed by a seven-layer risk and validity framework with archetype-aware trade management.
+
+```text
+┌────────────────┐
+│ Research       │
+│ Universe       │
+│ 30+ Assets     │
+└──────┬─────────┘
+       │
+       ▼
+┌────────────────┐
+│ Walk-Forward   │
+│ Validation     │
+│ 5-Fold Expanding
+│ Window Testing │
+└──────┬─────────┘
+       │
+       ▼
+┌────────────────┐
+│ Asset          │
+│ Selection      │
+│ GREEN/YELLOW   │
+│ RED            │
+└──────┬─────────┘
+       │
+       ▼
+┌────────────────┐
+│ Live Inference │
+│ Per-Asset      │
+│ Binary XGBoost │
+└──────┬─────────┘
+       │
+       ▼
+┌────────────────┐
+│ Governance     │
+│ + Execution    │
+│ + Positioning  │
+└──────┬─────────┘
+       │
+       ▼
+┌────────────────┐
+│ Portfolio      │
+│ Construction   │
+│ Equal-Risk     │
+└────────────────┘
 ```
-1. fetch_live(ticker)           → 500d OHLCV, TZ-normalized
-2. refresh_price()               → patch last close (realtime or 5d fallback)
-3. fetch_asset_data()            → 10y close + macro (batched yf.download, TTL 300s)
-4. build_alpha_features()        → alpha_df (~30 feature cols)
-5. fetch_asset_ohlcv()           → 10y OHLCV for archetype (no rate-limit sleep)
-6. Inference truncation          → 500d → 250d with behavioral validation
-7. Model hot-swap validation     → re-validate full chain on object identity change
-8. XGBoost predict               → binary → 3-col proba expansion
-9. Archetype classification      → 5 types from OHLCV
-10. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
-11. Async diagnostics enqueue    → model/feature snapshots off hot path
-12. EntryOptimizer → Policy → Position management (via parallel orchestrator)
+
+---
+
+# Current Portfolio
+
+15 live paper-traded assets promoted from the research universe.
+
+| Asset  | Ticker   | State  | Allocation | sl_mult | tp_mult | Walk-Forward Score | IC     |
+| ------ | -------- | ------ | ---------- | ------- | ------- | ------------------ | ------ |
+| BTCUSD | BTC-USD  | GREEN  | 6.5%       | 3.0     | 2.5     | 80.9               | 0.2264 |
+| EURGBP | EURGBP=X | GREEN  | 6.5%       | 2.0     | 1.5     | 69.0               | 0.1104 |
+| GC     | GC=F     | GREEN  | 6.5%       | 2.0     | 1.5     | 66.7               | 0.1270 |
+| NZDCHF | NZDCHF=X | GREEN  | 6.5%       | 2.0     | 1.5     | 70.0               | 0.1080 |
+| CHFJPY | CHFJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| CADJPY | CADJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| USDCHF | USDCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| EURJPY | EURJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| EURCAD | EURCAD=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| AUDCHF | AUDCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| USDJPY | USDJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| USDCAD | USDCAD=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| GBPCHF | GBPCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
+| ES     | ES=F     | GREEN  | 7.7%       | 2.0     | 2.5     | 76.9               | 0.1273 |
+| NQ     | NQ=F     | GREEN  | 7.8%       | 2.0     | 2.5     | 67.9               | 0.0932 |
+
+### BTC Opportunistic Sleeve
+
+BTC exposure is managed independently through a high-volatility satellite engine:
+
+* 5% AUM cap
+* 40% volatility target
+* macro-gated participation
+* crisis-regime suppression
+* portfolio-aware exposure throttling
+
+Managed via `HighVolSatellite`.
+
+---
+
+# Why Binary Classification?
+
+QuantForge intentionally reduces the prediction problem to directional participation rather than return magnitude estimation.
+
+The system optimizes for:
+
+* directional consistency,
+* ranking stability,
+* calibration simplicity,
+* execution compatibility,
+* and governance composability
+
+rather than precise return forecasting.
+
+HOLD states are intentionally removed during training to avoid ambiguous class boundaries and unstable low-confidence behavior.
+
+---
+
+# Research & Validation Pipeline
+
+## Walk-Forward Validation
+
+All assets are evaluated using expanding-window walk-forward testing:
+
+* 3-year training window
+* 1-year forward test
+* 5 folds
+* per-asset PT/SL calibration
+* IC + hit-rate scoring
+* consistency weighting
+* bidirectionality validation
+
+Only promoted assets enter the live portfolio.
+
+---
+
+# Feature Engineering
+
+## Alpha Features
+
+Built in `features/alpha_features.py`.
+
+Primary feature families:
+
+* Volatility-adjusted carry
+* Multi-horizon momentum (21 / 63 / 126 / 252d)
+* Z-score mean reversion
+* Volatility regime ratio
+* Day-of-week effects
+* Cross-asset macro momentum:
+
+  * DXY
+  * VIX
+  * SPX
+  * WTI
+
+Macro data is batch-fetched via a single `yf.download` request with TTL caching.
+
+---
+
+## Market Structure Regimes
+
+Inference-only archetype features derived from OHLCV:
+
+* EMA spread
+* ADX(14)
+* RSI(14)
+* Bollinger z-score
+
+Used for:
+
+* execution conditioning,
+* trade management,
+* and regime-aware positioning.
+
+---
+
+# Model Architecture
+
+Each asset runs an independent binary XGBoost model.
+
+```text
+Objective: binary:logistic
+Trees:     300
+Depth:     2
+LR:        0.02
 ```
 
-### Training
+No shared multi-asset model exists.
 
+This intentionally isolates:
+
+* feature drift,
+* regime instability,
+* calibration failures,
+* and execution degradation
+
+to individual assets.
+
+---
+
+# Inference Pipeline
+
+```text
+1. Fetch live OHLCV
+2. Refresh latest price
+3. Fetch macro data
+4. Build alpha features
+5. Fetch full OHLCV
+6. Validate truncation behavior
+7. Validate model hot-swap integrity
+8. Run XGBoost inference
+9. Classify market structure
+10. Apply execution strategy
+11. Enqueue async diagnostics
+12. Route through governance
 ```
-1. fetch_asset_data()            → 10y data
-2. triple_barrier_labels(pt_sl)  → {-1, 0, 1}
-3. Binary reduction               → drop HOLD, map {-1,1} → {0,1}
-4. XGBoost binary:logistic       → 300 trees, depth=2
-5. Save .json model              → paper_trading/models/{name}_model.json
-6. PSI baseline persist
-7. Optional regime model + meta-label model
+
+---
+
+# Execution Architecture
+
+```text
+TradeDecision
+      ↓
+EntryOptimizer
+      ↓
+ExecutionPolicyLayer
+      ↓
+_can_enter()
+      ↓
+PositionManager
+      ↓
+Attribution Engine
 ```
 
-### Execution Pipeline
+## Key Invariants
 
+### Single Entry Authority
+
+All entry paths route through `_can_enter()`.
+
+No component may bypass centralized admission control.
+
+This prevents:
+
+* inconsistent exposure logic,
+* duplicate entries,
+* governance desynchronization,
+* and state divergence.
+
+---
+
+### Immutable Execution Contract
+
+Execution follows a frozen lifecycle:
+
+```text
+PolicyDecision
+    → FillResult
+        → AttributionRecord
 ```
-TradeDecision (15 assets in parallel via EngineOrchestrator) 
-    → EntryOptimizer → ExecutionPolicyLayer → _can_enter() gate
-    → _open_position() → PositionManager (SL/TP/scale-out) → Attribution
-    → HealthMonitor tracks per-asset HEALTHY/DEGRADED/HALTED
-```
 
-Seven-layer governance: validity state machine, feature stability, meta-labeling, macro narrative (weekly LLM), liquidity regime, PSI drift, portfolio drawdown.
+Execution artifacts are append-only and replay-safe.
 
-## Getting Started
+---
+
+### Train/Serve Symmetry
+
+The same alpha feature builder is used in both:
+
+* training,
+* and live inference.
+
+This eliminates train/serve skew.
+
+---
+
+### Replay-Oriented Persistence
+
+Persistent state is stored in SQLite WAL mode with append-oriented semantics.
+
+The architecture is designed for:
+
+* deterministic replay,
+* state reconstruction,
+* execution auditing,
+* and event-sequence validation.
+
+Legacy JSON snapshots remain supported for backward compatibility.
+
+---
+
+# Governance Framework
+
+QuantForge uses independently configurable governance layers with worst-wins aggregation.
+
+| Layer                  | Frequency   | Scope     | Effect                    |
+| ---------------------- | ----------- | --------- | ------------------------- |
+| Exposure state machine | Per tick    | Per asset | Exposure scaling          |
+| Feature stability      | Per retrain | Per asset | Validity penalty          |
+| Meta-labeling          | Per signal  | Per asset | Position scalar           |
+| Macro regime overlay   | Weekly      | Global    | Exposure + SL adjustments |
+| Liquidity regime       | Per signal  | Per asset | Exposure + halt logic     |
+| PSI drift              | Per cycle   | Per asset | Penalty + halt            |
+| Portfolio drawdown     | Global      | Portfolio | Global throttling         |
+
+---
+
+# Failure Isolation
+
+Each `AssetEngine` executes independently via parallel orchestration.
+
+Failures in:
+
+* data ingestion,
+* diagnostics,
+* governance,
+* execution,
+* or model inference
+
+cannot halt the global engine.
+
+All assets execute through isolated lifecycle management.
+
+---
+
+# Performance Architecture
+
+QuantForge contains multiple runtime optimizations designed for inference stability and execution throughput.
+
+## Runtime Optimizations
+
+* Vectorized triple-barrier labeling
+* Broadcast-based inference operations
+* Async diagnostics off hot path
+* Daemon consumer threading
+* SQLite WAL persistence
+* TTL macro cache
+* Parallel asset orchestration
+* Inference truncation validation
+* Object-identity model hot-swap verification
+
+---
+
+# State Architecture
+
+Persistent state is managed through a WAL-mode SQLite store.
+
+## Properties
+
+* O(1) append semantics
+* 5-table normalized schema
+* replay-oriented persistence
+* periodic WAL checkpointing
+* deterministic recovery support
+* backward-compatible JSON snapshots
+
+---
+
+# Getting Started
 
 ```bash
-git clone https://github.com/user/quantforge.git && cd quantforge
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/user/quantforge.git
+cd quantforge
+
+python -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
-# Start engine + dashboard:
+
+# Start engine + dashboard
 ./monitor_all
-# Dashboard: http://localhost:5000
 ```
 
-### Environment
+Dashboard:
 
-| Var | Required | Purpose |
-|---|---|---|
-| `OPENCODE_ZEN_API_KEY` | No | Weekly LLM narrative extraction (Claude API) |
-| `PYTHONPATH` | Yes | `PYTHONPATH=.` |
-| `QUANTFORGE_REFRESH_INTERVAL` | No | Engine loop interval (default 300s) |
-
-## Key Scripts
-
-| Script | Purpose |
-|---|---|
-| `scripts/walk_forward_backtest.py --tickers` | Run walk-forward backtest on raw yfinance tickers |
-| `scripts/score_tickers.py` | Score tickers and produce promotion report |
-| `scripts/generate_promotion_report.py` | Generate markdown report + YAML config block |
-| `scripts/train_all_assets.py` | Force-retrain all assets |
-| `benchmarks/microbenchmark.py` | Hot-path microbenchmark (cold/warm cycles, sweep, profile) |
-
-## Governance Layers
-
-| Layer | Frequency | Scope | Effect | Doc |
-|---|---|---|---|---|
-| Validity state machine | Per tick | Per asset | Exposure 0–100% | — |
-| Feature stability | Per retrain | Per asset | Validity penalty | — |
-| Meta-labeling (XGBoost) | Per signal | Per asset | Size scalar [0–1] | `labels/meta_labels.py` |
-| Macro narrative | Weekly | Global | SL +10%, size −20% | `features/macro_narrative.py` |
-| Liquidity regime | Per signal | Per asset | SL +15/30%, size −15/30%, halt | `features/liquidity_regime.py` |
-| PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE | `monitoring/psi_monitor.py` |
-
-## System Invariants
-
-- No train/serve skew — same alpha feature builder in training and inference
-- TZ-naive date alignment across all pipeline stages
-- Per-asset model independence — each asset has its own binary XGBoost
-- Walk-forward validated — every promoted asset passes 3yr expanding window backtest
-- Binary signal — HOLD dropped; model trains on {-1, 1} labels only
-- Single entry authority — all entry sources route through `_can_enter()`
-- Frozen execution contract — PolicyDecision → FillResult → AttributionRecord immutable chain
-- Seven-layer governance — independently configurable, worst-wins aggregation
-- Per-asset pt_sl — `tp_mult`/`sl_mult` from config, applied at label time and runtime
-- Inference truncation symmetry — training uses 5y data; live inference fetches 500d, truncates to 250d for XGB
-- SQLite state store — all persistent state in single WAL-mode database
-- Parallel asset isolation — 15 AssetEngine instances execute independently via ThreadPoolExecutor
-
-## Project Structure
-
-```
-features/              # Feature engineering
-├── alpha_features.py  # Alpha feature factory (carry, momentum, z-score, vol regime, macro)
-├── data_fetch.py      # yfinance ingestion (asset data + full OHLCV)
-├── labels.py          # Triple-barrier labeling with vol-scaled barriers
-├── regime_features.py # Hurst, KER, ADX, vol z-score, compression
-├── archetypes.py      # 5 pure-feature archetype classifier
-├── macro_narrative.py # Weekly LLM narrative governance
-├── liquidity_regime.py# Volume/Amihud liquidity classification
-├── fxstreet_fetcher.py# FXStreet scrape + LLM extraction
-paper_trading/         # Live trading engine
-├── engine.py          # PaperTradingEngine (orchestrator)
-├── asset_engine.py    # AssetEngine (per-asset lifecycle)
-├── portfolio_builder.py # Portfolio construction from YAML config
-├── state_store.py     # SQLite-backed state store (5 tables, WAL mode)
-├── inference/
-│   ├── pipeline.py    # Live inference pipeline (truncation, async diagnostics)
-│   ├── async_diagnostics.py  # Diagnostics daemon thread (off-hot-path)
-│   └── training.py    # Binary XGBoost training pipeline
-├── entry/             # Entry optimizer, policy, TP compiler
-├── position/          # Position manager, dynamic SL/TP, scale-out
-├── governance/        # Narrative, liquidity, regime, drift
-├── execution/         # Paper broker, bridge
-├── orchestrator/      # EngineOrchestrator, AssetActor, health state machine
-├── shadow/            # Counterfactual replay engine
-├── satellite/         # BTC satellite engine
-├── ops/               # Data fetcher, diagnostics, tracer
-├── api/               # REST API routes (state, trades, attribution, execution quality)
-└── dashboard/         # React SPA frontend (Vite)
-benchmarks/            # Hot-path microbenchmark harness
-├── microbenchmark.py  # CLI: cold/warm cycles, asset × worker sweep, profiling
-├── mock_data.py       # MockDataFixture (synthetic OHLCV at yfinance boundary)
-└── README.md          # Reference numbers and usage
-scripts/               # Research + ops scripts
-├── walk_forward_backtest.py  # Multi-ticker walk-forward screening
-├── score_tickers.py          # Promotion scoring
-└── generate_promotion_report.py  # Report + YAML generation
-walkforward/           # Screening results (fold ICs, summaries, promotion report)
-shared/                # Pluggable strategy interfaces
-monitoring/            # PSI drift, validity state machine
+```text
+http://localhost:5000
 ```
 
-## Known Constraints
+---
 
-- Paper trading only (no live capital)
-- Data limited to Yahoo Finance (no FRED in production)
-- JPY/CHF crosses may show NaN prices on first cycle (incomplete daily bar)
-- Ensemble system disabled by default (`ensemble.enabled: false` in config)
-- 15 of 30 screened tickers classified RED (not promoted)
+# Environment Variables
 
-## License
+| Variable                      | Required | Purpose                     |
+| ----------------------------- | -------- | --------------------------- |
+| `PYTHONPATH`                  | Yes      | Set to `.`                  |
+| `QUANTFORGE_REFRESH_INTERVAL` | No       | Engine loop interval        |
+| `OPENCODE_ZEN_API_KEY`        | No       | Weekly narrative extraction |
 
-MIT. Research system only. Not financial advice.
+---
 
-## Historical Context
+# Key Scripts
 
-This repository evolved through multiple research stages. Documentation of prior architectures is archived in `docs/archive/research_system_v1/`. Architecture Decision Records (ADRs) in `docs/adr/` document the reasoning history and are annotated with historical context notices where components no longer exist in production.
+| Script                                 | Purpose                     |
+| -------------------------------------- | --------------------------- |
+| `scripts/walk_forward_backtest.py`     | Multi-ticker validation     |
+| `scripts/score_tickers.py`             | Asset scoring               |
+| `scripts/generate_promotion_report.py` | Portfolio report generation |
+| `scripts/train_all_assets.py`          | Full retraining             |
+| `benchmarks/microbenchmark.py`         | Runtime benchmarking        |
+
+---
+
+# Repository Structure
+
+```text
+features/
+paper_trading/
+benchmarks/
+scripts/
+walkforward/
+shared/
+monitoring/
+docs/
+```
+
+## Key Components
+
+```text
+features/
+    alpha_features.py
+    archetypes.py
+    labels.py
+    macro_narrative.py
+    liquidity_regime.py
+
+paper_trading/
+    engine.py
+    asset_engine.py
+    state_store.py
+    orchestrator/
+    inference/
+    execution/
+    governance/
+    position/
+    shadow/
+    satellite/
+```
+
+---
+
+# Known Constraints
+
+* Paper trading only
+* Yahoo Finance data dependency
+* No live brokerage integration
+* Ensemble system disabled by default
+* Some FX crosses may produce incomplete first-cycle bars
+* Macro data sourced entirely from Yahoo Finance
+
+---
+
+# Roadmap
+
+* Deterministic full-day replay reconstruction
+* Event-sequence validation tooling
+* Extended execution quality analytics
+* Multi-engine distributed orchestration
+* Portfolio-level regime optimization
+* Live broker abstraction layer
+* Shadow execution comparison tooling
+
+---
+
+# License
+
+MIT License.
+
+Research and paper-trading system only.
+
+Not financial advice.

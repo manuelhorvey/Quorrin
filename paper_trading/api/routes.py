@@ -71,7 +71,6 @@ def handle_state(path: str, query: dict) -> str:
                     "last_update": None,
                     "capital": cfg.capital,
                     "allocations": {n: spec["alloc"] for n, spec in pf.items()},
-                    "satellite_allocation_pct": 5.0,
                     "deployment_cleared": True,
                     "open_positions": 0,
                     "closed_trades": 0,

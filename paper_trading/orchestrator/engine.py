@@ -39,7 +39,6 @@ class EnginePhase:
     REFRESH = "refresh"
     SIGNAL = "signal"
     VALIDITY = "validity"
-    SATELLITE = "satellite"
     PORTFOLIO = "portfolio"
     PERSIST = "persist"
 
@@ -48,20 +47,18 @@ class EngineOrchestrator:
     """Fault-isolated execution orchestrator.
 
     Usage::
-        orch = EngineOrchestrator(actors, satellite_actor=None)
+        orch = EngineOrchestrator(actors)
         results = orch.run_once()
     """
 
     def __init__(
         self,
         actors: dict[str, AssetActor],
-        satellite_actor: AssetActor | None = None,
         max_halt_ratio: float = 0.5,
         wal_writer: WalWriter | None = None,
         max_workers: int = 8,
     ):
         self._actors = actors
-        self._satellite = satellite_actor
         self._max_halt_ratio = max_halt_ratio
         self._max_workers = max_workers or len(actors) * 2
         self._persist_buffer: list[dict] = []
@@ -89,7 +86,6 @@ class EngineOrchestrator:
         results: dict[str, Any] = {
             "phasetimestamps": {},
             "assets": {},
-            "satellite": None,
             "circuit_breaker": None,
             "health": None,
         }
@@ -134,18 +130,6 @@ class EngineOrchestrator:
             except Exception as e:
                 logger.warning("%s validity update failed: %s", name, e)
 
-        # ── Phase 2.5: Satellite ──────────────────────────────────────────
-        if self._satellite is not None:
-            results["phasetimestamps"][EnginePhase.SATELLITE] = datetime.utcnow().isoformat()
-            try:
-                sat_result = self._satellite.run_cycle(market_data)
-                results["satellite"] = {"ok": sat_result.success, "data": sat_result.signal}
-                if not sat_result.success:
-                    logger.warning("satellite actor failure: %s", sat_result.error)
-            except Exception as e:
-                logger.error("satellite actor uncaught: %s", e)
-                results["satellite"] = {"error": str(e)}
-
         # ── Phase 3: Portfolio health aggregation ────────────────────────
         results["phasetimestamps"][EnginePhase.PORTFOLIO] = datetime.utcnow().isoformat()
         health = compute_health_snapshot(self._actors)
@@ -183,11 +167,6 @@ class EngineOrchestrator:
             for cmd in commands:
                 self._persist_buffer.append(cmd.__dict__)
                 persist_count += 1
-        if self._satellite is not None:
-            commands = self._satellite.drain_persist_queue()
-            for cmd in commands:
-                self._persist_buffer.append(cmd.__dict__)
-                persist_count += 1
         results["persist_count"] = persist_count
 
         # ── WAL: commit state snapshot ────────────────────────────────────
@@ -222,11 +201,6 @@ class EngineOrchestrator:
                 "cycle_id": actor.metrics.cycle_id,
                 "consecutive_failures": actor.metrics.consecutive_failures,
                 "has_position": actor._engine.pos_mgr.has_position() if hasattr(actor._engine, "pos_mgr") else False,
-            }
-        if self._satellite is not None:
-            snapshot["satellite"] = {
-                "health": self._satellite.health.name,
-                "cycle_id": self._satellite.metrics.cycle_id,
             }
         snapshot["emergency_halt"] = self._emergency_halt
         self._wal.write("state_committed", snapshot)

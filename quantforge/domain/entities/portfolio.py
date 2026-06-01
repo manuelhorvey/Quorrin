@@ -52,7 +52,5 @@ class PortfolioSummary:
     execution_state: str = "ACTIVE"
     average_validity_exposure: float = 0.0
     portfolio_drawdown_pct: float = 0.0
-    satellite_allocation_pct: float = 0.0
-    satellite_value: float = 0.0
     capital: float = 0.0
     allocations: dict = field(default_factory=dict)

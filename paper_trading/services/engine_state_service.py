@@ -33,8 +33,6 @@ class EngineStateService:
         if engine._mtm_cache_value is not None and engine._mtm_cache_cycle == engine._cycle_count:
             return engine._mtm_cache_value
         mtm = sum(a.mtm_value for a in engine.assets.values())
-        if engine.satellite is not None:
-            mtm += engine.satellite.current_value
         engine._mtm_cache_value = mtm
         engine._mtm_cache_cycle = engine._cycle_count
         return mtm
@@ -84,43 +82,6 @@ class EngineStateService:
                 "stop_out_last_side": getattr(asset, "_last_stop_out_side", None),
                 "stop_out_last_date": (str(d) if (d := getattr(asset, "_last_stop_out_date", None)) else None),
             }
-        if engine.satellite is not None:
-            s = engine.satellite.get_state()
-            n_trades = len(s.trade_log)
-            tp = sum(1 for t in s.trade_log if t.get("reason", "").upper() in ("TP_HIT",))
-            sl = sum(1 for t in s.trade_log if t.get("reason", "").upper() in ("SL_HIT",))
-            flip = sum(1 for t in s.trade_log if t.get("reason", "").upper() in ("GATE_CLOSED",))
-            ad["BTC"] = {
-                "metrics": {
-                    "asset": "BTC",
-                    "current_value": s.current_value,
-                    "mtm_value": s.current_value,
-                    "settled_value": s.current_value,
-                    "total_return": s.total_return_pct,
-                    "mtm_return": s.total_return_pct,
-                    "settled_return": 0.0,
-                    "drawdown": s.drawdown_pct,
-                    "mean_confidence": 0.0,
-                    "n_trades": n_trades,
-                    "n_signals": 1 if s.position_active else 0,
-                    "current_price": s.current_price,
-                    "profit_factor": 0,
-                    "win_rate": 0,
-                    "exit_reasons": {"tp": tp, "sl": sl, "signal_flip": flip},
-                    "trade_log": s.trade_log[-10:],
-                    "position": {
-                        "side": "long",
-                        "entry": s.entry_price,
-                        "sl": s.stop_price,
-                        "tp": s.target_price,
-                    }
-                    if s.position_active
-                    else None,
-                },
-                "halt": {"halted": False},
-                "execution_state": "ACTIVE",
-                "validity_state": "GREEN",
-            }
         total_value = self.compute_mtm_total()
         rp_weights = {}
         rp_allocations = {}
@@ -132,7 +93,6 @@ class EngineStateService:
         return {
             "portfolio": self._compute_portfolio_summary(overall_validity, any_halted),
             "assets": ad,
-            "satellite": self._satellite_snapshot(),
             "halt_conditions": get_config().halt,
             "risk_parity": {
                 "weights": rp_weights,
@@ -154,25 +114,12 @@ class EngineStateService:
         tc = get_config().capital or sum(a.initial_capital for a in engine.assets.values())
 
         mtm_total = self.compute_mtm_total()
-        sat_unrealized = 0.0
-        if engine.satellite is not None:
-            mtm_total += engine.satellite.current_value
-            if engine.satellite.position_active and engine.satellite.entry_price:
-                entry_cap = getattr(engine.satellite, "_entry_capital", engine.satellite.max_capital)
-                sat_unrealized = engine.satellite.current_value - entry_cap
-
         cash_buffer = max(0, tc - mtm_total)
         mtm_total += cash_buffer
 
-        satellite_value = engine.satellite.current_value if engine.satellite is not None else 0.0
-        satellite_pct = satellite_value / max(tc, 1) * 100
-
-        unrealized_dollars = (
-            sum(
-                (a.mtm_value - (a.current_value if not pd.isna(a.current_value) else a.initial_capital))
-                for a in engine.assets.values()
-            )
-            + sat_unrealized
+        unrealized_dollars = sum(
+            (a.mtm_value - (a.current_value if not pd.isna(a.current_value) else a.initial_capital))
+            for a in engine.assets.values()
         )
 
         realized_pnl = sum(t.get("pnl", 0) for a in engine.assets.values() for t in a.trade_log)
@@ -202,37 +149,12 @@ class EngineStateService:
             "capital": get_config().capital,
             "allocations": {n: a.allocation for n, a in engine.assets.items()},
             "deployment_cleared": True,
-            "open_positions": sum(a.pos_mgr.has_position() for a in engine.assets.values())
-            + (1 if engine.satellite is not None and engine.satellite.position_active else 0),
-            "closed_trades": sum(len(a.trade_log) for a in engine.assets.values())
-            + (engine.satellite.closed_trades if engine.satellite is not None else 0),
+            "open_positions": sum(a.pos_mgr.has_position() for a in engine.assets.values()),
+            "closed_trades": sum(len(a.trade_log) for a in engine.assets.values()),
             "execution_state": exec_state.value,
             "average_validity_exposure": round(overall_validity / n, 4),
-            "satellite_allocation_pct": round(satellite_pct, 2),
             "portfolio_drawdown": round(portfolio_dd * 100, 2),
             "portfolio_peak_value": round(engine.portfolio_peak_value, 2) if engine.portfolio_peak_value else None,
-        }
-
-    def _satellite_snapshot(self) -> dict | None:
-        engine = self.engine
-        if engine.satellite is None:
-            return None
-        s = engine.satellite.get_state()
-        return {
-            "name": engine.satellite.name,
-            "allocation_pct": s.allocation_pct,
-            "gate_open": s.gate_open,
-            "gate_reasons": s.gate_reasons,
-            "current_value": s.current_value,
-            "current_price": s.current_price,
-            "total_return_pct": s.total_return_pct,
-            "sharpe_contribution": s.sharpe_contribution,
-            "position_active": s.position_active,
-            "drawdown_pct": s.drawdown_pct,
-            "entry_price": s.entry_price,
-            "stop_price": s.stop_price,
-            "target_price": s.target_price,
-            "exit_reason": s.exit_reason,
         }
 
     def save_state(self):
@@ -248,7 +170,6 @@ class EngineStateService:
                 "initialized": True,
                 "last_update": engine.last_update.strftime("%Y-%m-%d %H:%M:%S") if engine.last_update else None,
                 "start_time": engine.start_date.isoformat(),
-                "satellite": state.get("satellite"),
             },
             halt_conditions=state.get("halt_conditions"),
             risk_signals={
@@ -277,23 +198,6 @@ class EngineStateService:
                     "trade_log": asset.pos_mgr.trade_log,
                     "prob_history": asset.prob_history,
                 }
-        if engine.satellite is not None and engine.satellite.position_active:
-            sat = engine.satellite
-            snapshot.open_positions["satellite"] = {
-                "position": {
-                    "side": sat.position_side,
-                    "entry": sat.entry_price,
-                    "sl": sat.stop_price,
-                    "tp": sat.target_price,
-                    "entry_date": getattr(sat, "position_entry_date", str(datetime.now(tz=ET).date())),
-                    "vol": getattr(sat, "position_vol", 0.02),
-                },
-                "current_value": sat.current_value,
-                "peak_value": sat.peak_value,
-                "initial_capital": sat.initial_capital,
-                "entry_capital": getattr(sat, "_entry_capital", sat.max_capital),
-                "daily_returns": getattr(sat, "_daily_returns", []),
-            }
         self._append_equity_history(state)
         engine.state_store.save_snapshot(snapshot)
         self._capture_simulation_snapshot(state)
@@ -320,15 +224,12 @@ class EngineStateService:
             )
             asset_snapshots.append(snap)
 
-        satellite = state.get("satellite", {})
-        satellite_value = satellite.get("current_value", 0.0) if satellite else 0.0
-        cash_buffer = get_config().capital - portfolio.get("realized_value", 0) - satellite_value
+        cash_buffer = get_config().capital - portfolio.get("realized_value", 0)
 
         engine._sim_store.capture(
             portfolio_value=portfolio.get("total_value", 0),
             total_return=portfolio.get("total_return", 0),
             cash_buffer=max(0.0, cash_buffer),
-            satellite_value=satellite_value,
             asset_snapshots=asset_snapshots,
         )
 

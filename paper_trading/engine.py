@@ -29,16 +29,9 @@ from paper_trading.ops.market_hours import is_market_closed
 from paper_trading.orchestrator.actor import AssetActor
 from paper_trading.orchestrator.engine import EngineOrchestrator
 from paper_trading.replay.wal import WalWriter
-from paper_trading.satellite.runner import (  # noqa: F401 — imported for test monkeypatching
-    compute_btc_context,
-    compute_core_returns,
-    fetch_btc_price,
-    fetch_macro_context,
-)
 from paper_trading.services.engine_narrative_service import EngineNarrativeService
 from paper_trading.services.engine_rebalance_service import EngineRebalanceService
 from paper_trading.services.engine_recovery_service import EngineRecoveryService
-from paper_trading.services.engine_satellite_service import EngineSatelliteService
 from paper_trading.services.engine_state_service import EngineStateService
 from paper_trading.state_store import _SKIP_JOURNAL, StateStore, sanitize  # noqa: F401
 from shared.execution_config import build_execution_configs
@@ -108,14 +101,12 @@ class PaperTradingEngine:
 
         self._narrative = EngineNarrativeService(self)
         self._rebalance = EngineRebalanceService(self)
-        self._satellite_svc = EngineSatelliteService(self)
         self._recovery = EngineRecoveryService(self)
         self._state = EngineStateService(self)
 
         self._build_asset_registry()
         self._init_experiment_context()
         self._narrative.init_narrative()
-        self._satellite_svc.init_satellite()
         self._recovery.restore_positions(saved_positions)
         from paper_trading.ops.simulation_snapshot import SimulationStore
 
@@ -135,9 +126,6 @@ class PaperTradingEngine:
         # Fault-isolated actor orchestrator (Phase 5)
         self._orchestrator = EngineOrchestrator(
             actors={name: AssetActor(name, asset, wal_writer=self._wal) for name, asset in self.assets.items()},
-            satellite_actor=(
-                AssetActor("BTC", self.satellite, wal_writer=self._wal) if self.satellite is not None else None
-            ),
             wal_writer=self._wal,
         )
 
@@ -180,11 +168,10 @@ class PaperTradingEngine:
         )
 
     def __getattr__(self, name):
-        if name in ("_narrative", "_rebalance", "_satellite_svc", "_recovery", "_state"):
+        if name in ("_narrative", "_rebalance", "_recovery", "_state"):
             mod_map = {
                 "_narrative": ("paper_trading.services.engine_narrative_service", "EngineNarrativeService"),
                 "_rebalance": ("paper_trading.services.engine_rebalance_service", "EngineRebalanceService"),
-                "_satellite_svc": ("paper_trading.services.engine_satellite_service", "EngineSatelliteService"),
                 "_recovery": ("paper_trading.services.engine_recovery_service", "EngineRecoveryService"),
                 "_state": ("paper_trading.services.engine_state_service", "EngineStateService"),
             }
@@ -225,9 +212,6 @@ class PaperTradingEngine:
         if name == "_mtm_cache_cycle":
             object.__setattr__(self, name, -1)
             return -1
-        if name == "satellite":
-            object.__setattr__(self, name, None)
-            return None
         if name == "_narrative_api_key":
             import os
 
@@ -241,12 +225,6 @@ class PaperTradingEngine:
 
     def _refresh_narrative(self) -> bool:
         return self._narrative._refresh_narrative()
-
-    def _run_satellite(self, results: dict) -> None:
-        self._satellite_svc.run_satellite(results)
-
-    def _run_satellite_only(self) -> dict:
-        return self._satellite_svc.run_satellite_only()
 
     def _should_rebalance(self) -> bool:
         return self._rebalance.should_rebalance()
@@ -301,8 +279,6 @@ class PaperTradingEngine:
         if self._mtm_cache_value is not None and self._mtm_cache_cycle == self._cycle_count:
             return self._mtm_cache_value
         mtm = sum(a.mtm_value for a in self.assets.values())
-        if self.satellite is not None:
-            mtm += self.satellite.current_value
         self._mtm_cache_value = mtm
         self._mtm_cache_cycle = self._cycle_count
 
@@ -312,7 +288,7 @@ class PaperTradingEngine:
 
         if is_market_closed():
             logger.debug("Market closed — core assets skipped")
-            return self._run_satellite_only()
+            return {}
 
         # Pipeline integrity check (Phase 7 prelude)
         ctx = ExperimentContext.get()
@@ -406,22 +382,11 @@ class PaperTradingEngine:
 
         _t3 = time.perf_counter()
 
-        # ── Satellite run ──────────────────────────────────────────────
-        if self.satellite is not None:
-            try:
-                self._run_satellite(results)
-            except Exception as e:
-                logger.error("satellite run failed: %s", e)
-                results["satellite"] = {"asset": "BTC", "error": str(e)}
-
         # ── WAL: engine-level state committed ──────────────────────────
         self._wal.write(
             "state_committed",
             {
                 "assets": {name: {"has_position": a.pos_mgr.has_position()} for name, a in self.assets.items()},
-                "satellite_active": self.satellite is not None and self.satellite.position_active
-                if hasattr(self.satellite, "position_active")
-                else False,
                 "last_update": str(self.last_update),
             },
         )
@@ -436,18 +401,16 @@ class PaperTradingEngine:
         _orch_time = _t1 - _t0
         _narr_time = _t2 - _t1
         _rebal_time = _t3 - _t2
-        _sat_time = _elapsed - (_t3 - _t0)
         if len(self._cycle_times) % 20 == 0:
             recent = self._cycle_times[-100:]
             p50 = statistics.median(recent)
             p95 = sorted(recent)[int(len(recent) * 0.95)]
             logger.info(
-                "BENCHMARK: cycle=%.3fs  orch=%.3fs  narr=%.3fs  rebal=%.3fs  sat=%.3fs  p50=%.3fs  p95=%.3fs  n=%d",
+                "BENCHMARK: cycle=%.3fs  orch=%.3fs  narr=%.3fs  rebal=%.3fs  p50=%.3fs  p95=%.3fs  n=%d",
                 _elapsed,
                 _orch_time,
                 _narr_time,
                 _rebal_time,
-                _sat_time,
                 p50,
                 p95,
                 len(recent),

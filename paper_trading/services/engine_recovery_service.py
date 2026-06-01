@@ -43,32 +43,3 @@ class EngineRecoveryService:
         for name, pos_data in saved_positions.items():
             if name in engine.assets:
                 self._restore_saved_position(engine.assets[name], pos_data)
-            elif name == "satellite" and engine.satellite is not None:
-                self._restore_satellite_position(engine.satellite, pos_data)
-
-    def _restore_satellite_position(self, sat, pos_data: dict) -> None:
-        pos_dict = pos_data.get("position")
-        if pos_dict:
-            sat.position_active = True
-            sat.position_side = pos_dict["side"]
-            sat.entry_price = pos_dict["entry"]
-            sat.stop_price = pos_dict["sl"]
-            sat.target_price = pos_dict["tp"]
-            sat.position_entry_date = pos_dict["entry_date"]
-            sat.position_vol = pos_dict["vol"]
-
-        cv = pos_data.get("current_value")
-        if cv is not None:
-            sat.current_value = cv
-        pv = pos_data.get("peak_value")
-        if pv is not None:
-            sat.peak_value = pv
-        ic = pos_data.get("initial_capital")
-        if ic is not None:
-            sat.initial_capital = ic
-        ec = pos_data.get("entry_capital")
-        if ec is not None:
-            sat._entry_capital = ec
-        dr = pos_data.get("daily_returns")
-        if dr is not None:
-            sat._daily_returns = list(dr)

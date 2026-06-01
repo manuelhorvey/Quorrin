@@ -31,7 +31,6 @@ class EngineConfig:
     retrain_window: int = 5
     research_mode: bool = False
     halt: dict = field(default_factory=_default_halt)
-    satellite: dict = field(default_factory=dict)
     assets: dict = field(default_factory=dict)
     vol_baselines: dict = field(default_factory=dict)
     regime_geometry: dict = field(default_factory=dict)
@@ -76,7 +75,6 @@ class EngineConfig:
             retrain_window=data.get("retrain_window", 5),
             research_mode=data.get("research_mode", False),
             halt=halt,
-            satellite=data.get("satellite", {}),
             assets=data.get("assets", {}),
             vol_baselines=data.get("vol_baselines", {}),
             # Prioritize namespaced governance, fallback to top-level
@@ -99,7 +97,6 @@ class EngineConfig:
             "retrain_window": self.retrain_window,
             "research_mode": self.research_mode,
             "halt": self.halt,
-            "satellite": self.satellite,
             "assets": self.assets,
             "vol_baselines": self.vol_baselines,
             "regime_geometry": self.regime_geometry,

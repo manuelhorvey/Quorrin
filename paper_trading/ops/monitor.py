@@ -47,8 +47,6 @@ def main():
         results = engine.run_once()
         engine.save_state()
         for name, r in results.items():
-            if name == "satellite":
-                continue
             if not isinstance(r, dict):
                 continue
             if "error" in r:

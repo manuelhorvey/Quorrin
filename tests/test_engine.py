@@ -104,21 +104,18 @@ class TestConfigManager:
         assert cfg.capital == 100_000
         assert cfg.position_size == 0.95
         assert cfg.halt["drawdown"] == -0.08
-        assert cfg.satellite == {}
 
     def test_from_dict_full(self):
         data = {
             "capital": 200_000,
             "position_size": 0.80,
             "halt": {"drawdown": -0.05},
-            "satellite": {"BTC": {"max_allocation_pct": 0.10}},
             "assets": {"FOO": {"ticker": "FOO"}},
         }
         cfg = EngineConfig.from_dict(data)
         assert cfg.capital == 200_000
         assert cfg.halt["drawdown"] == -0.05
         assert cfg.halt["signal_drought"] == 30
-        assert cfg.satellite["BTC"]["max_allocation_pct"] == 0.10
         assert cfg.assets["FOO"]["ticker"] == "FOO"
 
     def test_load_config_from_file(self):
@@ -206,7 +203,6 @@ class TestPaperTradingEngineState:
         )
         engine = PaperTradingEngine.__new__(PaperTradingEngine)
         engine.assets = {"TEST": asset}
-        engine.satellite = None
         engine.start_date = __import__("datetime").datetime.now(tz=ET)
         engine.last_update = None
         engine.portfolio_peak_value = None

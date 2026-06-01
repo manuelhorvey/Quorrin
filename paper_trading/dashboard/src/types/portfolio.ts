@@ -147,29 +147,11 @@ export interface HaltConditions {
   prob_drift: number
 }
 
-export interface SatelliteState {
-  name: string
-  allocation_pct: number
-  gate_open: boolean
-  gate_reasons: string[]
-  current_value: number
-  current_price: number | null
-  total_return_pct: number
-  sharpe_contribution: number | null
-  position_active: boolean
-  drawdown_pct: number
-  entry_price: number | null
-  stop_price: number | null
-  target_price: number | null
-  exit_reason: string | null
-}
-
 export interface EngineStatus {
   initialized: boolean
   last_update: string
   start_time: string
   market_closed?: boolean
-  satellite?: SatelliteState | null
 }
 
 export interface TradeEntry {

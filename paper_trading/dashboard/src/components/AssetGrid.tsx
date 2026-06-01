@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import AssetCard from './AssetCard'
-import SatelliteCard from './SatelliteCard'
 import Panel from './ui/Panel'
 import SectionHeader from './ui/SectionHeader'
 import EmptyState from './ui/EmptyState'
@@ -9,12 +8,10 @@ import { Skeleton } from './ui/Skeleton'
 
 export default function AssetGrid() {
   const { data, isPending } = usePortfolioState()
-  const sat = data?.engine_status?.satellite
   const assetNames = useMemo(() => {
     if (!data?.assets) return []
-    const names = Object.keys(data.assets).sort()
-    return sat ? names.filter(n => n !== "BTC") : names
-  }, [data, sat])
+    return Object.keys(data.assets).sort()
+  }, [data])
 
   if (isPending) {
     return (
@@ -26,7 +23,7 @@ export default function AssetGrid() {
     )
   }
 
-  if (assetNames.length === 0 && !sat) {
+  if (assetNames.length === 0) {
     return (
       <Panel className="p-4">
         <SectionHeader title="Assets" accent="neutral" />
@@ -40,7 +37,6 @@ export default function AssetGrid() {
       {assetNames.map(name => (
         <AssetCard key={name} name={name} />
       ))}
-      {sat && <SatelliteCard />}
     </div>
   )
 }

@@ -57,7 +57,6 @@ class PortfolioSnapshot:
     portfolio_value: float
     total_return: float
     cash_buffer: float
-    satellite_value: float
     assets: dict[str, AssetSnapshot] = field(default_factory=dict)
 
 
@@ -76,7 +75,6 @@ class SimulationStore:
         portfolio_value: float,
         total_return: float,
         cash_buffer: float,
-        satellite_value: float,
         asset_snapshots: list[AssetSnapshot],
         cold_state: dict | None = None,
     ) -> None:
@@ -93,7 +91,6 @@ class SimulationStore:
             portfolio_value=portfolio_value,
             total_return=total_return,
             cash_buffer=cash_buffer,
-            satellite_value=satellite_value,
         )
         rows.append(
             {
@@ -103,7 +100,7 @@ class SimulationStore:
                 "portfolio_value": ps.portfolio_value,
                 "total_return": ps.total_return,
                 "cash_buffer": ps.cash_buffer,
-                "satellite_value": ps.satellite_value,
+                "satellite_value": 0.0,
                 "current_value": 0.0,
                 "peak_value": 0.0,
                 "initial_capital": 0.0,
@@ -176,7 +173,6 @@ class SimulationStore:
             portfolio_value=float(portfolio_row.iloc[0]["portfolio_value"]) if not portfolio_row.empty else 0.0,
             total_return=float(portfolio_row.iloc[0]["total_return"]) if not portfolio_row.empty else 0.0,
             cash_buffer=float(portfolio_row.iloc[0]["cash_buffer"]) if not portfolio_row.empty else 0.0,
-            satellite_value=float(portfolio_row.iloc[0]["satellite_value"]) if not portfolio_row.empty else 0.0,
         )
 
         for _, row in asset_rows.iterrows():

@@ -116,16 +116,6 @@ assets:
     allocation: 0.066
     sl_mult: 0.53
     tp_mult: 1.80
-    regime_geometry:
-      GREEN:
-        sl_mult: 0.57
-        tp_mult: 0.97
-      YELLOW:
-        sl_mult: 0.57
-        tp_mult: 0.83
-      RED:
-        sl_mult: 0.57
-        tp_mult: 0.97
   CHFJPY:
     ticker: CHFJPY=X
     allocation: 0.066
@@ -196,16 +186,6 @@ assets:
     allocation: 0.068
     sl_mult: 0.51
     tp_mult: 1.92
-    regime_geometry:
-      GREEN:
-        sl_mult: 0.59
-        tp_mult: 0.78
-      YELLOW:
-        sl_mult: 1.03
-        tp_mult: 1.05
-      RED:
-        sl_mult: 0.59
-        tp_mult: 1.04
   USDJPY:
     ticker: USDJPY=X
     allocation: 0.066
@@ -241,31 +221,11 @@ assets:
     allocation: 0.066
     sl_mult: 0.52
     tp_mult: 1.65
-    regime_geometry:
-      GREEN:
-        sl_mult: 0.99
-        tp_mult: 1.19
-      YELLOW:
-        sl_mult: 0.99
-        tp_mult: 1.19
-      RED:
-        sl_mult: 0.99
-        tp_mult: 1.19
   ES:
     ticker: ES=F
     allocation: 0.077
     sl_mult: 0.50
     tp_mult: 4.69
-    regime_geometry:
-      GREEN:
-        sl_mult: 0.60
-        tp_mult: 0.32
-      YELLOW:
-        sl_mult: 0.60
-        tp_mult: 0.48
-      RED:
-        sl_mult: 0.60
-        tp_mult: 0.32
   NQ:
     ticker: NQ=F
     allocation: 0.078

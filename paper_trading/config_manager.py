@@ -3,6 +3,9 @@ import os
 from dataclasses import dataclass, field
 
 import yaml
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger("quantforge.config_manager")
 
@@ -20,6 +23,34 @@ def _default_halt() -> dict:
         "signal_drought": 30,
         "prob_drift": 0.25,
     }
+
+
+@dataclass
+class MT5Config:
+    enabled: bool = False
+    account: int = 0
+    password: str = ""
+    server: str = ""
+    bridge_host: str = "127.0.0.1"
+    bridge_port: int = 9876
+    symbol_map_path: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "MT5Config":
+        # YAML values are defaults; env vars take precedence (security)
+        account = int(os.environ.get("MT5_ACCOUNT", data.get("account", 0)))
+        password = os.environ.get("MT5_PASSWORD", data.get("password", ""))
+        server = os.environ.get("MT5_SERVER", data.get("server", ""))
+
+        return cls(
+            enabled=data.get("enabled", False),
+            account=account,
+            password=password,
+            server=server,
+            bridge_host=data.get("bridge_host", "127.0.0.1"),
+            bridge_port=int(data.get("bridge_port", 9876)),
+            symbol_map_path=data.get("symbol_map_path", ""),
+        )
 
 
 @dataclass
@@ -55,11 +86,12 @@ class EngineConfig:
             },
         }
     )
+    mt5: MT5Config = field(default_factory=MT5Config)
+    data_source: str = "yfinance"  # "yfinance" or "mt5"
 
     @classmethod
     def from_dict(cls, data: dict) -> "EngineConfig":
         halt = dict(data.get("halt", _default_halt()))
-        # Ensure halt has all expected keys
         defaults_halt = _default_halt()
         for k, v in defaults_halt.items():
             halt.setdefault(k, v)
@@ -77,7 +109,6 @@ class EngineConfig:
             halt=halt,
             assets=data.get("assets", {}),
             vol_baselines=data.get("vol_baselines", {}),
-            # Prioritize namespaced governance, fallback to top-level
             regime_geometry=governance.get("regime_geometry", data.get("regime_geometry", {})),
             execution_defaults=data.get("execution_defaults", {}),
             portfolio_drawdown_limit=data.get("portfolio_drawdown_limit", -0.15),
@@ -86,6 +117,8 @@ class EngineConfig:
             defaults=data.get("defaults", {}),
             execution=execution,
             optimizations=data.get("optimizations", {}),
+            mt5=MT5Config.from_dict(data.get("mt5", {})),
+            data_source=data.get("data_source", "yfinance"),
         )
 
     def to_dict(self) -> dict:

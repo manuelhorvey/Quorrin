@@ -1,0 +1,58 @@
+# MT5 Symbol Map — QuantForge ticker → MetaTrader5 symbol name
+#
+# Edit this file to match your broker's symbol names.
+# Exness demo symbols are shown as defaults.
+# Comment out any symbol you don't trade via MT5.
+
+# ── Forex ─────────────────────────────────────────────────────────────────────
+AUDCHF=X: AUDCHF
+AUDJPY=X: AUDJPY
+AUDNZD=X: AUDNZD
+AUDUSD=X: AUDUSD
+CADCHF=X: CADCHF
+CADJPY=X: CADJPY
+CHFJPY=X: CHFJPY
+EURAUD=X: EURAUD
+EURCAD=X: EURCAD
+EURUSD=X: EURUSD
+GBPCAD=X: GBPCAD
+GBPCHF=X: GBPCHF
+GBPNZD=X: GBPNZD
+NZDCAD=X: NZDCAD
+NZDUSD=X: NZDUSD
+USDCAD=X: USDCAD
+USDCHF=X: USDCHF
+USDJPY=X: USDJPY
+# AUDCAD=X:  AUDCAD     # FAIL — negative expectancy
+# EURCHF=X:  EURCHF     # WEAK — low consistency
+# EURGBP=X:  EURGBP     # FAIL — negative expectancy
+# EURJPY=X:  EURJPY     # WEAK — low sharpe
+# EURNZD=X:  EURNZD     # FAIL — negative expectancy
+# GBPAUD=X:  GBPAUD     # WEAK — low consistency
+# GBPJPY=X:  GBPJPY     # WEAK — fragile
+# GBPUSD=X:  GBPUSD     # FAIL — near-zero trades
+# NZDCHF=X:  NZDCHF     # WEAK — low consistency
+# NZDJPY=X:  NZDJPY     # WEAK — near-zero trades
+
+# ── Metals ────────────────────────────────────────────────────────────────────
+GC=F: XAUUSD
+SI=F: XAGUSD
+
+# ── Indices ───────────────────────────────────────────────────────────────────
+# Exact Exness names may vary; adjust as needed.
+# Common variants: US500, SP500m, US500Cash, SPX, ES
+ES=F: US500
+NQ=F: USTEC
+YM=F: US30
+
+# ── Energy ────────────────────────────────────────────────────────────────────
+CL=F: USOIL
+# NG=F:      NATGAS
+
+# ── Crypto ────────────────────────────────────────────────────────────────────
+# BTC-USD:  BTCUSD     # FAIL — negative expectancy, inconsistent
+# ETH-USD:   ETHUSD
+
+# ── Non-MT5 Assets (yfinance only) ───────────────────────────────────────────
+# These are tracked in the dashboard but fetched via yfinance, not MT5:
+# ^VIX, ^DJI, IWM

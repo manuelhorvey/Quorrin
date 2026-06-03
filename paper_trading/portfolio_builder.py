@@ -86,18 +86,6 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             }
         return pf
     return {
-        "NZDJPY": {
-            "ticker": "NZDJPY=X",
-            "contract": FEATURE_REGISTRY["NZDJPY=X"],
-            "alloc": 0.11,
-            "halt": {
-                "drawdown": -0.06,
-                "monthly_pf": 0.70,
-                "signal_drought": 30,
-                "prob_drift": 0.15,
-            },
-            "config": {},
-        },
         "CADJPY": {
             "ticker": "CADJPY=X",
             "contract": FEATURE_REGISTRY["CADJPY=X"],
@@ -133,13 +121,6 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             "halt": dict(halt_defaults),
             "config": {},
         },
-        "GBPJPY": {
-            "ticker": "GBPJPY=X",
-            "contract": FEATURE_REGISTRY["GBPJPY=X"],
-            "alloc": 0.06,
-            "halt": dict(halt_defaults),
-            "config": {},
-        },
         "USDJPY": {
             "ticker": "USDJPY=X",
             "contract": FEATURE_REGISTRY["USDJPY=X"],
@@ -154,10 +135,52 @@ def build_paper_portfolio(halt_defaults: dict) -> dict:
             "halt": dict(halt_defaults),
             "config": {},
         },
-        "GBPUSD": {
-            "ticker": "GBPUSD=X",
-            "contract": FEATURE_REGISTRY["GBPUSD=X"],
+        "CHFJPY": {
+            "ticker": "CHFJPY=X",
+            "contract": FEATURE_REGISTRY["CHFJPY=X"],
+            "alloc": 0.05,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "EURCAD": {
+            "ticker": "EURCAD=X",
+            "contract": FEATURE_REGISTRY["EURCAD=X"],
             "alloc": 0.04,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "EURUSD": {
+            "ticker": "EURUSD=X",
+            "contract": FEATURE_REGISTRY["EURUSD=X"],
+            "alloc": 0.03,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "AUDUSD": {
+            "ticker": "AUDUSD=X",
+            "contract": FEATURE_REGISTRY["AUDUSD=X"],
+            "alloc": 0.03,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "CL": {
+            "ticker": "CL=F",
+            "contract": FEATURE_REGISTRY["CL=F"],
+            "alloc": 0.04,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "ES": {
+            "ticker": "ES=F",
+            "contract": FEATURE_REGISTRY["ES=F"],
+            "alloc": 0.05,
+            "halt": dict(halt_defaults),
+            "config": {},
+        },
+        "NQ": {
+            "ticker": "NQ=F",
+            "contract": FEATURE_REGISTRY["NQ=F"],
+            "alloc": 0.05,
             "halt": dict(halt_defaults),
             "config": {},
         },

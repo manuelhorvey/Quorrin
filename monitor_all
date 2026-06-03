@@ -1,25 +1,92 @@
 #!/usr/bin/env zsh
 # QuantForge Paper Trading Monitor
-# Pulls LIVE market data from yfinance. Serves dashboard.
+# Starts MT5 terminal, bridge, and dashboard/engine in one pass.
 # Usage: ./monitor_all  |  Ctrl+C to stop.
 
-set -e
 cd "$(dirname "$0")"
 
 echo "========================================================"
-echo "  QuantForge Paper Trading  |  LIVE MARKET FEED"
+echo "  QuantForge Paper Trading  |  MT5 + DASHBOARD"
 echo "========================================================"
 echo ""
 
 source .venv/bin/activate
 
-# Build React dashboard
+# Export MT5 credentials from .env so mt5-bridge and engine pick them up
+set -a; source .env 2>/dev/null; set +a
+
+WINE_PREFIX="${WINE_PREFIX:-$HOME/.wine_mt5}"
+MT5_EXE="$WINE_PREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
+SCRIPT_DIR="$(cd paper_trading/ops && pwd)"
+
+# ── Kill leftover QuantForge processes from previous runs ──
+PREV_MONITOR=$(pgrep -f 'python.*paper_trading.ops.monitor' 2>/dev/null | tr '\n' ' ')
+if [ -n "$PREV_MONITOR" ]; then
+    echo "  Killing previous QuantForge monitor(s) (PID $PREV_MONITOR)..."
+    kill $PREV_MONITOR 2>/dev/null
+    sleep 1
+    kill -9 $PREV_MONITOR 2>/dev/null
+fi
+fuser -k 5000/tcp 2>/dev/null || true
+sleep 1
+
+# ── Terminal ────────────────────────────────────────────────
+LAUNCHED_TERM=""
+if pgrep -f terminal64.exe >/dev/null 2>&1; then
+    echo "  MT5 terminal already running"
+else
+    echo "  Starting MT5 terminal..."
+    xvfb-run wine "$MT5_EXE" &>/dev/null &
+    LAUNCHED_TERM=$!
+    sleep 5
+    echo "  MT5 terminal started (PID $LAUNCHED_TERM)"
+fi
+
+# ── Bridge ──────────────────────────────────────────────────
+LAUNCHED_BRIDGE=""
+if nc -z 127.0.0.1 9876 >/dev/null 2>&1; then
+    echo "  MT5 bridge already running on :9876"
+else
+    echo "  Starting MT5 bridge on :9876..."
+    ARGS=""
+    if [ -n "${MT5_ACCOUNT:-}" ]; then ARGS="$ARGS --account $MT5_ACCOUNT"; fi
+    if [ -n "${MT5_PASSWORD:-}" ]; then ARGS="$ARGS --password $MT5_PASSWORD"; fi
+    if [ -n "${MT5_SERVER:-}" ]; then ARGS="$ARGS --server $MT5_SERVER"; fi
+
+    export WINEPREFIX="$WINE_PREFIX"
+    xvfb-run wine python "$SCRIPT_DIR/mt5_bridge.py" $ARGS &>/dev/null &
+    LAUNCHED_BRIDGE=$!
+    # Wait for bridge to accept connections
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        if nc -z 127.0.0.1 9876 >/dev/null 2>&1; then
+            echo "  MT5 bridge ready (PID $LAUNCHED_BRIDGE)"
+            break
+        fi
+        sleep 1
+    done
+    if ! nc -z 127.0.0.1 9876 >/dev/null 2>&1; then
+        echo "  WARNING: MT5 bridge did not become ready — engine will use yfinance"
+    fi
+fi
+
+# ── Dashboard build ─────────────────────────────────────────
 echo "  Building dashboard..."
 (cd paper_trading/dashboard && yarn build) || echo "  Dashboard build skipped (error above)"
 
-# Check if port 5000 is in use by QuantForge — kill only orphaned processes
-# Avoids killing non-QuantForge services
-fuser 5000/tcp 2>/dev/null && fuser -k 5000/tcp 2>/dev/null || true
-sleep 1
+# ── Cleanup on exit ─────────────────────────────────────────
+# Only kill daemons that this script started
+cleanup() {
+    echo ""
+    echo "  Shutting down..."
+    kill "$MONITOR_PID" 2>/dev/null; wait "$MONITOR_PID" 2>/dev/null
+    sleep 1
+    [ -n "$LAUNCHED_BRIDGE" ] && { kill "$LAUNCHED_BRIDGE" 2>/dev/null; wait "$LAUNCHED_BRIDGE" 2>/dev/null; }
+    [ -n "$LAUNCHED_TERM" ]   && { kill "$LAUNCHED_TERM" 2>/dev/null;   wait "$LAUNCHED_TERM" 2>/dev/null;   }
+    echo "  Done."
+}
+trap cleanup EXIT INT TERM
 
-python -m paper_trading.ops.monitor
+# ── Engine + Dashboard ──────────────────────────────────────
+python -m paper_trading.ops.monitor &
+MONITOR_PID=$!
+wait "$MONITOR_PID"

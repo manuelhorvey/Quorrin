@@ -14,6 +14,18 @@ export const ASSET_LABEL_PARAMS: Record<string, { pt: number; sl: number }> = {
   EURCAD: { pt: 2.0, sl: 2.0 },
   DJI: { pt: 2.0, sl: 2.0 },
   CL: { pt: 2.0, sl: 2.0 },
+  AUDCHF: { pt: 2.0, sl: 2.0 },
+  GBPCHF: { pt: 2.0, sl: 2.0 },
+  EURUSD: { pt: 2.0, sl: 2.0 },
+  AUDUSD: { pt: 2.0, sl: 2.0 },
+  NZDUSD: { pt: 2.0, sl: 2.0 },
+  AUDNZD: { pt: 2.0, sl: 2.0 },
+  CADCHF: { pt: 2.0, sl: 2.0 },
+  GBPCAD: { pt: 2.0, sl: 2.0 },
+  GBPNZD: { pt: 2.0, sl: 2.0 },
+  NZDCAD: { pt: 2.0, sl: 2.0 },
+  ES: { pt: 1.5, sl: 1.5 },
+  NQ: { pt: 1.5, sl: 1.5 },
 }
 
 export const LABEL_HORIZON = 20

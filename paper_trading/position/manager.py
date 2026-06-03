@@ -205,7 +205,7 @@ class PositionManager:
     # ── Queries ───────────────────────────────────────────────────
 
     def position_pnl(self, current_price: float) -> float:
-        if self.position is None:
+        if self.position is None or not current_price:
             return 0.0
         if self.position.side == "long":
             return (current_price / self.position.entry_price - 1) * 100

@@ -93,11 +93,19 @@ class PaperTradingEngine:
         cfg = config or get_config()
         self._engine_cfg = cfg
         self.execution_configs = build_execution_configs(cfg.assets, defaults=cfg.execution_defaults)
-        self.broker = PaperBroker(
-            initial_capital=cfg.capital,
-            execution_configs=self.execution_configs,
-        )
-        self.execution_bridge = ExecutionBridge(self.broker)
+
+        if cfg.mt5.enabled:
+            self.broker = self._create_mt5_broker(cfg)
+            is_real_broker = True
+            # Install MT5 client as global data provider for data_fetcher
+            self._install_mt5_data_provider(cfg)
+        else:
+            self.broker = PaperBroker(
+                initial_capital=cfg.capital,
+                execution_configs=self.execution_configs,
+            )
+            is_real_broker = False
+        self.execution_bridge = ExecutionBridge(self.broker, is_real_broker=is_real_broker)
 
         self._narrative = EngineNarrativeService(self)
         self._rebalance = EngineRebalanceService(self)
@@ -128,6 +136,57 @@ class PaperTradingEngine:
             actors={name: AssetActor(name, asset, wal_writer=self._wal) for name, asset in self.assets.items()},
             wal_writer=self._wal,
         )
+
+    def _create_mt5_broker(self, cfg):
+        import yaml
+
+        from paper_trading.execution.mt5_broker import MT5Broker
+
+        mt5 = cfg.mt5
+        symbol_map: dict[str, str] = {}
+        if mt5.symbol_map_path:
+            map_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), mt5.symbol_map_path)
+            if os.path.exists(map_path):
+                with open(map_path) as f:
+                    symbol_map = yaml.safe_load(f) or {}
+                logger.info("Loaded MT5 symbol map from %s (%d symbols)", map_path, len(symbol_map))
+            else:
+                logger.warning("MT5 symbol map not found at %s", map_path)
+
+        return MT5Broker(
+            account=mt5.account,
+            password=mt5.password,
+            server=mt5.server,
+            symbol_map=symbol_map,
+            bridge_host=mt5.bridge_host,
+            bridge_port=mt5.bridge_port,
+        )
+
+    def _install_mt5_data_provider(self, cfg) -> None:
+        import yaml
+
+        from paper_trading.ops.data_fetcher import set_mt5_client
+        from paper_trading.ops.mt5_client import MT5Client
+
+        symbol_map: dict[str, str] = {}
+        if cfg.mt5.symbol_map_path:
+            map_path = os.path.join(BASE, cfg.mt5.symbol_map_path)
+            if os.path.exists(map_path):
+                with open(map_path) as f:
+                    symbol_map = yaml.safe_load(f) or {}
+
+        client = MT5Client(
+            account=cfg.mt5.account,
+            password=cfg.mt5.password,
+            server=cfg.mt5.server,
+            bridge_host=cfg.mt5.bridge_host,
+            bridge_port=cfg.mt5.bridge_port,
+            symbol_map=symbol_map,
+        )
+        if not client.connect():
+            logger.error("MT5 data provider failed to connect — data fetches will fall back to yfinance")
+        set_mt5_client(client, symbol_map)
+        logger.info("MT5 data provider installed")
 
     def _build_asset_registry(self) -> None:
         from paper_trading.portfolio_builder import build_paper_portfolio as _build_paper_portfolio
@@ -231,6 +290,44 @@ class PaperTradingEngine:
 
     def _rebalance_portfolio(self) -> None:
         self._rebalance.rebalance_portfolio()
+
+    def _sync_broker_capital(self) -> None:
+        """Sync internal capital_base to real broker equity (MT5 account balance).
+
+        Called every cycle when a real broker is active. Adjusts each asset's
+        capital_base proportionally so effective_capital() sizes off the real
+        account equity rather than the config file value.
+        """
+        if not self.execution_bridge._is_real_broker:
+            return
+        try:
+            summary = self.broker.get_account_summary()
+        except Exception as e:
+            logger.warning("Broker capital sync failed: %s", e)
+            return
+
+        real_equity = summary.portfolio_value
+        if real_equity <= 0:
+            return
+
+        internal_mtm = self._compute_mtm_total()
+        if internal_mtm <= 0:
+            return
+
+        ratio = real_equity / internal_mtm
+        if abs(ratio - 1.0) < 0.001:
+            return
+
+        logger.info(
+            "Broker capital sync: real_equity=%.2f  internal_mtm=%.2f  ratio=%.4f",
+            real_equity,
+            internal_mtm,
+            ratio,
+        )
+        for asset in self.assets.values():
+            adjusted = asset.capital_base * ratio
+            asset.set_capital_base(adjusted)
+        self._mtm_cache_value = None  # invalidate cache
 
     def _detect_crisis_regime(self) -> bool:
         return self._rebalance.detect_crisis_regime()
@@ -344,6 +441,10 @@ class PaperTradingEngine:
             )
             self.last_update = datetime.now(tz=ET)
             return results
+
+        # ── Sync internal capital to real broker equity ───────────────
+        # Runs before the orchestrator so entry sizing uses live equity.
+        self._sync_broker_capital()
 
         # ── Fault-isolated asset execution via orchestrator ──────────
         # Replaces Phases 1 (refresh+pnl), 3 (signal), 4 (validity).

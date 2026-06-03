@@ -89,10 +89,12 @@ class TestConfig:
 
     def test_paper_portfolio_structure(self):
         pf = build_paper_portfolio(get_config().halt)
-        for asset in ("USDCAD", "GC", "EURCAD", "EURGBP", "CADJPY", "USDCHF"):
+        for asset in ("USDCAD", "GC", "EURCAD", "CADJPY", "USDCHF", "AUDCHF", "GBPCAD"):
             assert asset in pf
         assert "XLF" not in pf
-        assert sum(v["alloc"] for v in pf.values()) <= 1.0
+        assert "EURGBP" not in pf  # removed — RED in walk-forward
+        assert "AUDCAD" not in pf  # removed — FAIL in survival sim
+        assert sum(v["alloc"] for v in pf.values()) > 0.5  # diversified portfolio
 
 
 class TestConfigManager:

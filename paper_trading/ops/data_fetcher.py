@@ -27,6 +27,27 @@ _IN_MEMORY_TTL: dict[str, float] = {
     "realtime": 5.0,
 }
 
+# Optional MT5 client override — set by engine when mt5 is enabled.
+# All module-level fetch functions will use this instead of yfinance.
+_mt5_client: object | None = None
+_mt5_symbol_map: dict[str, str] = {}
+
+
+def set_mt5_client(client: object, symbol_map: dict[str, str] | None = None) -> None:
+    """Install an MT5 client as the data provider instead of yfinance."""
+    global _mt5_client, _mt5_symbol_map
+    _mt5_client = client
+    _mt5_symbol_map = symbol_map or {}
+    logger.info("MT5 data provider installed — all data fetches will use MT5 bridge")
+
+
+def clear_mt5_client() -> None:
+    """Revert to yfinance data provider."""
+    global _mt5_client, _mt5_symbol_map
+    _mt5_client = None
+    _mt5_symbol_map = {}
+    logger.info("MT5 data provider removed — reverting to yfinance")
+
 
 def _rate_limit() -> None:
     global _last_request_time
@@ -51,6 +72,47 @@ def _cache_get(key: str) -> pd.DataFrame | float | None:
 def _cache_set(key: str, value: pd.DataFrame | float | None, cache_type: str = "download") -> None:
     ttl = _IN_MEMORY_TTL.get(cache_type, 60.0)
     _IN_MEMORY_CACHE[key] = (value, time.monotonic() + ttl)
+
+
+def _mt5_ensure_connected() -> bool:
+    """Ensure the global MT5 client is connected, reconnecting if needed."""
+    global _mt5_client
+    if _mt5_client is None:
+        return False
+    try:
+        return _mt5_client.ensure_connected()
+    except Exception:
+        return False
+
+
+def _mt5_fetch_ohlcv(ticker: str, years: int = 2) -> pd.DataFrame:
+    """Fetch OHLCV via MT5 client if installed."""
+    global _mt5_client
+    client = _mt5_client
+    if client is None:
+        return pd.DataFrame()
+    if not _mt5_ensure_connected():
+        return pd.DataFrame()
+    try:
+        return client.fetch_ohlcv(ticker, years=years)
+    except Exception as e:
+        logger.warning("MT5 fetch_ohlcv failed for %s: %s", ticker, e)
+        return pd.DataFrame()
+
+
+def _mt5_realtime_price(ticker: str) -> float | None:
+    """Fetch realtime price via MT5 client if installed."""
+    global _mt5_client
+    client = _mt5_client
+    if client is None:
+        return None
+    if not _mt5_ensure_connected():
+        return None
+    try:
+        return client.realtime_mid_price(ticker)
+    except Exception as e:
+        logger.warning("MT5 realtime_price failed for %s: %s", ticker, e)
+        return None
 
 
 def _check_data_quality(df: pd.DataFrame, ticker: str, source: str = "") -> None:
@@ -113,6 +175,23 @@ def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
     cached = _cache_get(cache_key)
     if cached is not None and isinstance(cached, pd.DataFrame) and not cached.empty:
         return cached
+
+    # Try MT5 first if provider is installed
+    if _mt5_client is not None:
+        years = 2  # default
+        if "start" in kwargs:
+            try:
+                start = datetime.strptime(kwargs["start"], "%Y-%m-%d")
+                years = max((datetime.now() - start).days / 365, 1)
+            except (ValueError, TypeError):
+                pass
+        df = _mt5_fetch_ohlcv(ticker, years=int(years) + 1)
+        if not df.empty:
+            _cache_set(cache_key, df, "download")
+            _STORE.save_cache(ticker, df)
+            _check_data_quality(df, ticker, source="mt5")
+            return df
+
     delays = [5, 15, 45]
     for attempt, delay in enumerate(delays, 1):
         try:
@@ -143,6 +222,14 @@ def fetch_realtime_price(ticker: str) -> float | None:
     cached = _cache_get(cache_key)
     if cached is not None and isinstance(cached, (int, float)):
         return float(cached)
+
+    # Try MT5 first if provider is installed
+    if _mt5_client is not None:
+        price = _mt5_realtime_price(ticker)
+        if price is not None:
+            _cache_set(cache_key, price, "realtime")
+            return price
+
     try:
         _rate_limit()
         t = yf.Ticker(ticker)

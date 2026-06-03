@@ -5,7 +5,31 @@ import numpy as np
 from paper_trading.shadow.feedback import read_feedback
 from paper_trading.shadow.learning import compile_shadow_learning
 
-PAPER_PORTFOLIO = ["NZDJPY", "CADJPY", "USDCAD", "GC", "EURAUD", "AUDJPY", "GBPJPY", "USDJPY", "USDCHF", "GBPUSD"]
+PAPER_PORTFOLIO = [
+    "CADJPY",
+    "USDCAD",
+    "GC",
+    "EURAUD",
+    "AUDJPY",
+    "USDJPY",
+    "USDCHF",
+    "CHFJPY",
+    "EURCAD",
+    "AUDCHF",
+    "GBPCHF",
+    "EURUSD",
+    "AUDUSD",
+    "NZDUSD",
+    "AUDNZD",
+    "CADCHF",
+    "GBPCAD",
+    "GBPNZD",
+    "NZDCAD",
+    "CL",
+    "ES",
+    "NQ",
+    "DJI",
+]
 
 
 def build_asset_learning_profile(asset: str, months: int = 3) -> dict | None:

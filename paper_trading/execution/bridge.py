@@ -33,13 +33,25 @@ class ExecutionBridge:
     Phase 4 (real OHLC snapshots) provides gap-through detection using
     actual bar data. When ohlcv is provided, open/high/low come from
     real bars instead of collapsing to mid price.
+
+    When ``is_real_broker`` is True (e.g. MT5 demo account), fill prices
+    are returned at mid price with zero slippage — the real fill comes
+    from the broker's order execution, not this simulation layer.
     """
 
-    def __init__(self, broker: PaperBroker, use_execution_simulator: bool = False, seed: int = 42):
+    def __init__(
+        self,
+        broker: PaperBroker,
+        use_execution_simulator: bool = False,
+        seed: int = 42,
+        is_real_broker: bool = False,
+    ):
         self.broker = broker
-        self.broker.allow_short = True
+        if hasattr(broker, "allow_short"):
+            self.broker.allow_short = True
         self.orders = OrderManager(broker)
         self.simulator = ExecutionSimulator(seed) if use_execution_simulator else None
+        self._is_real_broker = is_real_broker
 
     def _build_market_snapshot(
         self,
@@ -76,7 +88,7 @@ class ExecutionBridge:
         )
 
     def estimate_impact_bps(self, asset: str, notional: float) -> float:
-        if notional <= 0:
+        if self._is_real_broker or notional <= 0:
             return 0.0
         config = self.broker._get_config(asset)
         impact = compute_market_impact(notional, config)
@@ -90,21 +102,18 @@ class ExecutionBridge:
         mid_price: float,
         ohlcv: pd.DataFrame | None = None,
     ) -> tuple[float, float, float]:
-        """
-        Returns (fill_price, slippage_bps, impact_bps) using vol-z spread + impact model.
-
-        When ohlcv is provided, the MarketSnapshot carries real bar data
-        for gap-through detection and vol-based degradation.
-        When ohlcv is None, all snapshot fields use mid_price.
-        """
         if mid_price <= 0 or quantity <= 0:
+            return mid_price, 0.0, 0.0
+
+        # Real broker: return mid price directly — no simulated slippage
+        if self._is_real_broker:
+            logger.debug("%s %s fill: mid=%.4f (real broker, no simulation)", asset, side, mid_price)
             return mid_price, 0.0, 0.0
 
         self.broker.set_price(asset, mid_price)
         self.broker._update_vol_tracking(asset, mid_price)
         vol_z = self.broker.get_vol_zscore(asset)
         config = self.broker._get_config(asset)
-
         if self.simulator is not None:
             market = self._build_market_snapshot(asset, mid_price, ohlcv)
             result = self.simulator.simulate("entry", side, mid_price, quantity, market, config)
@@ -118,7 +127,6 @@ class ExecutionBridge:
             fill = mid_price * (1 + total) if side == "buy" else mid_price * (1 - total)
             slippage_bps = (slippage + impact) * 10000.0
             impact_bps = impact * 10000.0
-
         logger.debug(
             "%s %s fill: mid=%.4f fill=%.4f slip=%.1fbps vol_z=%.2f",
             asset,
@@ -137,16 +145,12 @@ class ExecutionBridge:
         current_price: float,
         ohlcv: pd.DataFrame | None = None,
     ) -> FillResult:
-        """Simulate a stop-loss fill with real OHLC gap-through detection.
-
-        When ohlcv is provided, gap-through is checked against real bar data.
-        When ohlcv is None, falls back to price-based fill with no gap.
-        """
+        if self._is_real_broker:
+            return FillResult(current_price, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
         if self.simulator is not None:
             config = self.broker._get_config(asset)
             market = self._build_market_snapshot(asset, current_price, ohlcv)
             return self.simulator.simulate_stop_loss(position, current_price, market, config)
-
         fill_px = position.stop_loss
         return FillResult(fill_px, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
 
@@ -162,6 +166,8 @@ class ExecutionBridge:
         When ohlcv is provided, it informs vol-based degradation only.
         When ohlcv is None, falls back to price-based fill.
         """
+        if self._is_real_broker:
+            return FillResult(current_price, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
         if self.simulator is not None:
             config = self.broker._get_config(asset)
             market = self._build_market_snapshot(asset, current_price, ohlcv)

@@ -183,10 +183,12 @@ class ExecutionBridge:
         quantity: float,
         mid_price: float,
         ohlcv: pd.DataFrame | None = None,
+        sl: float | None = None,
+        tp: float | None = None,
     ) -> tuple[float, str]:
         """Place order through OrderManager; returns (fill_price, order_id)."""
         if self._is_real_broker:
-            order_id = self.orders.submit_market_order(asset, side, quantity, fill_price=None)
+            order_id = self.orders.submit_market_order(asset, side, quantity, fill_price=None, sl=sl, tp=tp)
             return mid_price, order_id or ""
         fill, _, _ = self.fill_price(asset, side, quantity, mid_price, ohlcv)
         order_id = self.orders.submit_market_order(asset, side, quantity, fill_price=fill)

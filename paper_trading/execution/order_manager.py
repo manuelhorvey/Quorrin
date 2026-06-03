@@ -15,13 +15,16 @@ class OrderManager:
         self.cancelled_orders: list[Order] = []
 
     def submit_market_order(
-        self, asset: str, side: str, quantity: float, fill_price: float | None = None
+        self, asset: str, side: str, quantity: float, fill_price: float | None = None,
+        sl: float | None = None, tp: float | None = None,
     ) -> str | None:
         order = Order(
             asset=asset,
             side=side,
             quantity=quantity,
             order_type="market",
+            sl=sl,
+            tp=tp,
             timestamp=datetime.now(tz=ET),
         )
         if fill_price is None:

@@ -130,6 +130,8 @@ class MT5Broker(BrokerInterface):
                 ticker=order.asset,
                 side=order.side,
                 volume=volume,
+                sl=order.sl or 0.0,
+                tp=order.tp or 0.0,
                 comment="QuantForge",
             )
         except Exception as e:

@@ -11,6 +11,8 @@ class Order:
     order_type: str  # market, limit, stop
     limit_price: float | None = None
     stop_price: float | None = None
+    sl: float | None = None
+    tp: float | None = None
     timestamp: datetime | None = None
     order_id: str | None = None
     status: str = "pending"

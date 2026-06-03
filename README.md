@@ -1,21 +1,19 @@
 # QuantForge
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Status](https://img.shields.io/badge/status-paper%20trading-green)
-![WalkForward](https://img.shields.io/badge/walk--forward-30%20assets%20screened-success)
-![Portfolio](https://img.shields.io/badge/portfolio-15%20live%20assets-blue)
+![WalkForward](https://img.shields.io/badge/walk--forward-36%20assets%20screened-success)
+![Portfolio](https://img.shields.io/badge/portfolio-20%20live%20assets-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/QuantForge/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/QuantForge)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
-Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset machine learning models, governance-driven execution, and replay-oriented state architecture.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset binary XGBoost models, seven-layer governance, MetaTrader 5 bridge execution, and a React dashboard.
 
 ---
 
 # Design Philosophy
-
-QuantForge is built around a simple principle:
 
 > alpha is fragile; infrastructure robustness matters more.
 
@@ -31,26 +29,26 @@ The system prioritizes:
 
 over maximizing in-sample returns.
 
-Every promoted asset must survive expanding-window validation before entering the live paper portfolio. Runtime execution is treated as a state-machine and systems-engineering problem rather than purely a signal-generation problem.
+Every promoted asset must survive expanding-window validation before entering the live paper portfolio. Runtime execution is treated as a systems-engineering problem rather than purely a signal-generation problem.
 
 ---
 
 # System Lifecycle
 
-```text
-Research Universe
+```
+Research Universe (36+ assets)
         ↓
-Walk-Forward Screening
+Walk-Forward Screening (5-fold expanding window)
         ↓
-Asset Selection
+Asset Selection (GREEN / YELLOW / RED)
         ↓
-Per-Asset Model Training
+Per-Asset Model Training (binary XGBoost)
         ↓
-Live Inference
+Live Inference (every 300s)
         ↓
-Governance Filters
+Governance Filters (7 layers)
         ↓
-Execution
+Execution & Positioning (MT5 or PaperBroker)
         ↓
 State Persistence + Replay
 ```
@@ -62,13 +60,14 @@ State Persistence + Replay
 * Walk-forward validated before deployment
 * Per-asset model independence
 * Deterministic execution contracts
-* Replay-oriented state persistence
+* Replay-oriented state persistence (SQLite WAL)
 * Governance-first exposure control
-* Parallel isolated asset engines
+* Parallel isolated asset actors
 * Train/serve feature symmetry
 * Immutable execution attribution chain
 * Single centralized entry authority
 * Failure-domain isolation across assets
+* MT5 bridge for live demo execution via Wine
 
 ---
 
@@ -76,31 +75,30 @@ State Persistence + Replay
 
 QuantForge operates as a factor-style allocation and execution platform.
 
-A universe of 30+ FX, commodity, equity-index, and crypto tickers is screened using expanding-window walk-forward backtests. Assets are scored on directional consistency, information coefficient, hit rate, and regime robustness before being promoted into the live paper portfolio.
+A universe of 36+ FX, commodity, and equity-index tickers is screened using expanding-window walk-forward backtests. Assets are scored on directional consistency, information coefficient, hit rate, and regime robustness before being promoted into the live paper portfolio.
 
 Each promoted asset runs an independent binary XGBoost model conditioned on:
 
 * volatility-adjusted carry,
-* multi-horizon momentum,
+* multi-horizon momentum (21/63/126/252d),
 * z-score reversion,
 * volatility regime behavior,
-* and cross-asset macro momentum.
+* and cross-asset macro momentum (DXY, VIX, SPX, WTI).
 
-Execution is governed by a seven-layer risk and validity framework with archetype-aware trade management.
+Execution is governed by a seven-layer risk and validity framework with archetype-aware trade management. Orders can be routed through either a PaperBroker (simulated fills with slippage/impact) or the MT5 bridge to a live Exness demo account.
 
-```text
+```
 ┌────────────────┐
 │ Research       │
 │ Universe       │
-│ 30+ Assets     │
+│ 36+ Assets     │
 └──────┬─────────┘
        │
        ▼
 ┌────────────────┐
 │ Walk-Forward   │
 │ Validation     │
-│ 5-Fold Expanding
-│ Window Testing │
+│ 5-Fold         │
 └──────┬─────────┘
        │
        ▼
@@ -119,17 +117,21 @@ Execution is governed by a seven-layer risk and validity framework with archetyp
 └──────┬─────────┘
        │
        ▼
-┌────────────────┐
-│ Governance     │
-│ + Execution    │
-│ + Positioning  │
-└──────┬─────────┘
+┌────────────────┐          ┌─────────────────┐
+│ Governance     │          │  MT5 Bridge     │
+│ 7 Layers       │─────▶    │  (Wine Python)  │
+└──────┬─────────┘          └────────┬─────────┘
+       │                             │
+       ▼                             ▼
+┌────────────────┐          ┌─────────────────┐
+│ Execution      │          │  MetaTrader 5   │
+│ + Positioning  │          │  Exness Demo    │
+└──────┬─────────┘          └─────────────────┘
        │
        ▼
 ┌────────────────┐
 │ Portfolio      │
-│ Construction   │
-│ Equal-Risk     │
+│ Risk-Parity    │
 └────────────────┘
 ```
 
@@ -137,37 +139,68 @@ Execution is governed by a seven-layer risk and validity framework with archetyp
 
 # Current Portfolio
 
-15 live paper-traded assets promoted from the research universe.
+20 live paper-traded assets promoted from the research universe.
 
-| Asset  | Ticker   | State  | Allocation | sl_mult | tp_mult | Walk-Forward Score | IC     |
-| ------ | -------- | ------ | ---------- | ------- | ------- | ------------------ | ------ |
-| BTCUSD | BTC-USD  | GREEN  | 6.5%       | 3.0     | 2.5     | 80.9               | 0.2264 |
-| EURGBP | EURGBP=X | GREEN  | 6.5%       | 2.0     | 1.5     | 69.0               | 0.1104 |
-| GC     | GC=F     | GREEN  | 6.5%       | 2.0     | 1.5     | 66.7               | 0.1270 |
-| NZDCHF | NZDCHF=X | GREEN  | 6.5%       | 2.0     | 1.5     | 70.0               | 0.1080 |
-| CHFJPY | CHFJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| CADJPY | CADJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| USDCHF | USDCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| EURJPY | EURJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| EURCAD | EURCAD=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| AUDCHF | AUDCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| USDJPY | USDJPY=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| USDCAD | USDCAD=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| GBPCHF | GBPCHF=X | YELLOW | 6.5%       | 2.0     | 1.5     | —                  | —      |
-| ES     | ES=F     | GREEN  | 7.7%       | 2.0     | 2.5     | 76.9               | 0.1273 |
-| NQ     | NQ=F     | GREEN  | 7.8%       | 2.0     | 2.5     | 67.9               | 0.0932 |
+| Asset      | Ticker       | sl_mult | tp_mult | Allocation |
+| ---------- | ------------ | ------- | ------- | ---------- |
+| AUDCHF     | AUDCHF=X     | 0.50    | 1.50    | 6.5%       |
+| AUDNZD     | AUDNZD=X     | 0.50    | 1.50    | 6.5%       |
+| CADCHF     | CADCHF=X     | 0.50    | 1.50    | 6.5%       |
+| CADJPY     | CADJPY=X     | 0.50    | 1.50    | 6.5%       |
+| CHFJPY     | CHFJPY=X     | 0.50    | 1.50    | 6.5%       |
+| CL         | CL=F         | 0.50    | 1.50    | 7.0%       |
+| ES         | ES=F         | 0.50    | 2.50    | 7.7%       |
+| EURCAD     | EURCAD=X     | 0.50    | 1.50    | 6.5%       |
+| GC         | GC=F         | 0.50    | 1.50    | 6.5%       |
+| GBPCAD     | GBPCAD=X     | 0.50    | 1.50    | 6.5%       |
+| GBPCHF     | GBPCHF=X     | 0.50    | 1.50    | 6.5%       |
+| GBPNZD     | GBPNZD=X     | 0.50    | 1.50    | 6.5%       |
+| NZDCAD     | NZDCAD=X     | 0.50    | 1.50    | 6.5%       |
+| NQ         | NQ=F         | 0.50    | 2.50    | 7.8%       |
+| ^DJI       | ^DJI         | 0.50    | 1.50    | 7.0%       |
+| USDCHF     | USDCHF=X     | 0.50    | 1.50    | 6.5%       |
+| USDCAD     | USDCAD=X     | 0.50    | 1.50    | 6.5%       |
+| USDJPY     | USDJPY=X     | 0.50    | 1.50    | 6.5%       |
 
-### BTC Opportunistic Sleeve
+Weekly risk-parity rebalancing redistributes capital proportionally.
 
-BTC exposure is managed independently through a high-volatility satellite engine:
+---
 
-* 5% AUM cap
-* 40% volatility target
-* macro-gated participation
-* crisis-regime suppression
-* portfolio-aware exposure throttling
+# MT5 Bridge Integration
 
-Managed via `HighVolSatellite`.
+QuantForge can route data fetching and order execution through a live MetaTrader 5 terminal (Exness demo) running under Wine.
+
+## Architecture
+
+```
+Linux Host                          Wine Prefix
+┌─────────────┐                ┌──────────────────────┐
+│ Engine      │── TCP :9876 ──▶│ mt5_bridge.py        │
+│ mt5_client  │◀───────────────│ (Python 3.12 via      │
+│ (Python)    │                │  Wine → MetaTrader5)  │
+└─────────────┘                ├──────────────────────┤
+                               │ MetaTrader 5 terminal │
+                               │ terminal64.exe        │
+                               │ (Exness demo account) │
+                               └──────────────────────┘
+```
+
+## Capabilities
+
+* Real-time price streaming (bid/ask)
+* Historical OHLCV and tick data
+* Account info and position management
+* Market, limit, and stop order placement
+* Stop-loss and take-profit modification
+* Position closing
+
+## Symbol Mapping
+
+QuantForge tickers (e.g. `GC=F`) are mapped to MT5 symbols (e.g. `XAUUSD`) via `configs/mt5_symbol_map.yaml`.
+
+## Capital Sync
+
+When MT5 is enabled, each engine cycle syncs internal capital bases to the live Exness account equity. Position sizing uses the real account balance.
 
 ---
 
@@ -185,7 +218,7 @@ The system optimizes for:
 
 rather than precise return forecasting.
 
-HOLD states are intentionally removed during training to avoid ambiguous class boundaries and unstable low-confidence behavior.
+HOLD states are intentionally removed during training to avoid ambiguous class boundaries.
 
 ---
 
@@ -220,16 +253,7 @@ Primary feature families:
 * Z-score mean reversion
 * Volatility regime ratio
 * Day-of-week effects
-* Cross-asset macro momentum:
-
-  * DXY
-  * VIX
-  * SPX
-  * WTI
-
-Macro data is batch-fetched via a single `yf.download` request with TTL caching.
-
----
+* Cross-asset macro momentum (DXY, VIX, SPX, WTI)
 
 ## Market Structure Regimes
 
@@ -240,11 +264,7 @@ Inference-only archetype features derived from OHLCV:
 * RSI(14)
 * Bollinger z-score
 
-Used for:
-
-* execution conditioning,
-* trade management,
-* and regime-aware positioning.
+Used for execution conditioning, trade management, and regime-aware positioning.
 
 ---
 
@@ -261,106 +281,63 @@ LR:        0.02
 
 No shared multi-asset model exists.
 
-This intentionally isolates:
-
-* feature drift,
-* regime instability,
-* calibration failures,
-* and execution degradation
-
-to individual assets.
-
 ---
 
 # Inference Pipeline
 
 ```text
-1. Fetch live OHLCV
+1. Fetch live OHLCV (MT5 or yfinance)
 2. Refresh latest price
 3. Fetch macro data
 4. Build alpha features
-5. Fetch full OHLCV
-6. Validate truncation behavior
-7. Validate model hot-swap integrity
-8. Run XGBoost inference
-9. Classify market structure
-10. Apply execution strategy
-11. Enqueue async diagnostics
-12. Route through governance
+5. Validate truncation behavior
+6. Validate model hot-swap integrity
+7. Run XGBoost inference
+8. Classify market structure
+9. Apply execution strategy
+10. Enqueue async diagnostics
+11. Route through 7 governance layers
+12. Execute or defer
 ```
 
 ---
 
 # Execution Architecture
 
-```text
+```
 TradeDecision
       ↓
 EntryOptimizer
       ↓
 ExecutionPolicyLayer
       ↓
-_can_enter()
+_can_enter()  (single entry authority)
       ↓
 PositionManager
       ↓
 Attribution Engine
 ```
 
+Orders route through either:
+- **PaperBroker** — simulated fills with slippage and market impact
+- **MT5Broker** — live Exness demo via Wine bridge
+
 ## Key Invariants
 
 ### Single Entry Authority
-
-All entry paths route through `_can_enter()`.
-
-No component may bypass centralized admission control.
-
-This prevents:
-
-* inconsistent exposure logic,
-* duplicate entries,
-* governance desynchronization,
-* and state divergence.
-
----
+All entry paths route through `_can_enter()`. No component may bypass centralized admission control.
 
 ### Immutable Execution Contract
-
-Execution follows a frozen lifecycle:
-
-```text
-PolicyDecision
-    → FillResult
-        → AttributionRecord
 ```
-
+PolicyDecision → FillResult → AttributionRecord
+```
 Execution artifacts are append-only and replay-safe.
 
----
-
 ### Train/Serve Symmetry
-
-The same alpha feature builder is used in both:
-
-* training,
-* and live inference.
-
-This eliminates train/serve skew.
-
----
+The same alpha feature builder is used in both training and live inference.
 
 ### Replay-Oriented Persistence
-
 Persistent state is stored in SQLite WAL mode with append-oriented semantics.
-
-The architecture is designed for:
-
-* deterministic replay,
-* state reconstruction,
-* execution auditing,
-* and event-sequence validation.
-
-Legacy JSON snapshots remain supported for backward compatibility.
 
 ---
 
@@ -382,146 +359,182 @@ QuantForge uses independently configurable governance layers with worst-wins agg
 
 # Failure Isolation
 
-Each `AssetEngine` executes independently via parallel orchestration.
-
-Failures in:
-
-* data ingestion,
-* diagnostics,
-* governance,
-* execution,
-* or model inference
-
-cannot halt the global engine.
-
-All assets execute through isolated lifecycle management.
+Each `AssetEngine` executes independently via parallel orchestration (`EngineOrchestrator` with `ThreadPoolExecutor`). Failures in data ingestion, diagnostics, governance, execution, or model inference cannot halt the global engine.
 
 ---
 
-# Performance Architecture
+# Dashboard
 
-QuantForge contains multiple runtime optimizations designed for inference stability and execution throughput.
+A React SPA (TypeScript, Vite, Tailwind CSS) served on port 5000.
 
-## Runtime Optimizations
+## Features
+
+* 6-layer execution dashboard (FilterBar → ExecutionQualityStrip → Attribution Breakdown → MAE/MFE Scatter → Execution Friction → Trade Table)
+* Governance overlays (narrative status, liquidity badges, PSI drift panel, connection status)
+* Risk-parity rebalancing visualization
+* Historical trade log with attribution decomposition
+* Zod-validated API responses
+
+### API Endpoints
+
+| Endpoint            | Format | Purpose                     |
+| ------------------- | ------ | --------------------------- |
+| `state.json`        | JSON   | Engine snapshot             |
+| `trades.json`       | JSON   | Trade history               |
+| `attribution.json`  | JSON   | Execution decomposition     |
+| `narrative.json`    | JSON   | Macro narrative status      |
+| `liquidity.json`    | JSON   | Liquidity regime per asset  |
+| `psi.json`          | JSON   | PSI drift monitoring        |
+| `governance.json`   | JSON   | Governance layer state      |
+| `risk_parity.json`  | JSON   | Risk-parity weights         |
+| `execution.json`    | JSON   | Execution quality metrics   |
+| `shadow.json`       | JSON   | Shadow trade comparison     |
+| `analytics.json`    | JSON   | Portfolio analytics         |
+
+---
+
+# Runtime Optimizations
 
 * Vectorized triple-barrier labeling
 * Broadcast-based inference operations
-* Async diagnostics off hot path
-* Daemon consumer threading
+* Async diagnostics off hot path (daemon consumer thread)
 * SQLite WAL persistence
 * TTL macro cache
-* Parallel asset orchestration
+* Parallel asset orchestration (ThreadPoolExecutor, max_workers=8)
 * Inference truncation validation
 * Object-identity model hot-swap verification
 
 ---
 
-# State Architecture
-
-Persistent state is managed through a WAL-mode SQLite store.
-
-## Properties
-
-* O(1) append semantics
-* 5-table normalized schema
-* replay-oriented persistence
-* periodic WAL checkpointing
-* deterministic recovery support
-* backward-compatible JSON snapshots
-
----
-
 # Getting Started
 
+## Prerequisites
+
+- Python 3.12+
+- Wine 11+ (for MT5 bridge — skip if using yfinance only)
+- `xvfb-run` (for headless MT5 terminal)
+- Node.js + Yarn (for dashboard build)
+
+## Install
+
 ```bash
-git clone https://github.com/user/quantforge.git
-cd quantforge
+git clone https://github.com/manuelhorvey/QuantForge.git
+cd QuantForge
 
 python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+```
 
-# Start engine + dashboard
+## MT5 Setup (optional)
+
+Only needed if you want to use the MetaTrader 5 bridge for live demo execution:
+
+```bash
+# Install MT5 terminal in Wine prefix
+./scripts/setup_mt5_wine.sh
+
+# Configure credentials in .env
+cp .env.example .env
+# Edit .env: set MT5_ACCOUNT, MT5_PASSWORD, MT5_SERVER
+```
+
+## Run
+
+```bash
+# One-command launcher: builds dashboard, starts MT5 terminal, bridge, and engine
 ./monitor_all
+
+# Or for yfinance-only mode (no MT5):
+# Set data_source: yfinance in configs/paper_trading.yaml
+python -m paper_trading.ops.monitor
 ```
 
-Dashboard:
-
-```text
-http://localhost:5000
-```
+Dashboard: [http://localhost:5000](http://localhost:5000)
 
 ---
 
 # Environment Variables
 
-| Variable                      | Required | Purpose                     |
-| ----------------------------- | -------- | --------------------------- |
-| `PYTHONPATH`                  | Yes      | Set to `.`                  |
-| `QUANTFORGE_REFRESH_INTERVAL` | No       | Engine loop interval        |
-| `OPENCODE_ZEN_API_KEY`        | No       | Weekly narrative extraction |
+| Variable                      | Required | Purpose                                |
+| ----------------------------- | -------- | -------------------------------------- |
+| `PYTHONPATH`                  | Yes      | Set to `.`                             |
+| `QUANTFORGE_REFRESH_INTERVAL` | No       | Engine loop interval (default 300s)     |
+| `MT5_ACCOUNT`                 | No*      | Exness MT5 account number              |
+| `MT5_PASSWORD`                | No*      | Exness MT5 account password            |
+| `MT5_SERVER`                  | No*      | Exness MT5 server (e.g. Exness-MT5Trial2) |
+| `OPENCODE_ZEN_API_KEY`        | No       | Weekly narrative extraction            |
+| `WINE_PREFIX`                 | No       | Wine prefix path (default ~/.wine_mt5) |
+| `MT5_BRIDGE_PORT`             | No       | Bridge TCP port (default 9876)          |
+
+\* Required when `mt5.enabled: true` in config.
 
 ---
 
 # Key Scripts
 
-| Script                                 | Purpose                     |
-| -------------------------------------- | --------------------------- |
-| `scripts/walk_forward_backtest.py`     | Multi-ticker validation     |
-| `scripts/score_tickers.py`             | Asset scoring               |
-| `scripts/generate_promotion_report.py` | Portfolio report generation |
-| `scripts/train_all_assets.py`          | Full retraining             |
-| `benchmarks/microbenchmark.py`         | Runtime benchmarking        |
+| Script                                         | Purpose                         |
+| ---------------------------------------------- | ------------------------------- |
+| `./monitor_all`                                | One-command launch (terminal + bridge + engine + dashboard) |
+| `~/.local/bin/mt5-terminal`                    | Launch MT5 terminal via Wine    |
+| `~/.local/bin/mt5-bridge`                      | Launch MT5 bridge server        |
+| `scripts/walk_forward_backtest.py`             | Multi-ticker validation         |
+| `scripts/score_tickers.py`                     | Asset scoring                   |
+| `scripts/generate_promotion_report.py`         | Portfolio report generation     |
+| `scripts/train_all_assets.py`                  | Full retraining                 |
+| `scripts/setup_mt5_wine.sh`                    | MT5 Wine environment setup      |
+| `benchmarks/microbenchmark.py`                 | Runtime benchmarking            |
 
 ---
 
 # Repository Structure
 
 ```text
-features/
-paper_trading/
-benchmarks/
-scripts/
-walkforward/
-shared/
-monitoring/
-docs/
-```
-
-## Key Components
-
-```text
+configs/
+    paper_trading.yaml        # Primary engine config
+    mt5_symbol_map.yaml       # MT5 symbol mapping
 features/
     alpha_features.py
     archetypes.py
     labels.py
-    macro_narrative.py
-    liquidity_regime.py
-
 paper_trading/
-    engine.py
-    asset_engine.py
-    state_store.py
-    orchestrator/
-    inference/
+    engine.py                 # Main engine + capital sync
+    asset_engine.py           # Per-asset lifecycle
+    orchestrator/             # Parallel AssetActor execution
+    inference/                # Live inference pipeline
     execution/
-    governance/
-    position/
-    shadow/
-    satellite/
+        paper_broker.py       # Simulated fills
+        mt5_broker.py         # MT5 live execution
+        bridge.py             # Broker abstraction
+    ops/
+        monitor.py            # Main loop + dashboard server
+        data_fetcher.py       # Data with MT5 fallback
+        mt5_bridge.py         # Wine-side TCP bridge server
+        mt5_client.py         # Host-side bridge client
+    governance/               # 7-layer governance
+    position/                 # Position management
+    services/                 # Engine services (narrative, rebalance, state)
+    dashboard/                # React SPA (Vite + TypeScript)
+scripts/                      # CLI tools
+docs/                         # Documentation + ADRs
+shared/                       # Strategy registry, sizing, execution config
+monitoring/                   # PSI drift, validity, importance tracking
+benchmarks/                   # Performance benchmarks
+tests/                        # Test suite
 ```
 
 ---
 
 # Known Constraints
 
-* Paper trading only
-* Yahoo Finance data dependency
-* No live brokerage integration
-* Ensemble system disabled by default
+* Paper trading only (no live capital)
+* Yahoo Finance primary data source (with MT5 as optional supplement)
+* MT5 bridge requires Wine on Linux
 * Some FX crosses may produce incomplete first-cycle bars
 * Macro data sourced entirely from Yahoo Finance
+* Dashboard requires `yarn build` after asset list changes
+* MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 
 ---
 
@@ -532,8 +545,8 @@ paper_trading/
 * Extended execution quality analytics
 * Multi-engine distributed orchestration
 * Portfolio-level regime optimization
-* Live broker abstraction layer
 * Shadow execution comparison tooling
+* Async MT5 bridge for concurrent symbol queries
 
 ---
 

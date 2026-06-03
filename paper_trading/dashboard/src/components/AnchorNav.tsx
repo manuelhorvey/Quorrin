@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react'
 
-export const NAV_SECTIONS = [
+const NAV_SECTIONS = [
   { id: 'portfolio', label: 'Portfolio' },
   { id: 'signals', label: 'Signals' },
   { id: 'execution', label: 'Execution' },
   { id: 'trades', label: 'Trades' },
-  { id: 'governance', label: 'Governance' },
   { id: 'risk', label: 'Risk' },
-  { id: 'charts', label: 'Charts' },
-  { id: 'alert-feed', label: 'Alerts' },
-  { id: 'engine-logs', label: 'Logs' },
 ]
 
 export default function AnchorNav() {
@@ -34,8 +30,8 @@ export default function AnchorNav() {
   }, [])
 
   return (
-    <nav className="sticky top-[45px] sm:top-[49px] z-20 bg-app/80 backdrop-blur-md border-b border-default/60">
-      <div className="max-w-[90rem] mx-auto px-3 sm:px-6 flex items-center gap-0 overflow-x-auto scrollbar-none">
+    <nav className="sticky top-[45px] z-20 bg-app/80 backdrop-blur-md border-b border-default/60">
+      <div className="max-w-[90rem] mx-auto px-4 sm:px-6 flex items-center gap-0 overflow-x-auto scrollbar-none">
         {NAV_SECTIONS.map(({ id, label }) => (
           <a
             key={id}

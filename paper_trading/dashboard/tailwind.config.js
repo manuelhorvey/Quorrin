@@ -4,16 +4,11 @@ export default {
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
   ],
-  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
         sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        display: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
-      },
-      fontSize: {
-        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
       },
       colors: {
         surface: {
@@ -58,21 +53,10 @@ export default {
         'chart-teal': '#2dd4bf',
       },
       boxShadow: {
-        'panel-sm':   '0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 2px rgba(0,0,0,0.3)',
-        'panel-md':   '0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.35)',
-        'panel-lg':   '0 1px 0 rgba(255,255,255,0.05) inset, 0 8px 32px rgba(0,0,0,0.4)',
-        'panel-hover':'0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 40px rgba(0,0,0,0.5)',
-        'panel-modal':'0 0 0 1px rgba(255,255,255,0.04), 0 24px 80px rgba(0,0,0,0.6)',
         panel: '0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 24px rgba(0,0,0,0.35)',
         card: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 32px rgba(0,0,0,0.4)',
-        'card-hover': '0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 48px rgba(0,0,0,0.5)',
-        'glow-emerald': '0 0 24px rgba(52, 211, 153, 0.15)',
-        'glow-blue': '0 0 24px rgba(96, 165, 250, 0.12)',
-        'glow-amber': '0 0 24px rgba(251, 191, 36, 0.1)',
-        'glow-red': '0 0 24px rgba(248, 113, 113, 0.15)',
-        'inner-subtle': 'inset 0 1px 0 rgba(255,255,255,0.03)',
-        'lift': '0 8px 40px rgba(0,0,0,0.5)',
-        'tooltip': '0 4px 20px rgba(0,0,0,0.5)',
+        modal: '0 0 0 1px rgba(255,255,255,0.04), 0 24px 80px rgba(0,0,0,0.6)',
+        tooltip: '0 4px 20px rgba(0,0,0,0.5)',
       },
       borderRadius: {
         DEFAULT: '6px',
@@ -80,28 +64,16 @@ export default {
         xl: '10px',
         '2xl': '12px',
       },
-      spacing: {
-        18: '4.5rem',
-      },
-      transitionDuration: {
-        '250': '250ms',
-      },
       animation: {
         'pulse-subtle': 'pulse-subtle 2s ease-in-out infinite',
-        'glow': 'glow 2s ease-in-out infinite alternate',
         'scale-in': 'scale-in 0.2s ease-out',
         'slide-up': 'slide-up 0.35s ease-out',
         'fade-in': 'fade-in 0.4s ease-out',
-        'shimmer': 'shimmer 2s infinite',
       },
       keyframes: {
         'pulse-subtle': {
           '0%, 100%': { opacity: '0.5' },
           '50%': { opacity: '1' },
-        },
-        'glow': {
-          '0%': { boxShadow: '0 0 16px rgba(52, 211, 153, 0.08)' },
-          '100%': { boxShadow: '0 0 32px rgba(52, 211, 153, 0.18)' },
         },
         'scale-in': {
           '0%': { transform: 'scale(0.97)', opacity: '0' },
@@ -114,10 +86,6 @@ export default {
         'fade-in': {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
-        },
-        'shimmer': {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
         },
       },
     },

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { fetchApi } from '../lib/api'
 import { TradeEntrySchema } from '../lib/schemas'
-import { useMarketClosed } from './useMarketClosed'
 
 export type TradeEntry = z.infer<typeof TradeEntrySchema>
 
@@ -20,11 +19,10 @@ async function fetchTrades(limit: number, offset: number): Promise<TradeEntry[]>
 }
 
 export function useTrades(limit = 10, offset = 0) {
-  const closed = useMarketClosed()
   return useQuery({
     queryKey: ['trades', limit, offset],
     queryFn: () => fetchTrades(limit, offset),
-    refetchInterval: closed ? 300_000 : 60_000,
-    staleTime: closed ? 290_000 : 50_000,
+    refetchInterval: 60_000,
+    staleTime: 50_000,
   })
 }

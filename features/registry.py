@@ -244,7 +244,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
             "vertical_barrier": 20,
         },
         macro_filters=("rate_diff", "dxy_mom_21", "vix_ma21", "vix_delta_5"),
-        price_mom_windows=(21, 63),
+        price_mom_windows=(21, 63, 126),
         vs_spy_windows=(),
     ),
     "EURGBP=X": FeatureContract(

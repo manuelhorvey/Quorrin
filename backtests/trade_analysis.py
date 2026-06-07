@@ -61,7 +61,7 @@ CONFIRM = 2
 # Volatility regime geometry — mimics paper_trading.yaml regime_geometry
 # LOW/MID/HIGH vol mapped to GREEN/YELLOW/RED behavior
 REGIME_GEOM = {
-    "low":  {"sl": 1.00, "tp": 1.00},
+    "low":  {"sl": 0.80, "tp": 1.10},
     "mid":  {"sl": 1.00, "tp": 1.00},
     "high": {"sl": 1.00, "tp": 1.00},
 }  # min bars before allowing signal flip
@@ -196,7 +196,8 @@ def _simulate(sigs: pd.DataFrame, close: pd.Series, high: pd.Series, low: pd.Ser
                                "exit_price": round(ep, 6), "exit_date": dt, "exit_reason": reason,
                                "bars_held": held, "return": round(ret, 6),
                                "r_multiple": round(ret / risk, 4) if risk else 0.0,
-                               "mae_r": round(mae_r, 4), "mfe_r": round(mfe_r, 4)})
+                               "mae_r": round(mae_r, 4), "mfe_r": round(mfe_r, 4),
+                               "entry_regime": rg})
                 in_pos = False
                 continue
         if not in_pos and cs != 1:

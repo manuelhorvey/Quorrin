@@ -93,7 +93,7 @@ execution:
 assets:
   GC:
     ticker: GC=F
-    allocation: 0.110
+    allocation: 0.080
     sl_mult: 1.00
     tp_mult: 4.00
     regime_geometry:
@@ -108,7 +108,7 @@ assets:
         tp_mult: 0.77
   USDCHF:
     ticker: USDCHF=X
-    allocation: 0.050
+    allocation: 0.040
     sl_mult: 0.85
     tp_mult: 3.00
     max_depth: 4
@@ -124,12 +124,12 @@ assets:
         tp_mult: 0.78
   AUDCHF:
     ticker: AUDCHF=X
-    allocation: 0.070
+    allocation: 0.060
     sl_mult: 2.75
     tp_mult: 3.50
   USDCAD:
     ticker: USDCAD=X
-    allocation: 0.070
+    allocation: 0.060
     sl_mult: 2.50
     tp_mult: 2.03
     max_depth: 5
@@ -145,49 +145,77 @@ assets:
         tp_mult: 0.74
   ES:
     ticker: ES=F
-    allocation: 0.120
+    allocation: 0.090
     sl_mult: 2.00
     tp_mult: 5.50
   NQ:
     ticker: NQ=F
-    allocation: 0.100
+    allocation: 0.080
     sl_mult: 2.50
     tp_mult: 5.00
-
-  # ── Newly promoted (GREEN/YELLOW from walk-forward) ─────────────────────
   GBPCAD:
     ticker: GBPCAD=X
-    allocation: 0.070
+    allocation: 0.050
     sl_mult: 2.50
     tp_mult: 2.50
   GBPNZD:
     ticker: GBPNZD=X
-    allocation: 0.070
+    allocation: 0.060
     sl_mult: 3.00
     tp_mult: 1.00
     max_depth: 3
   NZDCAD:
     ticker: NZDCAD=X
-    allocation: 0.070
+    allocation: 0.060
     sl_mult: 2.50
     tp_mult: 4.00
   ^DJI:
     ticker: ^DJI
-    allocation: 0.050
+    allocation: 0.040
     sl_mult: 0.50
     tp_mult: 4.00
     max_depth: 4
-
-  # ── New additions (candidate sweep 2026-06) ─────────────────────────────
   EURUSD:
     ticker: EURUSD=X
-    allocation: 0.050
+    allocation: 0.040
     sl_mult: 3.00
     tp_mult: 1.50
     max_depth: 3
   NZDUSD:
     ticker: NZDUSD=X
-    allocation: 0.070
+    allocation: 0.060
     sl_mult: 2.50
     tp_mult: 1.50
     max_depth: 5
+
+  # ── New additions (filter sweep 2026-06) ────────────────────────────────
+  GBPAUD:
+    ticker: GBPAUD=X
+    allocation: 0.060
+    sl_mult: 1.00
+    tp_mult: 2.00
+    max_depth: 2
+  NZDCHF:
+    ticker: NZDCHF=X
+    allocation: 0.070
+    sl_mult: 1.00
+    tp_mult: 4.00
+    max_depth: 2
+  CADCHF:
+    ticker: CADCHF=X
+    allocation: 0.060
+    sl_mult: 1.00
+    tp_mult: 4.00
+    max_depth: 2
+  AUDUSD:
+    ticker: AUDUSD=X
+    allocation: 0.040
+    sl_mult: 1.50
+    tp_mult: 4.00
+    max_depth: 2
+  AUDNZD:
+    ticker: AUDNZD=X
+    allocation: 0.030
+    sl_mult: 2.00
+    tp_mult: 1.00
+    max_depth: 2

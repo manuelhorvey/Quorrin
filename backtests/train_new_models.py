@@ -17,6 +17,11 @@ BASE = os.path.join(os.path.dirname(__file__), "..", "paper_trading", "models")
 NEW_ASSETS = [
     ("EURUSD", "EURUSD=X", {"sl": 3.0, "tp": 1.5}, 3),
     ("NZDUSD", "NZDUSD=X", {"sl": 2.5, "tp": 1.5}, 5),
+    ("GBPAUD", "GBPAUD=X", {"sl": 1.0, "tp": 2.0}, 2),
+    ("NZDCHF", "NZDCHF=X", {"sl": 1.0, "tp": 4.0}, 2),
+    ("CADCHF", "CADCHF=X", {"sl": 1.0, "tp": 4.0}, 2),
+    ("AUDUSD", "AUDUSD=X", {"sl": 1.5, "tp": 4.0}, 2),
+    ("AUDNZD", "AUDNZD=X", {"sl": 2.0, "tp": 1.0}, 2),
 ]
 
 LABEL_THRESH = 0.002 / 0.15

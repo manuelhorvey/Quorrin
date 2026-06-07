@@ -507,7 +507,7 @@ FEATURE_REGISTRY: dict[str, FeatureContract] = {
             "pt_sl": [ASSET_LABEL_PARAMS["NQ"]["pt"], ASSET_LABEL_PARAMS["NQ"]["sl"]],
             "vertical_barrier": 20,
         },
-        macro_filters=("rate_diff", "vix_ma21", "dxy_mom_21"),
+        macro_filters=("rate_diff", "vix_ma21", "dxy_mom_21", "breakeven_delta_63"),
         price_mom_windows=(21, 63),
         vs_spy_windows=(),
     ),

@@ -93,7 +93,7 @@ execution:
 assets:
   GC:
     ticker: GC=F
-    allocation: 0.090
+    allocation: 0.110
     sl_mult: 1.00
     tp_mult: 4.00
     regime_geometry:
@@ -106,24 +106,9 @@ assets:
       RED:
         sl_mult: 0.59
         tp_mult: 0.77
-  CHFJPY:
-    ticker: CHFJPY=X
-    allocation: 0.090
-    sl_mult: 0.50
-    tp_mult: 1.00
-    regime_geometry:
-      GREEN:
-        sl_mult: 0.60
-        tp_mult: 0.59
-      YELLOW:
-        sl_mult: 0.60
-        tp_mult: 0.59
-      RED:
-        sl_mult: 0.60
-        tp_mult: 0.74
   USDCHF:
     ticker: USDCHF=X
-    allocation: 0.040
+    allocation: 0.050
     sl_mult: 0.85
     tp_mult: 3.00
     max_depth: 4
@@ -160,12 +145,12 @@ assets:
         tp_mult: 0.74
   ES:
     ticker: ES=F
-    allocation: 0.100
+    allocation: 0.120
     sl_mult: 2.00
     tp_mult: 5.50
   NQ:
     ticker: NQ=F
-    allocation: 0.080
+    allocation: 0.100
     sl_mult: 2.50
     tp_mult: 5.00
 
@@ -188,7 +173,7 @@ assets:
     tp_mult: 4.00
   ^DJI:
     ticker: ^DJI
-    allocation: 0.040
+    allocation: 0.050
     sl_mult: 0.50
     tp_mult: 4.00
     max_depth: 4

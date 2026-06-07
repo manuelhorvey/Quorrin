@@ -24,7 +24,6 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SLTP_CFG = {
     "GC":     {"sl": 1.00, "tp": 4.00},
-    "CHFJPY": {"sl": 0.50, "tp": 1.00},
     "USDCHF": {"sl": 0.85, "tp": 3.00},
     "AUDCHF": {"sl": 2.75, "tp": 3.50},
     "USDCAD": {"sl": 2.50, "tp": 2.00},
@@ -36,14 +35,14 @@ SLTP_CFG = {
     "DJI":    {"sl": 0.50, "tp": 4.00},
 }
 DASHBOARD_TICKERS = {
-    "GC=F": "GC", "CHFJPY=X": "CHFJPY",
+    "GC=F": "GC",
     "USDCHF=X": "USDCHF", "AUDCHF=X": "AUDCHF",
     "USDCAD=X": "USDCAD", "ES=F": "ES",
     "NQ=F": "NQ", "GBPCAD=X": "GBPCAD", "GBPNZD=X": "GBPNZD",
     "NZDCAD=X": "NZDCAD", "^DJI": "DJI",
 }
 MODEL_DEPTH = {
-    "GC": 2, "CHFJPY": 2, "USDCHF": 4,
+    "GC": 2, "USDCHF": 4,
     "AUDCHF": 2, "USDCAD": 5, "ES": 2,
     "NQ": 2, "GBPCAD": 2, "GBPNZD": 3, "NZDCAD": 2, "DJI": 4,
 }

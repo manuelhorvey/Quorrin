@@ -143,7 +143,8 @@ class PositionService:
 
         # ── Real broker close (MT5) ──
         mt5_ticket = asset.position.get("mt5_ticket") if asset.position else None
-        if mt5_ticket is not None and asset.execution_bridge is not None and getattr(asset.execution_bridge, "_is_real_broker", False):
+        is_real = getattr(asset.execution_bridge, "_is_real_broker", False)
+        if mt5_ticket is not None and asset.execution_bridge is not None and is_real:
             try:
                 asset.execution_bridge.broker.close_position(asset.ticker, str(mt5_ticket))
             except Exception as e:

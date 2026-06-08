@@ -75,21 +75,21 @@ class TestConfig:
 
     def test_xlf_features(self):
         features = FEATURE_REGISTRY["BTC-USD"].features
-        assert len(features) == 10
+        assert len(features) == 8
         assert "rate_diff" in features
         assert "vix_delta_5" in features
         assert "btc-usd_mom_10" in features
 
     def test_btc_features(self):
         features = FEATURE_REGISTRY["BTC-USD"].features
-        assert len(features) == 10
+        assert len(features) == 8
         assert "rate_diff" in features
-        assert "vix_delta_5" in features
-        assert "btc-usd_vs_spy_21" in features
+        assert "btc-usd_mom_10" in features
+        assert "btc-usd_mom_63" in features
 
     def test_paper_portfolio_structure(self):
         pf = build_paper_portfolio(get_config().halt)
-        for asset in ("USDCAD", "GC", "EURCAD", "CADJPY", "USDCHF", "AUDCHF", "GBPCAD"):
+        for asset in ("USDCAD", "GC", "EURCAD", "NZDUSD", "USDCHF", "AUDCHF", "GBPCAD"):
             assert asset in pf
         assert "XLF" not in pf
         assert "EURGBP" not in pf  # removed — RED in walk-forward

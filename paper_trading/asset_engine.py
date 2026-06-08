@@ -598,7 +598,7 @@ class AssetEngine:
         from paper_trading.services.metrics_service import MetricsService
         return MetricsService.decision_to_dict(
             decision,
-            pos_mgr_position=self.pos_mgr.position,
+            pos_mgr=self.pos_mgr,
             model=self.model,
             name=self.name,
         )

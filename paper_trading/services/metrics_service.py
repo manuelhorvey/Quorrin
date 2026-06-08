@@ -14,8 +14,8 @@ ET = pytz.timezone("US/Eastern")
 
 class MetricsService:
     @staticmethod
-    def decision_to_dict(decision, *, pos_mgr_position, model, name):
-        pos = pos_mgr_position
+    def decision_to_dict(decision, *, pos_mgr, model, name):
+        pos = pos_mgr.position if pos_mgr else None
         macro_weight = None
         macro_head = getattr(model, "macro_head", None) if model else None
         if macro_head is not None:
@@ -36,7 +36,7 @@ class MetricsService:
                     "entry": round(pos.entry_price, 4) if pos else None,
                     "sl": round(pos.stop_loss, 4) if pos else None,
                     "tp": round(pos.take_profit, 4) if pos else None,
-                    "current_pnl": (round(pos_mgr_position.position_pnl(decision.close_price), 4) if pos else None),
+                    "current_pnl": (round(pos_mgr.position_pnl(decision.close_price), 4) if pos else None),
                 }
                 if pos
                 else None

@@ -248,69 +248,6 @@ class PaperTradingEngine:
     def _rebalance_portfolio(self) -> None:
         self._rebalance.rebalance_portfolio()
 
-    def _sync_broker_capital(self) -> None:
-        """Sync internal capital_base to real broker equity (MT5 account balance).
-
-        Called every cycle when a real broker is active. Adjusts each asset's
-        capital_base proportionally so effective_capital() sizes off the real
-        account equity rather than the config file value.
-        """
-        if not self.execution_bridge._is_real_broker:
-            return
-        try:
-            summary = self.broker.get_account_summary()
-        except Exception as e:
-            logger.warning("Broker capital sync failed: %s", e)
-            return
-
-        real_equity = summary.portfolio_value
-        if real_equity <= 0:
-            return
-
-        # Use configured capital as the denominator, NOT internal_mtm
-        # (sum of per-asset allocations which exceeds 100% of capital).
-        # This keeps the ratio near 1.0 when MT5 equity ≈ config capital,
-        # preventing the false -21% display when allocations sum to >100%.
-        cfg_capital = self._engine_cfg.capital
-        if cfg_capital <= 0:
-            return
-
-        ratio = real_equity / cfg_capital
-        if abs(ratio - 1.0) < 0.001:
-            return
-
-        if ratio < 0.5 or ratio > 2.0:
-            logger.warning(
-                "Broker capital sync: LARGE DISCREPANCY — real_equity=%.2f cfg_capital=%.2f ratio=%.4f. "
-                "All asset capital bases will be adjusted by this ratio. "
-                "Verify MT5 account equity matches config capital.",
-                real_equity,
-                cfg_capital,
-                ratio,
-            )
-        else:
-            logger.info(
-                "Broker capital sync: real_equity=%.2f  cfg_capital=%.2f  ratio=%.4f",
-                real_equity,
-                cfg_capital,
-                ratio,
-            )
-
-        for asset in self.assets.values():
-            adjusted = asset.capital_base * ratio
-            asset.capital_base = adjusted
-            asset.current_value = adjusted
-            asset.pos_mgr.current_value = adjusted
-            asset.initial_capital = adjusted
-            # Reset peak to current_value so per-asset drawdown doesn't
-            # show a false -95% from the capital baseline change.
-            asset.peak_value = adjusted
-            asset.pos_mgr.peak_value = adjusted
-        self._mtm_cache_value = None  # invalidate cache
-
-    def _detect_crisis_regime(self) -> bool:
-        return self._rebalance.detect_crisis_regime()
-
     def get_state(self) -> dict:
         return self._state.get_state()
 
@@ -341,21 +278,6 @@ class PaperTradingEngine:
             except Exception as e:
                 logger.error("%s: training FAILED - %s", name, e)
 
-    def _compute_mtm_total(self) -> float:
-        if not hasattr(self, "_cycle_count"):
-            self._cycle_count = 0
-            self._mtm_cache_value = None
-            self._mtm_cache_cycle = -1
-        elif not hasattr(self, "_mtm_cache_value"):
-            self._mtm_cache_value = None
-            self._mtm_cache_cycle = -1
-        if self._mtm_cache_value is not None and self._mtm_cache_cycle == self._cycle_count:
-            return self._mtm_cache_value
-        mtm = sum(a.mtm_value for a in self.assets.values())
-        self._mtm_cache_value = mtm
-        self._mtm_cache_cycle = self._cycle_count
-        return mtm
-
     def run_once(self):
         _t0 = time.perf_counter()
         self._cycle_count += 1
@@ -378,22 +300,13 @@ class PaperTradingEngine:
         pd_limit = self._engine_cfg.portfolio_drawdown_limit
         results: dict[str, object] = {}
 
-        # ── Sync internal capital to real broker equity FIRST ──────────
-        # DISABLED: dashboard tracks independent paper P&L; MT5 orders
-        # route through the broker but don't overwrite internal capital.
-        # self._sync_broker_capital()
-        # Reset peak after sync so drawdown is computed from the new
-        # capital baseline (prevents false -97% circuit breaker on fresh
-        # start when MT5 equity << config capital).
-        # self.portfolio_peak_value = None
-
         # ── Refresh prices for accurate MTM before drawdown check ──
         for name, asset in self.assets.items():
             asset.refresh_price()
         self._mtm_cache_value = None  # invalidate MTM cache so it recomputes with fresh prices
 
         # ── Portfolio drawdown check (BEFORE any new trading) ────────
-        mtm = self._compute_mtm_total()
+        mtm = self._state.compute_mtm_total()
         if self.portfolio_peak_value is None or mtm > self.portfolio_peak_value:
             self.portfolio_peak_value = mtm
         portfolio_dd = (

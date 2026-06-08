@@ -603,9 +603,6 @@ class AssetEngine:
             name=self.name,
         )
 
-    def _position_pnl(self, current_price):
-        return self.pos_mgr.position_pnl(current_price)
-
     def _ensure_position_synced(self):
         self._position.ensure_position_synced(
             position=self.position,
@@ -646,10 +643,6 @@ class AssetEngine:
             _last_psi_drift=self._last_psi_drift,
             mtm_value=self.mtm_value,
         )
-
-    def _save_trade_journal(self, trade):
-        if self.state_store is not None:
-            self.state_store.append_trade(trade)
 
     def _log_confidence_buckets(self):
         from paper_trading.services.metrics_service import MetricsService

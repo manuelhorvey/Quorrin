@@ -84,20 +84,4 @@ def _generate_scale_out_profile(archetype: str, convexity: float) -> list[tuple[
     return [(1 / 3, 0.50), (1 / 3, 1.00), (1 / 3, 1.50)]
 
 
-if __name__ == "__main__":
-    # Test
-    from paper_trading.entry.decision import MarketStructureState
 
-    struct = MarketStructureState(0, 0, 0, 0, 1.0, 0.5)
-
-    print("Momentum Ignition (High Convexity):")
-    geo = compute_take_profit(100.0, 2.0, ValidityState.GREEN, "MOMENTUM_IGNITION", struct)
-    print(geo)
-
-    print("\nMean Reversion (Low Convexity):")
-    geo_mr = compute_take_profit(100.0, 2.0, ValidityState.GREEN, "MEAN_REVERSION", struct)
-    print(geo_mr)
-
-    print("\nCrisis Regime (Safety Envelope):")
-    geo_crisis = compute_take_profit(100.0, 2.0, "crisis", "TREND_PULLBACK", struct)
-    print(geo_crisis)

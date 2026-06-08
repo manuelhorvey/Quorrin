@@ -44,15 +44,6 @@ def set_mt5_client(client: object, symbol_map: dict[str, str] | None = None) -> 
     logger.info("MT5 data provider installed — all data fetches will use MT5 bridge")
 
 
-def clear_mt5_client() -> None:
-    """Revert to yfinance data provider."""
-    with _mt5_client_lock:
-        global _mt5_client, _mt5_symbol_map
-        _mt5_client = None
-        _mt5_symbol_map = {}
-    logger.info("MT5 data provider removed — reverting to yfinance")
-
-
 def _rate_limit() -> None:
     global _last_request_time
     with _rate_limit_lock:

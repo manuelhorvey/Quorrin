@@ -74,15 +74,6 @@ def _histogram_bins(values: list, bins: int = 10, low: float = 0.0, high: float 
     ]
 
 
-def _kl_divergence(p: list, q: list) -> float:
-    p = np.array(p, dtype=np.float64)
-    q = np.array(q, dtype=np.float64)
-    p = p / (p.sum() + 1e-12)
-    q = q / (q.sum() + 1e-12)
-    q = np.clip(q, 1e-12, None)
-    return float(np.sum(p * np.log(p / q)))
-
-
 def build_baseline(asset: str, events: list | None = None) -> dict:
     if events is None:
         events = read_events(asset, days=90)

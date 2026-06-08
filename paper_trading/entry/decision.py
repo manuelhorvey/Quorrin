@@ -11,12 +11,6 @@ class ValidityState(str, Enum):
     RED = "RED"
 
 
-class LiquidityRegime(str, Enum):
-    NORMAL = "NORMAL"
-    THIN = "THIN"
-    STRESSED = "STRESSED"
-
-
 @dataclass
 class MarketStructureState:
     """

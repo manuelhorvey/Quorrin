@@ -72,26 +72,3 @@ class RegimeClassifier:
 
         return df
 
-
-if __name__ == "__main__":
-    # Test with generated features
-    try:
-        features = pd.read_parquet("data/processed/EURUSD_regime_features.parquet")
-        classifier = RegimeClassifier(confidence_threshold=0.55)
-        regime_data = classifier.classify(features)
-
-        print("\nRegime Distribution:")
-        print(regime_data["regime"].value_counts(normalize=True))
-
-        print("\nSample Output:")
-        print(regime_data[["regime", "P_trend", "P_range", "P_volatile", "regime_confidence"]].tail(10))
-
-        # Save to data/processed
-        regime_data.to_parquet("data/processed/EURUSD_regime_labels.parquet")
-        print("\nSaved regime labels to data/processed/EURUSD_regime_labels.parquet")
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        print(f"Classification failed: {e}")

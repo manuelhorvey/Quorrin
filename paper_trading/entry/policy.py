@@ -131,14 +131,4 @@ class ExecutionPolicyLayer:
             )
 
 
-if __name__ == "__main__":
-    # Test routing
-    layer = ExecutionPolicyLayer()
-    from paper_trading.entry.decision import SignalType
 
-    dec = TradeDecision("TEST", SignalType.BUY, 2, 75.0, 0.75, 0.1, 0.15, 100.0, "2026-05-26", 1.0, "MOMENTUM_IGNITION")
-    struct = MarketStructureState(0, 0, 0, 0, 1.0, 0.95)
-
-    # Simulate DEFER from Phase 1
-    policy_dec = layer.handle(EntryAction.DEFER, dec, "MOMENTUM_IGNITION", struct, None, object())
-    print(f"Policy Action: {policy_dec.action}, Reason: {policy_dec.reason}")

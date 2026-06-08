@@ -32,8 +32,8 @@ export default function Gauge({
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <defs>
           <linearGradient id={`gauge-track-${label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2a3040" />
-            <stop offset="100%" stopColor="#1a1d28" />
+            <stop offset="0%" stopColor="var(--color-border-strong)" />
+            <stop offset="100%" stopColor="var(--color-border)" />
           </linearGradient>
         </defs>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={`url(#gauge-track-${label.replace(/\s/g, '')})`} strokeWidth={6} />

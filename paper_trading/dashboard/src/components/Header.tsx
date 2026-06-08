@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { RefreshCw, TrendingUp } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import ThemeToggle from './ui/ThemeToggle'
 
 export default function Header() {
   const { isError } = usePortfolioState()
@@ -43,6 +44,8 @@ export default function Header() {
             className={`relative inline-flex w-2 h-2 rounded-full ${isError ? 'bg-gov-red' : 'bg-gov-green'}`}
             title={isError ? 'Disconnected' : 'Connected'}
           />
+
+          <ThemeToggle />
 
           <button
             type="button"

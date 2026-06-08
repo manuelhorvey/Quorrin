@@ -4,17 +4,17 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
-    "build": "tsc -b && vite build",
+    "build:tokens": "tsx scripts/generate-tokens.ts",
+    "build:dtcg": "tsx scripts/generate-dtcg.ts",
+    "dev": "npm run build:tokens && vite --port 3000",
+    "build": "npm run build:tokens && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.0",
-
     "lucide-react": "^0.312.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^7.16.0",
     "recharts": "^2.12.0",
     "zod": "^4.4.3"
   },
@@ -25,6 +25,7 @@
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.3.3",
     "vite": "^5.1.0"
   }

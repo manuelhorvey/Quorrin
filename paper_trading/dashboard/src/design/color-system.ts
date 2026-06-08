@@ -1,179 +1,370 @@
-/*
-  ── QuantForge Color System ──────────────────────────
-  Generated from hero accent #2dd4bf (teal-emerald)
-  Hue: 170° | Saturation: 72% | Lightness: 55%
+// ── Single Source of Truth ──────────────────────────
+// rawTokens keys are CSS custom property names minus the `--` prefix.
+// The generate-tokens script reads this map to produce:
+//   generated/tokens.css          →  :root { --color-teal-50: ... }
+//   generated/tailwind.partial.js →  { theme: { extend: { colors: ... } } }
+// All derived exports below are syntactic sugar on top of rawTokens.
+// ──────────────────────────────────────────────────────────────────
 
-  Architecture:
-    Brand  → teal-emerald (hero) + indigo (secondary)
-    Neutral → warm-dark surfaces with teal undertone
-    Semantic → tuned for premium data viz
-    Accent  → extended palette for charts, badges, highlights
-*/
+export const rawTokens = {
+  // ── Brand: Teal-Emerald (hero) ────────────────────
+  'color-teal-50': '#eefdf8',
+  'color-teal-100': '#d3faea',
+  'color-teal-200': '#adf5d8',
+  'color-teal-300': '#75ebc5',
+  'color-teal-400': '#3dd9ae',
+  'color-teal-500': '#2dd4bf',
+  'color-teal-600': '#1bb5a5',
+  'color-teal-700': '#15918a',
+  'color-teal-800': '#14736e',
+  'color-teal-900': '#135e5a',
+  'color-teal-950': '#043533',
 
-/* ── Brand: Teal-Emerald (hero) ────────────────────
-   Primary brand color. Used for key CTAs, active states,
-   logo, and primary data series. */
+  // ── Brand: Indigo (secondary) ─────────────────────
+  'color-indigo-50': '#eef2ff',
+  'color-indigo-100': '#e0e7ff',
+  'color-indigo-200': '#c9d4fe',
+  'color-indigo-300': '#a7b6fd',
+  'color-indigo-400': '#818cf8',
+  'color-indigo-500': '#6366f1',
+  'color-indigo-600': '#4f46e5',
+  'color-indigo-700': '#4338ca',
+  'color-indigo-800': '#3730a3',
+  'color-indigo-900': '#312e81',
+  'color-indigo-950': '#1e1b4b',
+
+  // ── Neutral: Surface palette ──────────────────────
+  'color-neutral-50': '#f3f6f5',
+  'color-neutral-100': '#e1e6e4',
+  'color-neutral-200': '#c3cdc8',
+  'color-neutral-300': '#9eada6',
+  'color-neutral-400': '#7a8d85',
+  'color-neutral-500': '#5f726b',
+  'color-neutral-600': '#4b5b55',
+  'color-neutral-700': '#3e4a46',
+  'color-neutral-800': '#2e3835',
+  'color-neutral-900': '#1b221f',
+  'color-neutral-950': '#0b0e0c',
+
+  // ── Application surfaces ──────────────────────────
+  'color-app': '#08090c',
+  'color-surface': '#0c0d12',
+  'color-card': '#0c0d12',
+  'color-panel': '#111318',
+  'color-panel-hover': '#161820',
+
+  // ── Text hierarchy ────────────────────────────────
+  'color-text-primary': '#f1f3f6',
+  'color-text-secondary': '#94a3b8',
+  'color-text-tertiary': '#64748b',
+  'color-text-muted': '#475569',
+
+  // ── Borders ───────────────────────────────────────
+  'color-border': '#1a1d28',
+  'color-border-strong': '#2a3040',
+
+  // ── Glass ─────────────────────────────────────────
+  'color-glass': 'rgba(12, 13, 18, 0.92)',
+
+  // ── Governance (semantic) ─────────────────────────
+  'color-gov-green': '#22c55e',
+  'color-gov-green-muted': 'rgba(34, 197, 94, 0.12)',
+  'color-gov-green-muted2': 'rgba(34, 197, 94, 0.06)',
+  'color-gov-green-light': '#16a34a',
+  'color-gov-green-dark': '#15803d',
+
+  'color-gov-yellow': '#eab308',
+  'color-gov-yellow-muted': 'rgba(234, 179, 8, 0.12)',
+  'color-gov-yellow-muted2': 'rgba(234, 179, 8, 0.06)',
+  'color-gov-yellow-light': '#d97706',
+  'color-gov-yellow-dark': '#b45309',
+
+  'color-gov-red': '#ef4444',
+  'color-gov-red-muted': 'rgba(239, 68, 68, 0.12)',
+  'color-gov-red-muted2': 'rgba(239, 68, 68, 0.06)',
+  'color-gov-red-light': '#dc2626',
+  'color-gov-red-dark': '#b91c1c',
+
+  'color-gov-init': '#64748b',
+  'color-gov-init-muted': 'rgba(100, 116, 139, 0.12)',
+  'color-gov-init-muted2': 'rgba(100, 116, 139, 0.06)',
+
+  // ── Extended accent palette ───────────────────────
+  'color-accent-emerald': '#2dd4bf',
+  'color-accent-blue': '#60a5fa',
+  'color-accent-purple': '#a78bfa',
+  'color-accent-amber': '#fbbf24',
+  'color-accent-indigo': '#818cf8',
+  'color-accent-pink': '#f472b6',
+
+  // ── Chart palette (10-color sequence) ─────────────
+  'color-chart-0': '#2dd4bf',
+  'color-chart-1': '#60a5fa',
+  'color-chart-2': '#fbbf24',
+  'color-chart-3': '#f472b6',
+  'color-chart-4': '#a78bfa',
+  'color-chart-5': '#5eead4',
+  'color-chart-6': '#93c5fd',
+  'color-chart-7': '#fde68a',
+  'color-chart-8': '#f9a8d4',
+  'color-chart-9': '#c4b5fd',
+
+  'color-chart-rose': '#fb7185',
+  'color-chart-teal': '#2dd4bf',
+
+  // ── Shadows ───────────────────────────────────────
+  'shadow-panel': '0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 24px rgba(0,0,0,0.35)',
+  'shadow-card': '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 32px rgba(0,0,0,0.4)',
+  'shadow-modal': '0 0 0 1px rgba(255,255,255,0.04), 0 24px 80px rgba(0,0,0,0.6)',
+  'shadow-tooltip': '0 4px 20px rgba(0,0,0,0.5)',
+  'shadow-inner-subtle': 'inset 0 1px 3px rgba(0,0,0,0.3)',
+
+  // ── Spacing (4px grid) ────────────────────────────
+  'spacing-0': '0px',
+  'spacing-px': '1px',
+  'spacing-0_5': '2px',
+  'spacing-1': '4px',
+  'spacing-1_5': '6px',
+  'spacing-2': '8px',
+  'spacing-2_5': '10px',
+  'spacing-3': '12px',
+  'spacing-3_5': '14px',
+  'spacing-4': '16px',
+  'spacing-5': '20px',
+  'spacing-6': '24px',
+  'spacing-7': '28px',
+  'spacing-8': '32px',
+  'spacing-9': '36px',
+  'spacing-10': '40px',
+  'spacing-11': '44px',
+  'spacing-12': '48px',
+  'spacing-14': '56px',
+  'spacing-16': '64px',
+
+  // ── Typography: Font families ─────────────────────
+  'font-sans': "'IBM Plex Sans', system-ui, sans-serif",
+  'font-mono': "'JetBrains Mono', ui-monospace, monospace",
+
+  // ── Typography: Font sizes & line heights ──────────
+  'font-size-2xs': '10px',
+  'line-height-2xs': '1.4',
+  'font-size-xs': '12px',
+  'line-height-xs': '1.3333',
+  'font-size-sm': '14px',
+  'line-height-sm': '1.4286',
+  'font-size-base': '16px',
+  'line-height-base': '1.5',
+  'font-size-lg': '18px',
+  'line-height-lg': '1.3333',
+  'font-size-xl': '20px',
+  'line-height-xl': '1.4',
+  'font-size-2xl': '24px',
+  'line-height-2xl': '1.3333',
+  'font-size-3xl': '30px',
+  'line-height-3xl': '1.2',
+
+  // ── Border radius ─────────────────────────────────
+  'radius-DEFAULT': '6px',
+  'radius-lg': '8px',
+  'radius-xl': '10px',
+  'radius-2xl': '12px',
+
+  // ── Animations ────────────────────────────────────
+  'animation-pulse-subtle': 'pulse-subtle 2s ease-in-out infinite',
+  'animation-scale-in': 'scale-in 0.2s ease-out',
+  'animation-slide-up': 'slide-up 0.35s ease-out',
+  'animation-fade-in': 'fade-in 0.4s ease-out',
+} as const
+
+// ── Light-mode overrides ────────────────────────────
+// Only role-mapping tokens that change in light mode.
+// Brand scales (teal, indigo, neutral), gov colors, accents, and
+// structural tokens (spacing, fonts, radii) stay the same.
+export const rawLightTokens = {
+  // Surfaces
+  'color-app': '#f3f6f5',
+  'color-surface': '#ffffff',
+  'color-card': '#ffffff',
+  'color-panel': '#e1e6e4',
+  'color-panel-hover': '#c3cdc8',
+
+  // Text
+  'color-text-primary': '#1b221f',
+  'color-text-secondary': '#4b5b55',
+  'color-text-tertiary': '#5f726b',
+  'color-text-muted': '#7a8d85',
+
+  // Borders
+  'color-border': '#9eada6',
+  'color-border-strong': '#7a8d85',
+
+  // Glass
+  'color-glass': 'rgba(255, 255, 255, 0.92)',
+
+  // Shadows (softer on light backgrounds)
+  'shadow-panel': '0 1px 0 rgba(0,0,0,0.04) inset, 0 4px 24px rgba(0,0,0,0.08)',
+  'shadow-card': '0 1px 0 rgba(0,0,0,0.03) inset, 0 8px 32px rgba(0,0,0,0.1)',
+  'shadow-modal': '0 0 0 1px rgba(0,0,0,0.04), 0 24px 80px rgba(0,0,0,0.15)',
+  'shadow-tooltip': '0 4px 20px rgba(0,0,0,0.12)',
+  'shadow-inner-subtle': 'inset 0 1px 3px rgba(0,0,0,0.05)',
+} as const
+
+// ── Tailwind-only values (not expressible as single CSS vars) ──
+export const tailwindOnly = {
+  fontWeight: {
+    normal: 400,
+    medium: 500,
+    semibold: 600,
+    bold: 700,
+  },
+  keyframes: {
+    'pulse-subtle': {
+      '0%, 100%': { opacity: '0.5' },
+      '50%': { opacity: '1' },
+    },
+    'scale-in': {
+      '0%': { transform: 'scale(0.97)', opacity: '0' },
+      '100%': { transform: 'scale(1)', opacity: '1' },
+    },
+    'slide-up': {
+      '0%': { transform: 'translateY(6px)', opacity: '0' },
+      '100%': { transform: 'translateY(0)', opacity: '1' },
+    },
+    'fade-in': {
+      '0%': { opacity: '0' },
+      '100%': { opacity: '1' },
+    },
+  },
+} as const
+
+// ════════════════════════════════════════════════════════════════
+// Derived exports — syntactic sugar on top of rawTokens
+// These stay EXACTLY as they were so no component imports break.
+// ════════════════════════════════════════════════════════════════
+
+const _ = rawTokens // shorthand
+
 export const teal = {
-  50: '#eefdf8',
-  100: '#d3faea',
-  200: '#adf5d8',
-  300: '#75ebc5',
-  400: '#3dd9ae',
-  500: '#2dd4bf', // hero
-  600: '#1bb5a5',
-  700: '#15918a',
-  800: '#14736e',
-  900: '#135e5a',
-  950: '#043533',
+  50: _['color-teal-50'],
+  100: _['color-teal-100'],
+  200: _['color-teal-200'],
+  300: _['color-teal-300'],
+  400: _['color-teal-400'],
+  500: _['color-teal-500'],
+  600: _['color-teal-600'],
+  700: _['color-teal-700'],
+  800: _['color-teal-800'],
+  900: _['color-teal-900'],
+  950: _['color-teal-950'],
 } as const
 
-/* ── Brand: Indigo (secondary) ─────────────────────
-   Secondary brand. Used for secondary CTAs, selection
-   states, and supporting data series. Analogous harmony
-   shifted ~55° from teal for complementary depth. */
 export const indigo = {
-  50: '#eef2ff',
-  100: '#e0e7ff',
-  200: '#c9d4fe',
-  300: '#a7b6fd',
-  400: '#818cf8',
-  500: '#6366f1',
-  600: '#4f46e5',
-  700: '#4338ca',
-  800: '#3730a3',
-  900: '#312e81',
-  950: '#1e1b4b',
+  50: _['color-indigo-50'],
+  100: _['color-indigo-100'],
+  200: _['color-indigo-200'],
+  300: _['color-indigo-300'],
+  400: _['color-indigo-400'],
+  500: _['color-indigo-500'],
+  600: _['color-indigo-600'],
+  700: _['color-indigo-700'],
+  800: _['color-indigo-800'],
+  900: _['color-indigo-900'],
+  950: _['color-indigo-950'],
 } as const
 
-/* ── Neutral: Surface palette ──────────────────────
-   All surfaces, text, and borders. Warm-toned with a
-   subtle teal cast (H=170°) so the UI reads as cohesive.
-   Used from deepest bg (950) to lightest surface (50). */
 export const neutral = {
-  50: '#f3f6f5',
-  100: '#e1e6e4',
-  200: '#c3cdc8',
-  300: '#9eada6',
-  400: '#7a8d85',
-  500: '#5f726b',
-  600: '#4b5b55',
-  700: '#3e4a46',
-  800: '#2e3835',
-  900: '#1b221f',
-  950: '#0b0e0c',
+  50: _['color-neutral-50'],
+  100: _['color-neutral-100'],
+  200: _['color-neutral-200'],
+  300: _['color-neutral-300'],
+  400: _['color-neutral-400'],
+  500: _['color-neutral-500'],
+  600: _['color-neutral-600'],
+  700: _['color-neutral-700'],
+  800: _['color-neutral-800'],
+  900: _['color-neutral-900'],
+  950: _['color-neutral-950'],
 } as const
 
-/* ── Semantic: Success / Warning / Error ────────────
-   Tuned to feel premium alongside teal hero.
-   Success: H=150° (analogous to teal, natural growth)
-   Warning: H=45°  (warm contrast)
-   Error:   H=0°   (direct tension) */
 export const success = {
-  DEFAULT: '#22c55e',
-  muted: 'rgba(34, 197, 94, 0.12)',
-  muted2: 'rgba(34, 197, 94, 0.06)',
-  light: '#16a34a',
-  dark: '#15803d',
+  DEFAULT: _['color-gov-green'],
+  muted: _['color-gov-green-muted'],
+  muted2: _['color-gov-green-muted2'],
+  light: _['color-gov-green-light'],
+  dark: _['color-gov-green-dark'],
 }
 
 export const warning = {
-  DEFAULT: '#eab308',
-  muted: 'rgba(234, 179, 8, 0.12)',
-  muted2: 'rgba(234, 179, 8, 0.06)',
-  light: '#d97706',
-  dark: '#b45309',
+  DEFAULT: _['color-gov-yellow'],
+  muted: _['color-gov-yellow-muted'],
+  muted2: _['color-gov-yellow-muted2'],
+  light: _['color-gov-yellow-light'],
+  dark: _['color-gov-yellow-dark'],
 }
 
 export const error = {
-  DEFAULT: '#ef4444',
-  muted: 'rgba(239, 68, 68, 0.12)',
-  muted2: 'rgba(239, 68, 68, 0.06)',
-  light: '#dc2626',
-  dark: '#b91c1c',
+  DEFAULT: _['color-gov-red'],
+  muted: _['color-gov-red-muted'],
+  muted2: _['color-gov-red-muted2'],
+  light: _['color-gov-red-light'],
+  dark: _['color-gov-red-dark'],
 }
 
 export const neutral_semantic = {
-  DEFAULT: '#64748b',
-  muted: 'rgba(100, 116, 139, 0.12)',
-  muted2: 'rgba(100, 116, 139, 0.06)',
+  DEFAULT: _['color-gov-init'],
+  muted: _['color-gov-init-muted'],
+  muted2: _['color-gov-init-muted2'],
 }
 
-/* ── Extended Accent Palette ────────────────────────
-   For charts, badges, highlights, and data viz.
-   Each accent is harmonized with the teal hero. */
 export const accents = {
-  emerald: '#2dd4bf', // hero
-  blue: '#60a5fa',
-  purple: '#a78bfa',
-  amber: '#fbbf24',
-  indigo: '#818cf8',
-  pink: '#f472b6',
+  emerald: _['color-accent-emerald'],
+  blue: _['color-accent-blue'],
+  purple: _['color-accent-purple'],
+  amber: _['color-accent-amber'],
+  indigo: _['color-accent-indigo'],
+  pink: _['color-accent-pink'],
 } as const
 
-/* ── Chart palette ──────────────────────────────────
-   10-color sequence. First 5 are full saturation,
-   last 5 are desaturated for visual hierarchy. */
 export const chart = [
-  '#2dd4bf', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa',
-  '#5eead4', '#93c5fd', '#fde68a', '#f9a8d4', '#c4b5fd',
+  _['color-chart-0'], _['color-chart-1'], _['color-chart-2'], _['color-chart-3'], _['color-chart-4'],
+  _['color-chart-5'], _['color-chart-6'], _['color-chart-7'], _['color-chart-8'], _['color-chart-9'],
 ] as const
 
-/* ── Background hierarchy ──────────────────────────
-   5 levels from deepest canvas to hover state.
-   Maps to the neutral scale for cohesive branding. */
 export const background = {
-  app: neutral[950],       // deep canvas
-  surface: neutral[900],   // card/section surfaces
-  card: neutral[900],
-  panel: '#111318',        // slightly lifted (kept from original)
-  'panel-hover': '#161820',
+  app: _['color-app'],
+  surface: _['color-surface'],
+  card: _['color-card'],
+  panel: _['color-panel'],
+  'panel-hover': _['color-panel-hover'],
 } as const
 
-/* ── Text hierarchy ────────────────────────────────
-   4 levels of text emphasis on dark backgrounds.
-   Derived from neutral scale with white point tuning. */
 export const text = {
-  primary: neutral[50],
-  secondary: neutral[300],
-  tertiary: neutral[400],
-  muted: neutral[500],
+  primary: _['color-text-primary'],
+  secondary: _['color-text-secondary'],
+  tertiary: _['color-text-tertiary'],
+  muted: _['color-text-muted'],
 } as const
 
-/* ── Border hierarchy ────────────────────────────── */
 export const border = {
-  DEFAULT: '#1a1d28',
-  strong: '#2a3040',
+  DEFAULT: _['color-border'],
+  strong: _['color-border-strong'],
 } as const
 
-/* ── Glass ───────────────────────────────────────── */
-export const glass = 'rgba(12, 13, 18, 0.92)'
+export const glass = _['color-glass']
 
-/* ── Usage map ─────────────────────────────────────
-   Maps semantic roles to actual color tokens.
-   Use this as reference when applying colors. */
 export const usage = {
-  // Interactive elements
   primaryAction: teal[500],
   primaryActionHover: teal[600],
   primaryActionText: neutral[950],
-
   secondaryAction: neutral[800],
   secondaryActionHover: neutral[700],
-
-  // Active states
   activeBorder: teal[500],
   activeGlow: 'rgba(45, 212, 191, 0.3)',
-
-  // Signals / direction
   signalLong: success.DEFAULT,
   signalShort: error.DEFAULT,
   signalFlat: warning.DEFAULT,
-
-  // Gain / Loss
   positive: teal[500],
   negative: error.DEFAULT,
-
-  // Chart colors
   areaGradient: {
     from: 'rgba(45, 212, 191, 0.15)',
     to: 'rgba(45, 212, 191, 0.01)',
@@ -181,18 +372,105 @@ export const usage = {
 } as const
 
 export const colorTokens = {
-  teal,
-  indigo,
-  neutral,
-  success,
-  warning,
-  error,
-  neutral_semantic,
-  accents,
-  chart,
-  background,
-  text,
-  border,
-  glass,
-  usage,
+  teal, indigo, neutral,
+  success, warning, error, neutral_semantic,
+  accents, chart, background, text, border, glass, usage,
+} as const
+
+// ── Migrated from tokens.ts ─────────────────────────
+
+export const spacing: Record<string, string> = {
+  '0': _['spacing-0'],
+  px: _['spacing-px'],
+  '0.5': _['spacing-0_5'],
+  '1': _['spacing-1'],
+  '1.5': _['spacing-1_5'],
+  '2': _['spacing-2'],
+  '2.5': _['spacing-2_5'],
+  '3': _['spacing-3'],
+  '3.5': _['spacing-3_5'],
+  '4': _['spacing-4'],
+  '5': _['spacing-5'],
+  '6': _['spacing-6'],
+  '7': _['spacing-7'],
+  '8': _['spacing-8'],
+  '9': _['spacing-9'],
+  '10': _['spacing-10'],
+  '11': _['spacing-11'],
+  '12': _['spacing-12'],
+  '14': _['spacing-14'],
+  '16': _['spacing-16'],
+}
+
+export const typography = {
+  fontFamily: {
+    sans: [_['font-sans'], 'system-ui', 'sans-serif'],
+    mono: [_['font-mono'], 'ui-monospace', 'monospace'],
+  },
+  fontSize: {
+    '2xs': [rawTokens['font-size-2xs'], { lineHeight: rawTokens['line-height-2xs'] }],
+    xs: [rawTokens['font-size-xs'], { lineHeight: rawTokens['line-height-xs'] }],
+    sm: [rawTokens['font-size-sm'], { lineHeight: rawTokens['line-height-sm'] }],
+    base: [rawTokens['font-size-base'], { lineHeight: rawTokens['line-height-base'] }],
+    lg: [rawTokens['font-size-lg'], { lineHeight: rawTokens['line-height-lg'] }],
+    xl: [rawTokens['font-size-xl'], { lineHeight: rawTokens['line-height-xl'] }],
+    '2xl': [rawTokens['font-size-2xl'], { lineHeight: rawTokens['line-height-2xl'] }],
+    '3xl': [rawTokens['font-size-3xl'], { lineHeight: rawTokens['line-height-3xl'] }],
+  },
+  fontWeight: tailwindOnly.fontWeight,
+} as const
+
+export const shadows = {
+  panel: _['shadow-panel'],
+  card: _['shadow-card'],
+  modal: _['shadow-modal'],
+  tooltip: _['shadow-tooltip'],
+} as const
+
+export const borderRadius = {
+  DEFAULT: _['radius-DEFAULT'],
+  lg: _['radius-lg'],
+  xl: _['radius-xl'],
+  '2xl': _['radius-2xl'],
+} as const
+
+export const animation = {
+  pulseSubtle: _['animation-pulse-subtle'],
+  scaleIn: _['animation-scale-in'],
+  slideUp: _['animation-slide-up'],
+  fadeIn: _['animation-fade-in'],
+} as const
+
+export const tokens = {
+  colors: {
+    app: _['color-app'],
+    surface: _['color-surface'],
+    card: _['color-card'],
+    panel: _['color-panel'],
+    'panel-hover': _['color-panel-hover'],
+    primary: _['color-text-primary'],
+    secondary: _['color-text-secondary'],
+    tertiary: _['color-text-tertiary'],
+    muted: _['color-text-muted'],
+    default: _['color-border'],
+    strong: _['color-border-strong'],
+    glass: _['color-glass'],
+    'gov-green': success.DEFAULT,
+    'gov-yellow': warning.DEFAULT,
+    'gov-red': error.DEFAULT,
+    'gov-init': neutral_semantic.DEFAULT,
+    'accent-emerald': accents.emerald,
+    'accent-blue': accents.blue,
+    'accent-purple': accents.purple,
+    'accent-amber': accents.amber,
+    'accent-indigo': accents.indigo,
+    'accent-pink': accents.pink,
+    'chart-rose': _['color-chart-rose'],
+    'chart-teal': _['color-chart-teal'],
+  },
+  spacing,
+  typography,
+  shadows,
+  borderRadius,
+  animation,
 } as const

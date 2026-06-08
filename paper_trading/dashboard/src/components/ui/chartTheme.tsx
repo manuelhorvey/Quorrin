@@ -1,11 +1,9 @@
 import type { CSSProperties } from 'react'
+import { chart, teal } from '../../design/color-system'
 
-export const CHART_PALETTE = [
-  '#2dd4bf', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa',
-  '#5eead4', '#93c5fd', '#fde68a', '#f9a8d4', '#c4b5fd',
-] as const
+export const CHART_PALETTE = chart
 
-export const CHART_PRIMARY = '#2dd4bf'
+export const CHART_PRIMARY = teal[500]
 export const CHART_GRID = 'var(--color-border)'
 export const CHART_AXIS = 'var(--color-text-tertiary)'
 

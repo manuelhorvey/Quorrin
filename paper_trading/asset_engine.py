@@ -206,30 +206,7 @@ class AssetEngine:
         self._current_trade_id: str | None = None
         self._attribution_buffer: list[TradeAttributionRecord] = []
 
-    def __getattr__(self, name):
-        if name in ("_entry", "_position", "_governance", "_metrics", "_attribution_svc", "_signal"):
-            mod_map = {
-                "_entry": ("paper_trading.services.entry_service", "EntryService"),
-                "_position": ("paper_trading.services.position_service", "PositionService"),
-                "_governance": ("paper_trading.services.governance_service", "GovernanceService"),
-                "_metrics": ("paper_trading.services.metrics_service", "MetricsService"),
-                "_attribution_svc": ("paper_trading.services.attribution_service", "AttributionService"),
-                "_signal": ("paper_trading.services.signal_service", "SignalService"),
-            }
-            mod_path, cls_name = mod_map[name]
-            import importlib
 
-            mod = importlib.import_module(mod_path)
-            svc = getattr(mod, cls_name)(self)
-            object.__setattr__(self, name, svc)
-            return svc
-        if name == "_market_data":
-            from paper_trading.ops.market_data_service import get_market_data_service
-
-            svc = get_market_data_service()
-            object.__setattr__(self, name, svc)
-            return svc
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def set_experiment_context(self, experiment_id: str, export_dir: str | None = None) -> None:
         self._attribution_svc.set_experiment_context(experiment_id, export_dir)

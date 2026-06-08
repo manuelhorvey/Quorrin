@@ -145,6 +145,7 @@ class PaperTradingEngine:
             actors={name: AssetActor(name, asset, wal_writer=self._wal) for name, asset in self.assets.items()},
             wal_writer=self._wal,
         )
+        self._narrative_api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
 
     def _create_mt5_broker(self, cfg):
         import yaml
@@ -236,61 +237,7 @@ class PaperTradingEngine:
             len(ctx.freeze.component_hashes),
         )
 
-    def __getattr__(self, name):
-        if name in ("_narrative", "_rebalance", "_recovery", "_state"):
-            mod_map = {
-                "_narrative": ("paper_trading.services.engine_narrative_service", "EngineNarrativeService"),
-                "_rebalance": ("paper_trading.services.engine_rebalance_service", "EngineRebalanceService"),
-                "_recovery": ("paper_trading.services.engine_recovery_service", "EngineRecoveryService"),
-                "_state": ("paper_trading.services.engine_state_service", "EngineStateService"),
-            }
-            mod_path, cls_name = mod_map[name]
-            import importlib
 
-            mod = importlib.import_module(mod_path)
-            svc = getattr(mod, cls_name)(self)
-            object.__setattr__(self, name, svc)
-            return svc
-        if name == "_rebalance_weights":
-            object.__setattr__(self, name, {})
-            return {}
-        if name == "_rebalance_dow":
-            object.__setattr__(self, name, 0)
-            return 0
-        if name == "_rebalance_last_day":
-            object.__setattr__(self, name, None)
-            return None
-        if name == "_sim_store":
-            from paper_trading.ops.simulation_snapshot import SimulationStore
-
-            svc = SimulationStore(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # noqa: F823
-            object.__setattr__(self, name, svc)
-            return svc
-        if name == "_cycle_times":
-            object.__setattr__(self, name, [])
-            return []
-        if name == "_cycle_times_maxlen":
-            object.__setattr__(self, name, 1000)
-            return 1000
-        if name == "_cycle_count":
-            object.__setattr__(self, name, 0)
-            return 0
-        if name == "_mtm_cache_value":
-            object.__setattr__(self, name, None)
-            return None
-        if name == "_mtm_cache_cycle":
-            object.__setattr__(self, name, -1)
-            return -1
-        if name == "_narrative_api_key":
-            import os
-
-            key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
-            object.__setattr__(self, name, key)
-            return key
-        if name == "state_store":
-            object.__setattr__(self, name, None)
-            return None
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def _refresh_narrative(self) -> bool:
         return self._narrative._refresh_narrative()

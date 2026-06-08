@@ -209,6 +209,8 @@ class TestPaperTradingEngineState:
         engine.last_update = None
         engine.portfolio_peak_value = None
         engine._rebalance_weights = {}
+        from paper_trading.services.engine_state_service import EngineStateService
+        engine._state = EngineStateService(engine)
 
         state = engine.get_state()
 

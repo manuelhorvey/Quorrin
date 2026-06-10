@@ -60,16 +60,21 @@ optimizations:
 
 execution:
   governance:
+    # Default regime geometry — acts as fallback for assets without
+    # per-asset regime_geometry.  Values of 1.0 mean no arbitrary
+    # tightening; per-asset sl_mult / tp_mult are the authoritative
+    # risk parameters.  Assets that need regime-sensitive tightening
+    # should define their own regime_geometry.
     regime_geometry:
       GREEN:
-        sl_mult: 0.60
-        tp_mult: 0.70
+        sl_mult: 1.0
+        tp_mult: 1.0
       YELLOW:
-        sl_mult: 0.60
-        tp_mult: 0.70
+        sl_mult: 1.0
+        tp_mult: 1.0
       RED:
-        sl_mult: 0.60
-        tp_mult: 0.80
+        sl_mult: 1.0
+        tp_mult: 1.0
     liquidity_config:
       enabled: true
       regime_window: 21
@@ -98,14 +103,14 @@ assets:
     tp_mult: 4.00
     regime_geometry:
       GREEN:
-        sl_mult: 0.59
-        tp_mult: 0.43
+        sl_mult: 1.0
+        tp_mult: 1.0
       YELLOW:
-        sl_mult: 0.59
-        tp_mult: 0.43
+        sl_mult: 0.90
+        tp_mult: 0.90
       RED:
-        sl_mult: 0.59
-        tp_mult: 0.77
+        sl_mult: 0.80
+        tp_mult: 0.80
   USDCHF:
     ticker: USDCHF=X
     allocation: 0.040
@@ -114,19 +119,29 @@ assets:
     max_depth: 4
     regime_geometry:
       GREEN:
-        sl_mult: 0.58
-        tp_mult: 0.91
+        sl_mult: 1.76
+        tp_mult: 1.0
       YELLOW:
-        sl_mult: 0.58
-        tp_mult: 0.91
+        sl_mult: 1.58
+        tp_mult: 0.90
       RED:
-        sl_mult: 0.58
-        tp_mult: 0.78
+        sl_mult: 1.41
+        tp_mult: 0.80
   AUDCHF:
     ticker: AUDCHF=X
     allocation: 0.050
     sl_mult: 2.75
     tp_mult: 3.50
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   USDCAD:
     ticker: USDCAD=X
     allocation: 0.050
@@ -148,45 +163,125 @@ assets:
     allocation: 0.070
     sl_mult: 2.00
     tp_mult: 5.50
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   NQ:
     ticker: NQ=F
     allocation: 0.070
     sl_mult: 2.50
     tp_mult: 5.00
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   GBPCAD:
     ticker: GBPCAD=X
     allocation: 0.050
     sl_mult: 2.50
     tp_mult: 2.50
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   GBPNZD:
     ticker: GBPNZD=X
     allocation: 0.050
     sl_mult: 3.00
     tp_mult: 1.00
     max_depth: 3
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   NZDCAD:
     ticker: NZDCAD=X
     allocation: 0.050
     sl_mult: 2.50
     tp_mult: 4.00
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   ^DJI:
     ticker: ^DJI
     allocation: 0.040
     sl_mult: 0.50
     tp_mult: 4.00
     max_depth: 4
+    regime_geometry:
+      GREEN:
+        sl_mult: 3.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 2.70
+        tp_mult: 0.90
+      RED:
+        sl_mult: 2.40
+        tp_mult: 0.80
   EURUSD:
     ticker: EURUSD=X
     allocation: 0.040
     sl_mult: 3.00
     tp_mult: 1.50
     max_depth: 3
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
   NZDUSD:
     ticker: NZDUSD=X
     allocation: 0.050
     sl_mult: 2.50
     tp_mult: 1.50
     max_depth: 5
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
 
   # ── New additions (filter sweep 2026-06) ────────────────────────────────
   GBPAUD:
@@ -195,30 +290,80 @@ assets:
     sl_mult: 1.00
     tp_mult: 2.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80
   NZDCHF:
     ticker: NZDCHF=X
     allocation: 0.070
     sl_mult: 1.00
     tp_mult: 4.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80
   CADCHF:
     ticker: CADCHF=X
     allocation: 0.050
     sl_mult: 1.00
     tp_mult: 4.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80
   AUDUSD:
     ticker: AUDUSD=X
     allocation: 0.040
     sl_mult: 1.50
     tp_mult: 4.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.33
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.20
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.07
+        tp_mult: 0.80
   AUDNZD:
     ticker: AUDNZD=X
     allocation: 0.030
     sl_mult: 2.00
     tp_mult: 1.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.90
+        tp_mult: 0.90
+      RED:
+        sl_mult: 0.80
+        tp_mult: 0.80
 
   # ── Remaining filter survivors 2026-06 ────────────────────────────────────
   EURCHF:
@@ -227,21 +372,61 @@ assets:
     sl_mult: 1.00
     tp_mult: 3.00
     max_depth: 4
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80
   EURCAD:
     ticker: EURCAD=X
     allocation: 0.020
     sl_mult: 1.00
     tp_mult: 1.00
     max_depth: 3
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80
   EURNZD:
     ticker: EURNZD=X
     allocation: 0.030
     sl_mult: 1.50
     tp_mult: 2.50
     max_depth: 3
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.33
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.20
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.07
+        tp_mult: 0.80
   GBPCHF:
     ticker: GBPCHF=X
     allocation: 0.030
     sl_mult: 1.00
     tp_mult: 2.00
     max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.50
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 1.35
+        tp_mult: 0.90
+      RED:
+        sl_mult: 1.20
+        tp_mult: 0.80

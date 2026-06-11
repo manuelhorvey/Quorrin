@@ -25,13 +25,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any
 
+from paper_trading.governance.drawdown_controls import check_drawdown_circuit_breaker
 from paper_trading.orchestrator.actor import (
     AssetActor,
     AssetResult,
     compute_health_snapshot,
 )
 from paper_trading.replay.wal import WalWriter
-from risk.drawdown_controls import check_drawdown_circuit_breaker
 
 logger = logging.getLogger("quantforge.orchestrator.engine")
 

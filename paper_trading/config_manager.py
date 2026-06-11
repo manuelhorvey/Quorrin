@@ -22,6 +22,7 @@ def _default_halt() -> dict:
         "monthly_pf": 0.70,
         "signal_drought": 30,
         "prob_drift": 0.25,
+        "expected_prob_conf": 0.65,
     }
 
 

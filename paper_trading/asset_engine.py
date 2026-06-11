@@ -46,7 +46,6 @@ class AssetEngine:
         allocation,
         halt_config=None,
         config=None,
-        expected_prob_conf=0.45,
         journal_path=None,
         sl_mult=1.0,
         tp_mult=2.5,
@@ -71,7 +70,6 @@ class AssetEngine:
         self.capital_base = self.initial_capital
         self.halt_config = halt_config or dict(engine_cfg.halt)
         self.config = config or {}
-        self.expected_prob_conf = expected_prob_conf
         self.model = None
         self.signal_data = None
         self.peak_value = self.initial_capital
@@ -507,7 +505,6 @@ class AssetEngine:
             halt_config=self.halt_config,
             last_signal_date=self.last_signal_date,
             prob_history=self.prob_history,
-            expected_prob_conf=self.expected_prob_conf,
             governance=self.governance,
             last_psi_drift=self._last_psi_drift,
         )

@@ -21,12 +21,19 @@ class LiquidityRegimeSnapshot:
     halted: bool = False
 
 
-def compute_liquidity_features(df: pd.DataFrame, window: int = 21) -> dict[str, float]:
+def compute_liquidity_features(df: pd.DataFrame, window: int = 21, min_samples: int = 60) -> dict[str, float]:
     close = df["close"].ffill()
     volume = df["volume"].replace(0, np.nan).ffill()
     high = df["high"].ffill()
     low = df["low"].ffill()
 
+    if len(close) < min_samples:
+        logger.warning(
+            "Liquidity features: insufficient data (%d rows < %d min_samples), returning neutral",
+            len(close),
+            min_samples,
+        )
+        return {"volume_z": 0.0, "amihud_z": 0.0, "spread_est_bps": 0.0}
     if len(close) < window + 2:
         return {"volume_z": 0.0, "amihud_z": 0.0, "spread_est_bps": 0.0}
 
@@ -65,9 +72,9 @@ def compute_liquidity_features(df: pd.DataFrame, window: int = 21) -> dict[str, 
 def classify_liquidity_regime(
     features: dict[str, float],
     vol_thin_threshold: float = -1.5,
-    vol_stressed_threshold: float = -2.5,
+    vol_stressed_threshold: float = -3.0,
     amihud_high_threshold: float = 1.5,
-    amihud_stressed_threshold: float = 3.0,
+    amihud_stressed_threshold: float = 4.0,
 ) -> str:
     vz = features.get("volume_z", 0.0)
     az = features.get("amihud_z", 0.0)

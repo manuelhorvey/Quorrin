@@ -80,7 +80,6 @@ class GovernanceService:
         halt_config: dict,
         last_signal_date,
         prob_history: list,
-        expected_prob_conf: float,
         governance,
         last_psi_drift,
     ):
@@ -106,6 +105,7 @@ class GovernanceService:
         drift_ok = True
         if len(prob_history) >= 3:
             prob_drift_limit = hc.get("prob_drift", 0.25)
+            expected_prob_conf = hc.get("expected_prob_conf", 0.65)
             mean_conf = metrics.get("mean_confidence", 0) / 100
             if pd.isna(mean_conf):
                 mean_conf = 0

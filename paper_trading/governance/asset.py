@@ -80,14 +80,15 @@ class AssetGovernance:
             self._liquidity_features = None
             return
         window = cfg.get("regime_window", 21)
-        features = compute_liquidity_features(df, window=window)
+        min_samples = cfg.get("min_samples", 60)
+        features = compute_liquidity_features(df, window=window, min_samples=min_samples)
         self._liquidity_features = features
         regime = classify_liquidity_regime(
             features,
             vol_thin_threshold=cfg.get("volume_z_thin_threshold", -1.5),
-            vol_stressed_threshold=cfg.get("volume_z_stressed_threshold", -2.5),
+            vol_stressed_threshold=cfg.get("volume_z_stressed_threshold", -3.0),
             amihud_high_threshold=cfg.get("amihud_high_threshold", 1.5),
-            amihud_stressed_threshold=cfg.get("amihud_stressed_threshold", 3.0),
+            amihud_stressed_threshold=cfg.get("amihud_stressed_threshold", 4.0),
         )
         self._liquidity_regime = regime
         scalars = _liquidity_scalars(

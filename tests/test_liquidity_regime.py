@@ -151,7 +151,7 @@ def test_classify_boundary_vol_thin():
 
 
 def test_classify_boundary_vol_stressed():
-    features = {"volume_z": -2.5, "amihud_z": 0.0}
+    features = {"volume_z": -3.0, "amihud_z": 0.0}
     assert classify_liquidity_regime(features) == "STRESSED"
 
 

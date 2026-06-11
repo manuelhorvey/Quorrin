@@ -16,7 +16,7 @@ Operational procedures for the paper trading system. This document is for the pe
 | Model files | `paper_trading/models/*.json` |
 | Logs | stdout (redirect to file as needed) |
 | Refresh interval | 300s / 5 min (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var) |
-| Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; core assets skipped, BTC satellite-only polling via `_run_satellite_only()` |
+| Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; no signal computation occurs |
 | Weekend polling | Reduced to every 120s (state) / 5 min (secondary endpoints) |
 | Market hours logic | `paper_trading/ops/market_hours.py` — `is_market_closed()` |
 | Retrain frequency | Annual (January 1) |
@@ -27,30 +27,39 @@ Operational procedures for the paper trading system. This document is for the pe
 
 ### Assets
 
-**Core portfolio (12 assets promoted from walk-forward screening):**
+**Core portfolio (21 assets promoted from walk-forward screening):**
 
 Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_depth calibrated via walk-forward optimization.
 
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|
-| GC | GC=F | 11.0% | 1.00 | 4.00 | 2 |
-| USDCHF | USDCHF=X | 5.0% | 0.85 | 3.00 | 4 |
-| AUDCHF | AUDCHF=X | 7.0% | 2.75 | 3.50 | 2 |
-| USDCAD | USDCAD=X | 7.0% | 2.50 | 2.03 | 5 |
-| ES | ES=F | 12.0% | 2.00 | 5.50 | 2 |
-| NQ | NQ=F | 10.0% | 2.50 | 5.00 | 2 |
-| GBPCAD | GBPCAD=X | 7.0% | 2.50 | 2.50 | 2 |
-| GBPNZD | GBPNZD=X | 7.0% | 3.00 | 1.00 | 3 |
-| NZDCAD | NZDCAD=X | 7.0% | 2.50 | 4.00 | 2 |
-| ^DJI | ^DJI | 5.0% | 0.50 | 4.00 | 4 |
-| EURUSD | EURUSD=X | 5.0% | 3.00 | 1.50 | 3 |
-| NZDUSD | NZDUSD=X | 7.0% | 2.50 | 1.50 | 5 |
+|---|---|---|---|---|---|
+| GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
+| USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
+| AUDCHF | AUDCHF=X | 5.0% | 2.75 | 3.50 | 2 |
+| USDCAD | USDCAD=X | 5.0% | 2.50 | 2.03 | 5 |
+| ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
+| NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
+| GBPCAD | GBPCAD=X | 5.0% | 2.50 | 2.50 | 2 |
+| GBPNZD | GBPNZD=X | 5.0% | 3.00 | 1.00 | 3 |
+| NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
+| ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
+| EURUSD | EURUSD=X | 4.0% | 3.00 | 1.50 | 3 |
+| NZDUSD | NZDUSD=X | 5.0% | 2.50 | 1.50 | 5 |
+| GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 2 |
+| NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
+| CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
+| AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
+| AUDNZD | AUDNZD=X | 3.0% | 2.00 | 1.00 | 2 |
+| EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
+| EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
+| EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
+| GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
 
-**Total allocation: 0.90 (10% cash).**
+**Total allocation: ~1.00.**
 
-**Backtest performance (5-year: 2021–2025):** PF 2.102, avgR +0.277, 2036 trades, 12 assets.
+**Backtest performance (5-year: 2021–2025):** PF 1.908, avgR +0.268, 2383 trades, 21 assets.
 
-**SL/TP Architecture:** Barriers are computed by `DynamicSLTPEngine` using `shared/volatility.py:VolatilityPrimitive` with `method="atr"`. At entry, initial barriers are set. On each refresh within the first `post_adjust_interval_bars` (default 3), `post_entry_adjust()` recomputes barriers based on current ATR — vol spikes (>1.3×) tighten SL; vol collapses (<0.7×) no action. Model-validity adjustments via `regime_geometry`: YELLOW → sl×0.9, tp×0.8; RED → sl×0.8, tp×0.5.
+**SL/TP Architecture:** Barriers are computed by `DynamicSLTPEngine` using `shared/volatility.py:VolatilityPrimitive` with `method="atr"`. At entry, initial barriers are set. On each refresh within the first `post_adjust_interval_bars` (default 3), `post_entry_adjust()` recomputes barriers based on current ATR — vol spikes (>1.3×) tighten SL; vol collapses (<0.7×) no action. Model-validity adjustments via per-asset `regime_geometry` in `configs/paper_trading.yaml` — each asset defines its own GREEN/YELLOW/RED multipliers for sl_mult and tp_mult.
 
 **Meta-Confidence as Size Scalar:** The XGBoost-based `MetaLabelModel` produces a continuous probability. Below `threshold` (0.55 for most assets), trade notional is 0. Above threshold, `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly. Meta-confidence never modifies TP geometry, trailing, or scale-out schedules.
 
@@ -162,8 +171,7 @@ curl http://127.0.0.1:5000/ping
 **What to verify on the dashboard (use the anchor nav bar to jump between sections):**
 
 - Portfolio total value and daily return are updating (trend arrows on metric cards show direction)
-- All 8 core assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
-- **BTC Satellite card**: check gate state (OPEN/CLOSED), position state (ACTIVE/FLAT), entry/SL/TP prices, and exit reason after each exit
+- All 21 assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
 - Current price is within ~0.5% of market price
 - No asset is in halt (check asset cards for RED status)
 - Per-asset drawdown % is not approaching per-asset limits
@@ -183,24 +191,16 @@ curl http://127.0.0.1:5000/ping
 
 ### Log Check
 
-After startup (Mon–Fri during market hours), verify log output shows:
+After startup (Mon–Fri during market hours), verify log output shows signal lines for all 21 assets:
 ```
 GC: BUY conf=XX% @ $XX.XX
 USDCHF: BUY conf=XX% @ $XX.XX
 AUDCHF: FLAT conf=XX% @ $XX.XX
-USDCAD: FLAT conf=XX% @ $XX.XX
-ES: BUY conf=XX% @ $XX.XX
-NQ: SELL conf=XX% @ $XX.XX
-GBPCAD: FLAT conf=XX% @ $XX.XX
-GBPNZD: BUY conf=XX% @ $XX.XX
-NZDCAD: FLAT conf=XX% @ $XX.XX
-DJI: BUY conf=XX% @ $XX.XX
-EURUSD: BUY conf=XX% @ $XX.XX
-NZDUSD: BUY conf=XX% @ $XX.XX
+...
 Portfolio: $XXXXX (XX%)
 ```
 
-If any asset shows `ERROR`, investigate immediately (see Halt Conditions). If the satellite shows `exit=SL_HIT` or `exit=TP_HIT`, this is normal — SL/TP are real working levels. Verify the SL/TP prices make sense relative to the entry price and current volatility.
+If any asset shows `ERROR`, investigate immediately (see Halt Conditions).
 
 ### End of Day (~17:00 ET)
 
@@ -246,20 +246,7 @@ for name, a in s['assets'].items():
 
 **Expectations:**
 
-| Asset | Label | BUY/SELL Ratio | Mean Confidence |
-|-------|-------|----------------|-----------------|
-| GC | fwd60 | ~1:1 | 55-75% |
-| USDCHF | tb20 | ~1:1 | 55-75% |
-| AUDCHF | tb20 | ~1:1 | 55-75% |
-| USDCAD | tb20 | ~1:1 | 55-75% |
-| ES | tb20 | ~1:1 | 55-75% |
-| NQ | tb20 | ~1:1 | 55-75% |
-| GBPCAD | tb20 | ~1:1 | 55-75% |
-| GBPNZD | tb20 | ~1:1 | 55-75% |
-| NZDCAD | tb20 | ~1:1 | 55-75% |
-| ^DJI | tb20 | ~1:1 | 55-75% |
-| EURUSD | tb20 | ~1:1 | 55-75% |
-| NZDUSD | tb20 | ~1:1 | 55-75% |
+All 21 assets should show a balanced BUY/SELL ratio (~1:1) with mean confidence in the 55-75% range. Deviations warrant investigation of the specific asset's governance state and recent market conditions.
 
 ### Narrative Check (Monday Morning)
 
@@ -551,7 +538,7 @@ Each asset must meet the deployment gate (from ADR-013):
 ### Gate 3: Signal Distribution Health
 - No asset has BUY/SELL ratio > 3:1 over the evaluation period
 - Mean confidence > 0.55 for each asset
-- NEUTRAL class probability < 0.15 (model is not becoming indecisive)
+- FLAT signal ratio < 50% (model is not becoming indecisive)
 
 ### Gate 4: Drawdown Management
 - Maximum portfolio drawdown < 15%
@@ -636,7 +623,7 @@ Items to build after paper trading confirms the system works.
 |------|-------------|------------|
 | AUDJPY — RESOLVED (historical) | Added to prior portfolio iteration (5/5 WF windows, Sharpe 2.62). Correlated with NZDJPY (r=0.87) but diversifies JPY carry exposure. | — |
 | Weekly timeframe models | Lower frequency for macro-only signals | Feature engineering |
-| Meta-labeling filter | Second-stage trade filter to reduce trade count | More training data |
+| Meta-labeling refinement | Improved threshold calibration for meta-confidence sizing | More training data |
 | Sector rotation extension | Apply driver atlas to ES/NQ equity index sectors | Paper trading results |
 | Regime classifier V2 | Reduce volatility gate false positives | More regime diversity in data |
 
@@ -654,24 +641,9 @@ Items to build after paper trading confirms the system works.
 
 ## 6. Execution Physics and Sizing (Hardening)
 
-Live paper trading applies **spread + impact** on entries and exits via `ExecutionBridge` (`paper_trading/execution/bridge.py`). Config is in `configs/paper_trading.yaml`:
+Live paper trading applies **spread + impact** on entries and exits via `ExecutionBridge` (`paper_trading/execution/bridge.py`). Slippage and impact parameters are configured per-asset within `configs/paper_trading.yaml`.
 
-```yaml
-execution_defaults:
-  base_spread_bps: 0.5
-  spread_vol_slope: 2.0
-  impact_model: square_root
-  impact_coeff: 0.1
-
-assets:
-  EURCAD:
-    regime_sizing: true
-    execution_config:
-      base_spread_bps: 1.5
-      avg_daily_volume: 500000000
-```
-
-**Volatility dashboard** (`/volatility.json`) compares live vol to `vol_baselines` in the same YAML file.
+**Volatility dashboard** (`/volatility.json`) compares live vol to rolling baselines.
 
 **Execution quality dashboard** (`/execution/quality.json`) — per-asset EIS and FQI scores. Use to detect execution degradation before it hits PnL (EIS < 0.5 or FQI < 0.6 warrants investigation).
 
@@ -741,7 +713,7 @@ Project Root/
 │   ├── api/
 │   │   ├── routes.py             # REST API route handlers (30+ endpoints)
 │   │   ├── common.py             # Shared cache, MIME types, vol baselines
-│   │   └── server.py             # HTTP server entry point
+│   │   └── handler.py            # HTTP request handler
 │   ├── dashboard/                # React SPA (Vite + TypeScript)
 │   │   ├── src/components/       # React components
 │   │   └── dist/                 # Built frontend
@@ -750,9 +722,14 @@ Project Root/
 │   ├── governance/               # Narrative, liquidity, regime, drift
 │   ├── execution/                # Paper broker, bridge
 │   ├── shadow/                   # Counterfactual replay engine
-│   ├── satellite/                # BTC satellite engine
+│   ├── services/                 # Entry, metrics, position, governance, state services
+│   ├── attribution/              # Attribution collector
+│   ├── replay/                   # WAL-based replay runner
 │   ├── ops/                      # Data fetcher, diagnostics, tracer
-│   └── models/                   # Per-asset XGBoost model files
+│   ├── models/                   # Per-asset XGBoost model files
+│   ├── config_manager.py         # YAML config loader
+│   ├── asset_pnl_controller.py   # Per-asset PnL management
+│   └── serve.py                  # Dashboard server entry point
 ├── scripts/                      # Backtesting, training, scoring, migrations
 ├── shared/                       # Pluggable strategy interfaces, execution config
 ├── monitoring/                   # PSI drift, validity state machine

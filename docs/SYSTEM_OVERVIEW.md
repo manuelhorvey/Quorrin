@@ -300,10 +300,18 @@ Each asset executes independently. Failures in data ingestion, inference, govern
 | `PaperBroker`            | Simulated fills             |
 | `ExecutionBridge`        | Slippage + impact           |
 | `ShadowSLTPEngine`       | Counterfactual replay       |
+| `DynamicSLTPEngine`      | Live trailing SL/TP         |
+| `ScaleOutEngine`         | Partial profit-taking tiers |
 | `AttributionCollector`   | Attribution pipeline        |
 | `EngineOrchestrator`     | Parallel orchestration      |
 | `AssetActor`             | Asset execution wrapper     |
 | `HealthMonitor`          | Portfolio-level health      |
+| `EntryService`           | Entry validation + RR check |
+| `MetricsService`         | Dashboard metrics           |
+| `GovernanceService`      | Governance state aggregation|
+| `PositionService`        | Position lifecycle          |
+| `StateStore`             | SQLite WAL persistence      |
+| `WALRunner`              | Deterministic replay engine |
 
 ---
 
@@ -348,8 +356,7 @@ Dashboard URL: http://127.0.0.1:5000
 
 # Known Constraints
 
-* Paper trading only
-* No live brokerage integration
+* Paper trading only (MT5 Exness demo — no live capital)
 * Ensemble disabled by default
 * Some FX crosses may produce incomplete first-cycle bars
 * Macro data sourced entirely from Yahoo Finance

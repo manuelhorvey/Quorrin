@@ -47,7 +47,7 @@ A secondary confidence filter applied after the primary XGBoost signal:
 - **Decision**: continuous probability — below `threshold` (0.55 for most assets) → zero notional; above → `_meta_size_multiplier()` maps [threshold, 1.0] → [min_size, 1.0] linearly
 - **Integration**: `_last_meta_proba` fed into `_composite_size_scalar()` alongside governance scalars; meta-confidence is size-only — never modifies TP geometry, trailing, or scale-out schedules
 
-**Historical note:** An earlier LogisticRegression implementation (`shared/meta_labeling.py`) was removed after AUC 0.49-0.55 validation (effectively random). The XGBoost replacement uses richer features and continuous sizing to avoid the hard ENTER/BLOCK switching that made the old approach fragile.
+**Historical note:** An earlier LogisticRegression implementation (`shared/meta_labeling.py`) was superseded after AUC 0.49-0.55 validation (effectively random). The file remains on disk but is not used in production — all live meta-labeling runs through the XGBoost path in `labels/meta_labels.py`. The XGBoost replacement uses richer features and continuous sizing to avoid the hard ENTER/BLOCK switching that made the old approach fragile.
 
 ## 4. 5D Drift Monitoring
 

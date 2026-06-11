@@ -404,12 +404,21 @@ paper_trading/
         mt5_client.py         # Host-side bridge client
     governance/               # 7-layer governance
     position/                 # Position management
-    services/                 # Engine services (narrative, rebalance, state)
+    services/                 # Entry, metrics, position, state services
+    attribution/              # Trade attribution collector
+    replay/                   # WAL-based deterministic replay
     dashboard/                # React SPA (Vite + TypeScript)
+    config_manager.py         # YAML config loader
+    serve.py                  # Dashboard server entry point
 scripts/                      # CLI tools
 docs/                         # Documentation + ADRs
 shared/                       # Strategy registry, sizing, execution config
-monitoring/                   # PSI drift, validity, importance tracking
+labels/                       # Triple-barrier labeling, meta-labeling
+signals/                      # Signal generation, alpha weighting
+risk/                         # Drawdown controls, exposure limits
+portfolio/                    # HRP allocation, risk parity
+quantforge/                   # DDD-structured application core
+monitoring/                   # PSI drift, validity state machine, MLflow
 benchmarks/                   # Performance benchmarks
 tests/                        # Test suite
 ```
@@ -418,8 +427,8 @@ tests/                        # Test suite
 
 # Known Constraints
 
-* Paper trading only (no live capital)
-* Yahoo Finance primary data source (with MT5 as optional supplement)
+* Paper trading only (MT5 Exness demo — no live capital)
+* MT5 bridge primary data source (with yfinance fallback)
 * MT5 bridge requires Wine on Linux
 * Some FX crosses may produce incomplete first-cycle bars
 * Macro data sourced entirely from Yahoo Finance

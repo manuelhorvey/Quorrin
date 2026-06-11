@@ -26,7 +26,7 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 - Does NOT use ensemble/regime routing in production (disabled by default)
 - Does NOT use FRED macro data in the live pipeline
 - Does NOT operate with live capital (paper trading only)
-- Does NOT deploy every screened ticker (13/34 screened RED, not promoted)
+- Does NOT deploy every screened ticker (approximately 13 of 36+ screened RED, not promoted)
 
 ---
 
@@ -36,7 +36,7 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    SCREENING LAYER (offline, run once)                   │
 │                                                                         │
-│  30 tickers ──▶ walk_forward_backtest.py ──▶ score_tickers.py          │
+│  36+ tickers ──▶ walk_forward_backtest.py ──▶ score_tickers.py          │
 │                   3y window, 1y step        composite score:            │
 │                   5 folds, per-asset pt_sl    IC + hit rate + bidir     │
 │                                              GREEN/YELLOW/RED           │

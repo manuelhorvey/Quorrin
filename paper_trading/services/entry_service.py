@@ -178,7 +178,13 @@ class EntryService:
                 tp_mult_override=tp_mult,
             )
 
-        final_tp = entry_price + (tp_geo.tp_distance if side == PositionSide.LONG else -tp_geo.tp_distance)
+        raw_tp = entry_price + (tp_geo.tp_distance if side == PositionSide.LONG else -tp_geo.tp_distance)
+        final_tp = max(raw_tp, entry_price * 0.001)
+        if raw_tp <= 0:
+            logger.warning(
+                "%s: clamped negative TP %.6f → %.6f (entry=%.6f tp_dist=%.6f)",
+                asset.name, raw_tp, final_tp, entry_price, tp_geo.tp_distance,
+            )
 
         # ── Step 3: Invariant checks ──
         assert sl_dist > 0, f"SL distance must be positive, got {sl_dist}"

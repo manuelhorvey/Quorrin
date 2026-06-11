@@ -61,17 +61,25 @@ def _send_frame(conn: socket.socket, data: dict) -> None:
     conn.sendall(struct.pack(_HEADER_FMT, len(payload)) + payload)
 
 
-def _recv_frame(conn: socket.socket) -> dict | None:
-    header = conn.recv(_HEADER_SIZE)
-    if not header:
-        return None
-    size = struct.unpack(_HEADER_FMT, header)[0]
-    payload = b""
-    while len(payload) < size:
-        chunk = conn.recv(size - len(payload))
+def _recv_exactly(conn: socket.socket, n: int) -> bytes | None:
+    """Read exactly *n* bytes from *conn*, looping until complete."""
+    buf = b""
+    while len(buf) < n:
+        chunk = conn.recv(n - len(buf))
         if not chunk:
             return None
-        payload += chunk
+        buf += chunk
+    return buf
+
+
+def _recv_frame(conn: socket.socket) -> dict | None:
+    header = _recv_exactly(conn, _HEADER_SIZE)
+    if header is None:
+        return None
+    size = struct.unpack(_HEADER_FMT, header)[0]
+    payload = _recv_exactly(conn, size)
+    if payload is None:
+        return None
     return json.loads(payload.decode("utf-8"))
 
 

@@ -52,6 +52,17 @@ class MT5DataError(Exception):
     pass
 
 
+def _recv_exactly(sock: socket.socket, n: int) -> bytes:
+    """Read exactly *n* bytes from *sock*, looping until complete."""
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise MT5ConnectionError("Connection closed")
+        buf += chunk
+    return buf
+
+
 class _FrameConnection:
     """One TCP connection to the MT5 bridge with its own request-id counter."""
 
@@ -60,6 +71,7 @@ class _FrameConnection:
         self._port = port
         self._sock: socket.socket | None = None
         self._next_id = 1
+        self._lock = threading.Lock()
 
     def connect(self) -> None:
         if self._sock is not None:
@@ -77,38 +89,32 @@ class _FrameConnection:
             self._sock = None
 
     def send_request(self, method: str, params: dict | None = None) -> dict:
-        if self._sock is None:
-            raise MT5ConnectionError("Not connected")
-        req_id = self._next_id
-        self._next_id += 1
-        payload = json.dumps(
-            {
-                "id": req_id,
-                "method": method,
-                "params": params or {},
-            }
-        ).encode("utf-8")
-        try:
-            self._sock.sendall(struct.pack(_HEADER_FMT, len(payload)) + payload)
-            header = self._sock.recv(_HEADER_SIZE)
-            if not header:
-                raise MT5ConnectionError("Connection closed")
-            size = struct.unpack(_HEADER_FMT, header)[0]
-            data = b""
-            while len(data) < size:
-                chunk = self._sock.recv(size - len(data))
-                if not chunk:
-                    raise MT5ConnectionError("Connection closed")
-                data += chunk
-            resp = json.loads(data.decode("utf-8"))
-            if resp.get("id") != req_id:
-                raise MT5ConnectionError(f"ID mismatch: sent {req_id}, got {resp.get('id')}")
-            if "error" in resp:
-                raise MT5DataError(resp["error"])
-            return resp.get("result")
-        except (TimeoutError, ConnectionResetError, BrokenPipeError, OSError) as e:
-            self._sock = None
-            raise MT5ConnectionError(str(e)) from e
+        with self._lock:
+            if self._sock is None:
+                raise MT5ConnectionError("Not connected")
+            req_id = self._next_id
+            self._next_id += 1
+            payload = json.dumps(
+                {
+                    "id": req_id,
+                    "method": method,
+                    "params": params or {},
+                }
+            ).encode("utf-8")
+            try:
+                self._sock.sendall(struct.pack(_HEADER_FMT, len(payload)) + payload)
+                header = _recv_exactly(self._sock, _HEADER_SIZE)
+                size = struct.unpack(_HEADER_FMT, header)[0]
+                data = _recv_exactly(self._sock, size)
+                resp = json.loads(data.decode("utf-8"))
+                if resp.get("id") != req_id:
+                    raise MT5ConnectionError(f"ID mismatch: sent {req_id}, got {resp.get('id')}")
+                if "error" in resp:
+                    raise MT5DataError(resp["error"])
+                return resp.get("result")
+            except (TimeoutError, ConnectionResetError, BrokenPipeError, OSError) as e:
+                self._sock = None
+                raise MT5ConnectionError(str(e)) from e
 
     @property
     def connected(self) -> bool:
@@ -130,7 +136,8 @@ class _FrameProtocol:
         self._host = host
         self._port = port or int(os.environ.get("MT5_BRIDGE_PORT", "9879"))
         self._conns: list[_FrameConnection] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._rr_lock = threading.Lock()
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self._POOL_SIZE,
             thread_name_prefix="qf-mt5",
@@ -139,10 +146,13 @@ class _FrameProtocol:
     def connect(self) -> None:
         with self._lock:
             self.disconnect()
-            for _ in range(self._POOL_SIZE):
-                conn = _FrameConnection(self._host, self._port)
-                conn.connect()
-                self._conns.append(conn)
+
+            def _connect_one(_conn: _FrameConnection) -> None:
+                _conn.connect()
+
+            conns = [_FrameConnection(self._host, self._port) for _ in range(self._POOL_SIZE)]
+            list(self._executor.map(_connect_one, conns))
+            self._conns = conns
 
     def disconnect(self) -> None:
         with self._lock:
@@ -151,8 +161,9 @@ class _FrameProtocol:
             self._conns.clear()
 
     def _get_conn(self) -> _FrameConnection:
-        import itertools
-        return next(itertools.cycle(self._conns))
+        with self._rr_lock:
+            import itertools
+            return next(itertools.cycle(self._conns))
 
     def send_request(self, method: str, params: dict | None = None) -> dict:
         return self._get_conn().send_request(method, params)

@@ -154,6 +154,12 @@ def _handle_realtime_price(params: dict) -> dict:
     symbol = params["symbol"]
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
+        for _ in range(10):
+            time.sleep(0.1)
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is not None:
+                break
+    if tick is None:
         return {"error": f"No tick for {symbol}"}
     return {
         "result": {
@@ -196,7 +202,18 @@ def _handle_place_order(params: dict) -> dict:
     deviation = params.get("deviation", 20)
 
     order_type = mt5.ORDER_TYPE_BUY if side == "buy" else mt5.ORDER_TYPE_SELL
-    price = mt5.symbol_info_tick(symbol).ask if side == "buy" else mt5.symbol_info_tick(symbol).bid
+    
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        for _ in range(10):
+            time.sleep(0.1)
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is not None:
+                break
+    if tick is None:
+        return {"error": f"No tick for {symbol} to place order"}
+
+    price = tick.ask if side == "buy" else tick.bid
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -315,7 +332,17 @@ def _handle_close_position(params: dict) -> dict:
 
     pos = positions[0]
     close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+    
     tick = mt5.symbol_info_tick(pos.symbol)
+    if tick is None:
+        for _ in range(10):
+            time.sleep(0.1)
+            tick = mt5.symbol_info_tick(pos.symbol)
+            if tick is not None:
+                break
+    if tick is None:
+        return {"error": f"No tick for {pos.symbol} to close position"}
+
     price = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
 
     request = {
@@ -371,6 +398,18 @@ def _dispatch(method: str, params: dict, conn: socket.socket) -> dict:
         return {"error": f"Unknown method: {method}"}
     if not _ensure_initialized():
         return {"error": "MT5 not initialized"}
+
+    if "symbol" in params:
+        symbol = params["symbol"]
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return {"error": f"Symbol {symbol} not found on server"}
+        if not info.visible:
+            if not mt5.symbol_select(symbol, True):
+                logger.error("Failed to select symbol %s in Market Watch: %s", symbol, mt5.last_error())
+                return {"error": f"Failed to select symbol {symbol} in Market Watch"}
+            logger.info("Automatically selected/added symbol %s to Market Watch", symbol)
+
     try:
         return handler(params)
     except Exception as e:

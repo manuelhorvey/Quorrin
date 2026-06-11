@@ -55,6 +55,7 @@ class AssetPnlController:
         self._settle_daily_pnl(asset)
 
     def _check_intraday_sltp(self, asset, max_hold) -> bool:
+        self._reconcile_position_tp(asset)
         self._tick_shadow_sltp(asset)
         self._check_scale_out_tiers(asset)
         if self._check_sltp_hit(asset):
@@ -73,6 +74,64 @@ class AssetPnlController:
                     data,
                     str(datetime.now(tz=ET).date()),
                 )
+
+    def _reconcile_position_tp(self, asset) -> None:
+        if not asset.pos_mgr.has_position():
+            return
+        if not asset.config.get("dynamic_sltp", {}).get("enabled", False):
+            return
+        if getattr(asset, "_tp_reconciled", False):
+            return
+
+        entry_price = asset.pos_mgr.position.entry_price
+        initial_sl = getattr(asset, "_initial_sl", None)
+        if initial_sl is None:
+            return
+
+        sl_dist = abs(initial_sl - entry_price)
+        if sl_dist <= 0:
+            return
+
+        state = asset.validity_sm.current_state.value if asset.validity_sm else "YELLOW"
+        archetype = getattr(asset, "_entry_archetype", "UNKNOWN")
+        tp_mult = asset.config.get("tp_mult", 1.0)
+
+        data = getattr(asset, "price_data", None)
+        if data is None:
+            data = getattr(asset, "_price_df", None)
+        if data is None:
+            return
+
+        from paper_trading.entry.tp_compiler import compute_take_profit
+
+        tp_geo = compute_take_profit(
+            entry_price,
+            sl_dist,
+            state,
+            archetype,
+            asset._structure_detector.detect(data),
+            tp_mult_override=tp_mult,
+        )
+
+        from quantforge.domain.entities.position import PositionSide
+
+        correct_tp = entry_price + (
+            tp_geo.tp_distance if asset.pos_mgr.position.side == PositionSide.LONG else -tp_geo.tp_distance
+        )
+
+        current_tp = asset.pos_mgr.position.take_profit
+        if abs(correct_tp - current_tp) > 1e-6:
+            asset.pos_mgr.update_take_profit(float(correct_tp))
+            _sync_broker_sltp(asset)
+            logger.info(
+                "%s: TP reconciled from %.4f to %.4f (sl_dist=%.4f, arch=%s)",
+                asset.name,
+                current_tp,
+                correct_tp,
+                sl_dist,
+                archetype,
+            )
+        asset._tp_reconciled = True
 
     def _check_scale_out_tiers(self, asset) -> None:
         if asset._scale_out_plan is None:

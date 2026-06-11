@@ -29,7 +29,12 @@ REGIME_MULTIPLIERS = {
 
 
 def compute_take_profit(
-    entry_price: float, sl_distance: float, regime: str | ValidityState, archetype: str, structure: MarketStructureState
+    entry_price: float,
+    sl_distance: float,
+    regime: str | ValidityState,
+    archetype: str,
+    structure: MarketStructureState,
+    tp_mult_override: float = 1.0,
 ) -> TPGeometry:
     """
     Pure functional compiler for reward geometry.
@@ -44,8 +49,8 @@ def compute_take_profit(
     reg_mult = REGIME_MULTIPLIERS.get(reg_key, 1.0)
 
     # 3. Final TP Distance Calculation
-    # tp_distance = f(sl_distance) * multiplier
-    tp_distance = sl_distance * convexity * reg_mult
+    # tp_distance = f(sl_distance) * multiplier * config_override
+    tp_distance = sl_distance * convexity * reg_mult * tp_mult_override
 
     # 4. Generate Scale-Out Tiers
     tiers = _generate_scale_out_profile(archetype, convexity)
@@ -54,7 +59,7 @@ def compute_take_profit(
         tp_distance=round(tp_distance, 6),
         scale_out_tiers=tiers,
         convexity_score=convexity,
-        metadata={"archetype": archetype, "regime": reg_key, "reg_mult": reg_mult, "base_sl_dist": sl_distance},
+        metadata={"archetype": archetype, "regime": reg_key, "reg_mult": reg_mult, "base_sl_dist": sl_distance, "tp_mult_override": tp_mult_override},
     )
 
 

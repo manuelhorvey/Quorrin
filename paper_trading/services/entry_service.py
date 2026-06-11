@@ -175,6 +175,7 @@ class EntryService:
                 state,
                 getattr(asset, "_entry_archetype", "UNKNOWN"),
                 asset._structure_detector.detect(data),
+                tp_mult_override=tp_mult,
             )
 
         final_tp = entry_price + (tp_geo.tp_distance if side == PositionSide.LONG else -tp_geo.tp_distance)
@@ -411,7 +412,7 @@ class EntryService:
                 if not dynamic_sltp_enabled:
                     vol = self.tb_vol(df["close"] if isinstance(df, pd.DataFrame) and "close" in df.columns else df)
                     state = asset.validity_sm.current_state.value if asset.validity_sm else "YELLOW"
-                    curr_sl_mult, _, _ = compute_effective_multipliers(
+                    curr_sl_mult, curr_tp_mult, _ = compute_effective_multipliers(
                         base_sl=asset.sl_mult,
                         base_tp=asset.tp_mult,
                         validity_state=state,
@@ -426,7 +427,8 @@ class EntryService:
                     from paper_trading.entry.tp_compiler import compute_take_profit
 
                     tp_geo = compute_take_profit(
-                        float(df["close"].iloc[-1]), sl_dist, state, entry.decision.archetype, structure
+                        float(df["close"].iloc[-1]), sl_dist, state, entry.decision.archetype, structure,
+                        tp_mult_override=curr_tp_mult,
                     )
 
             policy_dec = asset._execution_policy.handle(

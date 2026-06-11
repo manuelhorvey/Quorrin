@@ -526,7 +526,7 @@ class AssetEngine:
                         if not dynamic_sltp_enabled:
                             vol = self._tb_vol(df["close"]) if hasattr(self, "_tb_vol") else 0.01
                             state = self.validity_sm.current_state.value if self.validity_sm else "YELLOW"
-                            curr_sl_mult, _, _ = compute_effective_multipliers(
+                            curr_sl_mult, curr_tp_mult, _ = compute_effective_multipliers(
                                 base_sl=self.sl_mult,
                                 base_tp=self.tp_mult,
                                 validity_state=state,
@@ -541,7 +541,8 @@ class AssetEngine:
                             from paper_trading.entry.tp_compiler import compute_take_profit
 
                             tp_geo = compute_take_profit(
-                                decision.close_price, sl_dist, state, decision.archetype, structure
+                                decision.close_price, sl_dist, state, decision.archetype, structure,
+                                tp_mult_override=curr_tp_mult,
                             )
 
                     elif entry_action == EntryAction.DEFER:

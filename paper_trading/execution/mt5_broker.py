@@ -43,21 +43,25 @@ class MT5Broker(BrokerInterface):
         bridge_host: str = "127.0.0.1",
         bridge_port: int = 9876,
         lot_size_map: dict[str, float] | None = None,
+        client: MT5Client | None = None,
     ):
-        self._client = MT5Client(
-            account=account,
-            password=password,
-            server=server,
-            bridge_host=bridge_host,
-            bridge_port=bridge_port,
-            symbol_map=symbol_map or {},
-        )
+        if client is not None:
+            self._client = client
+        else:
+            self._client = MT5Client(
+                account=account,
+                password=password,
+                server=server,
+                bridge_host=bridge_host,
+                bridge_port=bridge_port,
+                symbol_map=symbol_map or {},
+            )
         self._symbol_map = symbol_map or {}
         self._lot_size_map = lot_size_map or {}
         self._connected = False
 
         # Cache for positions (avoids hammering the bridge)
-        self._position_cache: list[dict] = []
+        self._position_cache: list[Position] = []
         self._position_cache_time = 0.0
         self._cache_lock = threading.Lock()
 

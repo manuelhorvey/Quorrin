@@ -67,8 +67,11 @@ def _kl_divergence(p: list, q: list) -> float:
         return 0.0
     p = p / p.sum()
     q = q / q.sum()
-    q = np.clip(q, 1e-12, None)
-    return float(np.sum(p * np.log(p / q)))
+    # Avoid NaN from log(0/0) when both are zero; KL only sums over
+    # bins where p > 0 (convention: 0 * log(0/q) = 0).
+    mask = p > 0
+    q_safe = np.where(mask, q, 1.0)
+    return float(np.sum(p[mask] * np.log(p[mask] / q_safe[mask])))
 
 
 def _histogram(values: list, bins: int = 10, low: float = 0.0, high: float = 1.0) -> list:

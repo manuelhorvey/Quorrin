@@ -124,22 +124,34 @@ def _attach_lead_lag_features(a: pd.DataFrame, df: pd.DataFrame, contract: Featu
 
 
 def build_features(
-    df: pd.DataFrame, macro: pd.DataFrame, ref: pd.DataFrame | None, contract: FeatureContract
+    df: pd.DataFrame, macro: pd.DataFrame, ref: pd.DataFrame | None, contract: FeatureContract,
+    compute_labels: bool = True,
 ) -> pd.DataFrame:
     """
     Builds a feature set for a specific asset contract.
     Ensures that each feature is independent and belongs to the specified asset
     (using the contract_prefix) or allowed shared macro prefixes.
+
+    When compute_labels is False, no labels are computed — this is the inference
+    path. This avoids the structural risk of .dropna() on label columns silently
+    dropping recent feature rows (see ADR-017).
     """
     df = _normalize(df)
     if ref is not None:
         ref = _normalize(ref)
-    labels = compute_label(df, contract)
-    pi = pd.DatetimeIndex([pd.Timestamp(x).tz_localize(None) for x in labels.index])
+
+    if compute_labels:
+        labels = compute_label(df, contract)
+        pi = pd.DatetimeIndex([pd.Timestamp(x).tz_localize(None) for x in labels.index])
+    else:
+        pi = pd.DatetimeIndex([pd.Timestamp(x).tz_localize(None) for x in df.index])
+
     # Apply derived-feature publication lags before alignment (safety net)
     macro = apply_lag_to_macro_derived(macro)
     a = macro.reindex(pi, method="ffill")
-    a.index = labels.index
+
+    if compute_labels:
+        a.index = labels.index
 
     slug = (contract.contract_prefix or contract.name).lower()
     for w in contract.price_mom_windows:
@@ -153,8 +165,12 @@ def build_features(
     if contract.custom_features:
         _attach_lead_lag_features(a, df, contract)
 
-    a["label"] = labels
-    drop_cols = [c for c in list(contract.features) + ["label"] if c in a.columns]
+    if compute_labels:
+        a["label"] = labels
+        drop_cols = [c for c in list(contract.features) + ["label"] if c in a.columns]
+    else:
+        drop_cols = [c for c in list(contract.features) if c in a.columns]
+
     result = a.dropna(subset=drop_cols)
     if FEATURE_CONTRACT_VALIDATION:
         validate_no_cross_asset_leakage(result, contract, known_slugs=FEATURE_REGISTRY.keys())
@@ -188,7 +204,7 @@ def compute_inference_features(
     ticker: str, macro: pd.DataFrame, ref: pd.DataFrame | None, df: pd.DataFrame
 ) -> pd.DataFrame:
     contract = FEATURE_REGISTRY[ticker]
-    features_df = build_features(df, macro, ref, contract)
+    features_df = build_features(df, macro, ref, contract, compute_labels=False)
     audit_lookahead(features_df, contract_name=contract.name)
     return features_df[list(contract.features)]
 

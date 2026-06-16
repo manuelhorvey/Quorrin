@@ -38,17 +38,23 @@ class RegimeConditionalModel:
         self._model: xgb.XGBClassifier | None = None
         self._trained = False
         self._feature_names: list[str] = []
+        self._asset_name: str = ""
 
-    def _base_path(self) -> str:
-        return os.path.join(REGIME_MODEL_DIR, "regime_conditional")
+    def _base_path(self, asset_name: str = "") -> str:
+        stem = "regime_conditional"
+        if asset_name:
+            stem = f"{asset_name}_regime"
+        return os.path.join(REGIME_MODEL_DIR, stem)
 
     def train(
         self,
         x: pd.DataFrame,
         y: pd.Series,
         feature_names: list[str],
+        asset_name: str = "",
     ) -> None:
         self._feature_names = feature_names
+        self._asset_name = asset_name
         y_int = y.astype(int)
 
         present = set(y_int.unique())
@@ -72,7 +78,7 @@ class RegimeConditionalModel:
         self._model.fit(x[self._feature_names], y_int)
         self._trained = True
 
-        path = self._base_path()
+        path = self._base_path(asset_name)
         self._model.save_model(f"{path}.json")
         # Persist feature names alongside the model (plain text, one per line)
         with open(f"{path}_features.txt", "w") as f:
@@ -94,8 +100,8 @@ class RegimeConditionalModel:
         raw = self.predict_proba(x)
         return raw[:, 1].reshape(-1, 1)  # shape (n, 1): P(LONG)
 
-    def load(self) -> bool:
-        base = self._base_path()
+    def load(self, asset_name: str = "") -> bool:
+        base = self._base_path(asset_name)
         json_path = f"{base}.json"
         feat_path = f"{base}_features.txt"
         if os.path.exists(json_path):

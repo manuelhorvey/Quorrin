@@ -382,9 +382,10 @@ class AssetEngine:
         gate_cfg = self.config.get("optimizations", {}).get("regime_conviction_flip_gate", {})
         if not gate_cfg.get("enabled", False):
             return True, "gate_disabled"
+        _conf = getattr(self, "_last_confidence", 0.0)
         return evaluate_regime_conviction_gate(
             regime_row=self._last_regime_row,
-            model_confidence=getattr(self, "_last_confidence", 0.0),
+            model_confidence=_conf,
             bars_in_current_regime=self._regime_bar_counter,
             regime_margin_threshold=gate_cfg.get("regime_margin_threshold", 0.35),
             confidence_threshold=gate_cfg.get("confidence_threshold", 0.50),

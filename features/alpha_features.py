@@ -3,7 +3,12 @@ import logging
 import numpy as np
 import pandas as pd
 
+from data.loaders.cot_loader import FX_COT_CONTRACTS
+
 logger = logging.getLogger("quantforge.alpha_features")
+
+# Asset name -> available in COT data lookup
+_COT_COVERED_NAMES: set[str] = set(k.upper() for k in FX_COT_CONTRACTS)
 
 
 def vol_adjusted_carry(price: pd.Series, rate_diff: pd.Series, vol_window: int = 21) -> pd.Series:
@@ -158,7 +163,7 @@ def day_of_week_signal(price: pd.Series) -> pd.Series:
     Uses rolling(window=252, min_periods=63) to avoid look-ahead bias.
     """
     price.index = pd.DatetimeIndex(price.index)
-    forward_1d = price.pct_change(-1, fill_method=None)
+    forward_1d = price.pct_change(1, fill_method=None)
     result = pd.Series(0.0, index=price.index)
     for d in range(5):
         mask = price.index.dayofweek == d
@@ -254,6 +259,10 @@ def build_alpha_features(
         features[f"{asset_upper}_vol_ratio"] = vol_regime_ratio(close)
         features[f"{asset_upper}_dow_signal"] = day_of_week_signal(close)
 
+        # COT coverage flag — 1 if asset has CFTC COT data, 0 otherwise
+        has_cot = int(asset_upper in _COT_COVERED_NAMES)
+        features[f"{asset_upper}_has_cot"] = has_cot
+
     # Cross-asset features (reuse pre-computed if provided)
     if shared_features is not None:
         for name, series in shared_features.items():
@@ -268,10 +277,15 @@ def build_alpha_features(
         if commodities is not None:
             for comm in commodities.columns:
                 features[f"{comm.upper()}_mom_21d"] = commodity_momentum(commodities[comm]).reindex(features.index)
-        if cot_data is not None:
-            for pair in cot_data.columns:
-                if pair in prices.columns:
-                    asset_upper = pair.upper()
-                    features[f"{asset_upper}_cot_z"] = cot_data[pair].reindex(features.index)
+
+    # COT cross-asset features — add for all rows, zero-fill missing pairs
+    if cot_data is not None and not cot_data.empty:
+        for col in cot_data.columns:
+            features[col] = cot_data[col].reindex(features.index, method="ffill")
+    else:
+        for asset_upper in (c.upper() for c in prices.columns):
+            if asset_upper in _COT_COVERED_NAMES:
+                features[f"{asset_upper}_cot_z"] = 0.0
+                features[f"{asset_upper}_cot_change_4w"] = 0.0
 
     return features.ffill().dropna()

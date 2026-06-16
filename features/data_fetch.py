@@ -181,24 +181,47 @@ def fetch_yf_series(ticker: str, name: str, period: str | None = None) -> pd.Ser
     return _fetch_single_series(ticker, name=name)
 
 
+def fetch_cot_features(
+    price_index: pd.DatetimeIndex,
+) -> pd.DataFrame:
+    """Load COT positioning features aligned to price_index.
+
+    Returns DataFrame with columns per FX pair (e.g. EURUSD_cot_z).
+    Returns empty DataFrame if COT data is unavailable.
+    """
+    try:
+        from data.loaders.cot_loader import FX_COT_CONTRACTS, align_cot_to_daily, get_contract_series, load_cot_weekly
+        from features.cot_features import build_cot_features
+
+        cot_weekly = load_cot_weekly()
+        if cot_weekly.empty:
+            return pd.DataFrame()
+
+        result = pd.DataFrame(index=price_index)
+        for symbol in FX_COT_CONTRACTS:
+            series = get_contract_series(cot_weekly, symbol)
+            if series is None or series.empty:
+                continue
+            aligned = align_cot_to_daily(series, price_index)
+            feats = build_cot_features(aligned)
+            if feats.empty:
+                continue
+            if "lev_net_cot_index" in feats.columns:
+                result[f"{symbol}_cot_z"] = feats["lev_net_cot_index"].reindex(price_index, method="ffill")
+            if "lev_net_change_4w" in feats.columns:
+                result[f"{symbol}_cot_change_4w"] = feats["lev_net_change_4w"].reindex(price_index, method="ffill")
+
+        return result
+    except Exception as exc:
+        logger.debug("COT features unavailable: %s", exc)
+        return pd.DataFrame()
+
+
 def fetch_asset_data(
     asset_name: str,
     ticker: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.DataFrame]:
-    """Fetch asset OHLCV + macro data.
-
-    Per-asset close uses the MT5 data provider (when installed) via
-    data_fetcher.fetch_live(), falling back to yfinance automatically.
-    Macro tickers (DXY, VIX, SPX, WTI, TNX) are batch-fetched from yfinance
-    once per cycle and cached — these are slow-moving indices where the
-    T-1 staleness is acceptable.
-
-    Returns (prices, rate_diffs, dxy, vix, spx, commodities).
-    prices: DataFrame with 'close' column
-    rate_diffs: DataFrame with asset_name column (approximated from 10Y yield)
-    dxy, vix, spx: Series
-    commodities: DataFrame with 'WTI' column
-    """
+    """Fetch asset OHLCV + macro data."""
     # Per-asset close via MT5 provider (falls back to yfinance automatically).
     # fetch_live returns US/Eastern index; normalise to UTC midnight to
     # align with macro data from yfinance.
@@ -289,6 +312,15 @@ def fetch_asset_data(
     if base_ccy is not None and quote_ccy is not None:
         base_ticker = CURRENCY_YIELD_TICKERS[base_ccy]
         quote_ticker = CURRENCY_YIELD_TICKERS[quote_ccy]
+        # When both currencies map to the same yield ticker (e.g. AUD/NZD
+        # both use ^TYX, GBP/CAD both use ^TNX), the rate_diff is always
+        # zero.  Fall back to the next shorter tenor for the base currency
+        # to preserve a non-zero differential.
+        if base_ticker == quote_ticker:
+            _FALLBACK_TENOR = {"^TYX": "^TNX", "^TNX": "^FVX", "^FVX": "^IRX"}
+            alt = _FALLBACK_TENOR.get(base_ticker)
+            if alt is not None and alt in macro:
+                base_ticker = alt
         base_yield = macro.get(base_ticker, tnx).reindex(common).ffill()
         quote_yield = macro.get(quote_ticker, tnx).reindex(common).ffill()
         rate_diff_series = base_yield - quote_yield

@@ -10,11 +10,13 @@ mt5:
   bridge_host: 127.0.0.1
   bridge_port: 9879
   symbol_map_path: configs/mt5_symbol_map.yaml
-ensemble:
-  enabled: false
-  base_weight: 0.6
-  threshold: 0.15
-  regime_feature_window: 63
+# Disabled — no trained regime model files found (models/regime/regime_conditional.json).
+# Re-enable after running regime model training for all assets.
+# ensemble:
+#   enabled: false
+#   base_weight: 0.6
+#   threshold: 0.15
+#   regime_feature_window: 63
 meta_labeling:
   confidence_threshold: 0.4
   threshold_reduced: 0.4
@@ -135,6 +137,7 @@ assets:
     allocation: 0.05
     sl_mult: 2.75
     tp_mult: 3.5
+    max_depth: 3
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -354,7 +357,7 @@ assets:
     allocation: 0.04
     sl_mult: 3.0
     tp_mult: 1.5
-    max_depth: 3
+    max_depth: 4
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -410,7 +413,7 @@ assets:
     allocation: 0.05
     sl_mult: 1.0
     tp_mult: 2.0
-    max_depth: 2
+    max_depth: 3
     regime_geometry:
       GREEN:
         sl_mult: 1.5
@@ -522,7 +525,7 @@ assets:
     allocation: 0.03
     sl_mult: 2.0
     tp_mult: 1.0
-    max_depth: 2
+    max_depth: 3
     regime_geometry:
       GREEN:
         sl_mult: 1.0

@@ -113,6 +113,9 @@ class _FrameConnection:
                     raise MT5DataError(resp["error"])
                 return resp.get("result")
             except (TimeoutError, ConnectionResetError, BrokenPipeError, OSError) as e:
+                with contextlib.suppress(Exception):
+                    if self._sock is not None:
+                        self._sock.close()
                 self._sock = None
                 raise MT5ConnectionError(str(e)) from e
 
@@ -138,6 +141,7 @@ class _FrameProtocol:
         self._conns: list[_FrameConnection] = []
         self._lock = threading.RLock()
         self._rr_lock = threading.Lock()
+        self._rr_idx = -1
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self._POOL_SIZE,
             thread_name_prefix="qf-mt5",
@@ -162,18 +166,48 @@ class _FrameProtocol:
 
     def _get_conn(self) -> _FrameConnection:
         with self._rr_lock:
-            import itertools
-
-            return next(itertools.cycle(self._conns))
+            if not self._conns:
+                raise MT5ConnectionError("No connections in pool")
+            self._rr_idx = (self._rr_idx + 1) % len(self._conns)
+            return self._conns[self._rr_idx]
 
     def send_request(self, method: str, params: dict | None = None) -> dict:
-        return self._get_conn().send_request(method, params)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                return conn.send_request(method, params)
+            except (MT5ConnectionError, OSError):
+                # Connection failed — reconnect all and retry once
+                self._reconnect()
+                return self._get_conn().send_request(method, params)
+
+    def _reconnect(self) -> None:
+        """Replace all pool connections with fresh ones.
+
+        Creates new connections first, then disconnects old ones only after
+        new ones are verified, so there's no window where both are broken.
+        """
+        logger.warning("MT5 bridge reconnecting all pool connections")
+        fresh = [_FrameConnection(self._host, self._port) for _ in range(self._POOL_SIZE)]
+
+        def _connect_one(_conn: _FrameConnection) -> None:
+            _conn.connect()
+
+        try:
+            list(self._executor.map(_connect_one, fresh))
+        except Exception:
+            for c in fresh:
+                c.disconnect()
+            raise
+
+        self.disconnect()
+        self._conns = fresh
 
     def batch_request(self, method: str, param_list: list[dict]) -> list[dict]:
         """Fire N requests concurrently across the pool, return results."""
 
         def _send(p: dict) -> dict:
-            return self._get_conn().send_request(method, p)
+            return self.send_request(method, p)
 
         futures = [self._executor.submit(_send, p) for p in param_list]
         return [f.result() for f in futures]

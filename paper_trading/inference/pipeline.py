@@ -110,9 +110,10 @@ class AssetInferencePipeline:
 
     def _build_feature_set(self, asset, df):
         from features.alpha_features import build_alpha_features
-        from features.data_fetch import fetch_asset_data, fetch_asset_ohlcv
+        from features.data_fetch import fetch_asset_data, fetch_asset_ohlcv, fetch_cot_features
 
         hist_prices, rate_diffs, dxy, vix, spx, commodities = fetch_asset_data(asset.name, asset.ticker)
+        cot_data = fetch_cot_features(hist_prices.index)
         if getattr(asset, "_truncate_inference", False):
             _trunc_rows = _MAX_INDICATOR_LOOKBACK + 50
             hist_prices = hist_prices.iloc[-_trunc_rows:]
@@ -123,8 +124,10 @@ class AssetInferencePipeline:
             spx = spx.iloc[-_trunc_rows:]
             if not commodities.empty:
                 commodities = commodities.iloc[-_trunc_rows:]
+            if not cot_data.empty:
+                cot_data = cot_data.iloc[-_trunc_rows:]
 
-        alpha_df = build_alpha_features(hist_prices, rate_diffs, dxy=dxy, vix=vix, spx=spx, commodities=commodities)
+        alpha_df = build_alpha_features(hist_prices, rate_diffs, dxy=dxy, vix=vix, spx=spx, commodities=commodities, cot_data=cot_data)
         alpha_idx = alpha_df.index
 
         ohlcv = fetch_asset_ohlcv(asset.ticker)

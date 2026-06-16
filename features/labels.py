@@ -127,7 +127,7 @@ class PurgedWalkForwardFolds(BaseCrossValidator):
     def __init__(
         self,
         n_folds: int = 5,
-        gap: int = 5,
+        gap: int = 20,
         min_train: int = 200,
     ):
         self.n_folds = n_folds

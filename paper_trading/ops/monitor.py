@@ -6,8 +6,6 @@ import threading
 import time
 import warnings
 
-import xgboost as xgb
-
 from paper_trading.engine import LOG_PATH, PaperTradingEngine  # noqa: E402
 from paper_trading.serve import serve  # noqa: E402
 from quantforge import setup_logging  # noqa: E402
@@ -34,14 +32,7 @@ def main():
     for name, asset in engine.assets.items():
         if _shutdown.is_set():
             return
-        if os.path.exists(asset.model_path):
-            asset.model = xgb.XGBClassifier()
-            asset.model.load_model(asset.model_path)
-            asset._trained = True
-            logger.info("%s: loaded cached model", name)
-        else:
-            logger.info("%s: training new model...", name)
-            asset.train(force=True)
+        asset.train(force=False)
 
     if not _shutdown.is_set():
         logger.info("Pulling live data from yfinance...")

@@ -28,7 +28,7 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from features.alpha_features import build_alpha_features
-from features.data_fetch import fetch_asset_data
+from features.data_fetch import fetch_asset_data, fetch_cot_features
 from features.labels import triple_barrier_labels, PurgedWalkForwardFolds
 from paper_trading.inference.ensemble import EnsembleSignal
 from paper_trading.inference.regime_model import RegimeConditionalModel
@@ -64,7 +64,7 @@ def slugify(ticker: str) -> str:
 def compute_labels(
     prices: pd.DataFrame,
     pt_sl: tuple[float, float] = (2.0, 2.0),
-    vertical_barrier: int = 10,
+    vertical_barrier: int = 20,
 ) -> pd.Series:
     """Compute triple-barrier labels aligned to prices index."""
     return triple_barrier_labels(
@@ -101,8 +101,11 @@ def run_walk_forward(
     if prices.empty or len(prices) < 100:
         logger.warning("SKIP: %s (%s) — no data or insufficient rows", asset_name, ticker)
         return None
-    labels = compute_labels(prices, pt_sl=pt_sl)
-    alpha_df = build_alpha_features(prices, rate_diffs, dxy=dxy, vix=vix, spx=spx, commodities=commodities)
+    # Use vertical_barrier=20 by default (matches FEATURE_REGISTRY), gap >= barrier
+    labels = compute_labels(prices, pt_sl=pt_sl, vertical_barrier=20)
+    gap = max(gap, 20)
+    cot_data = fetch_cot_features(prices.index)
+    alpha_df = build_alpha_features(prices, rate_diffs, dxy=dxy, vix=vix, spx=spx, commodities=commodities, cot_data=cot_data)
 
     alpha_df["label"] = labels.reindex(alpha_df.index).astype(int)
     alpha_df = alpha_df.dropna()
@@ -111,8 +114,8 @@ def run_walk_forward(
         logger.warning("%s: insufficient data (%d rows) — skipping", asset_name, len(alpha_df))
         return None
 
-    feature_cols = [c for c in alpha_df.columns if c != "label" and not c.startswith("dxy_") and not c.startswith("vix_") and not c.startswith("spx_")]
-    perf_cols = [c for c in feature_cols if not c.startswith("WTI_")]
+    feature_cols = [c for c in alpha_df.columns if c != "label"]
+    perf_cols = feature_cols
     X_all = alpha_df[perf_cols]
     y_all = _to_binary(alpha_df["label"])
 

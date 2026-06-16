@@ -5,8 +5,9 @@ import pandas as pd
 import xgboost as xgb
 
 from features.alpha_features import build_alpha_features
-from features.data_fetch import fetch_asset_data
+from features.data_fetch import fetch_asset_data, fetch_asset_ohlcv, fetch_cot_features
 from features.labels import triple_barrier_labels
+from features.regime_features import generate_regime_features
 from labels.meta_labels import MetaLabelModel
 from paper_trading.inference.ensemble import EnsembleSignal
 from paper_trading.inference.regime_model import RegimeConditionalModel
@@ -52,6 +53,8 @@ class AssetTrainingPipeline:
             asset.ticker,
         )
 
+        cot_data = fetch_cot_features(prices.index)
+
         features = build_alpha_features(
             prices,
             rate_diffs,
@@ -59,19 +62,45 @@ class AssetTrainingPipeline:
             vix=vix,
             spx=spx,
             commodities=commodities,
+            cot_data=cot_data,
         )
 
         tp_mult = float(getattr(asset, "tp_mult", 2.0))
         sl_mult = float(getattr(asset, "sl_mult", 2.0))
         pt_sl = (tp_mult, sl_mult)
         logger.info("%s: training pt_sl=%s (tp_mult=%.2f, sl_mult=%.2f)", asset.name, pt_sl, tp_mult, sl_mult)
-        labels = triple_barrier_labels(prices, pt_sl=pt_sl, vertical_barrier=10)
+        vb = asset.contract.label_params.get("vertical_barrier", 20)
+        logger.info("%s: training vertical_barrier=%d (from contract)", asset.name, vb)
+        labels = triple_barrier_labels(prices, pt_sl=pt_sl, vertical_barrier=vb)
         features["label"] = labels.reindex(features.index).astype(int)
         features = features.dropna()
         logger.info("%s: %d alpha feature rows, %d columns", asset.name, len(features), len(features.columns) - 1)
 
         # Store alpha feature column names on the asset for inference
         asset._alpha_feature_cols = [c for c in features.columns if c != "label"]
+
+        # Generate and append regime features (hurst, kaufman_er, adx, vol_zscore, etc.)
+        # Requires OHLCV data — fetch separately since fetch_asset_data only returns close
+        ohlcv = fetch_asset_ohlcv(asset.ticker)
+        if ohlcv.empty:
+            logger.warning("%s: no OHLCV data for regime features — skipping regime model", asset.name)
+            asset.regime_feature_names = []
+        else:
+            regime_df = generate_regime_features(ohlcv)
+            prefix = asset.name.upper()
+            regime_cols = {}
+            for col in regime_df.columns:
+                prefixed = f"{prefix}_{col}"
+                regime_cols[col] = prefixed
+            regime_renamed = regime_df.rename(columns=regime_cols)
+            # Align indices (regime features may have fewer rows due to NaN warmup)
+            common_idx = features.index.intersection(regime_renamed.index)
+            regime_aligned = regime_renamed.reindex(common_idx)
+            for col in regime_aligned.columns:
+                features[col] = regime_aligned[col]
+            asset.regime_feature_names = list(regime_aligned.columns)
+            # Drop rows where regime features are NaN (warmup period)
+            features = features.dropna(subset=asset.regime_feature_names)
 
         end_date = features.index[-1]
         start_date = end_date - pd.DateOffset(years=getattr(asset, "_retrain_window", 5))
@@ -105,12 +134,16 @@ class AssetTrainingPipeline:
             stratify=strat,
         )
 
+        imbalance_ratio = (y_tr == 0).sum() / max((y_tr == 1).sum(), 1)
+        logger.info("%s: binary labels: 0=%d 1=%d imbalance_ratio=%.2f", asset.name, (y_tr == 0).sum(), (y_tr == 1).sum(), imbalance_ratio)
+
         depth = getattr(asset, "max_depth", 2)
         model = xgb.XGBClassifier(
             n_estimators=300,
             max_depth=depth,
             learning_rate=0.02,
             objective="binary:logistic",
+            scale_pos_weight=imbalance_ratio,
             random_state=42,
             n_jobs=1,
             tree_method="hist",
@@ -186,7 +219,7 @@ class AssetTrainingPipeline:
             return
 
         regime_model = RegimeConditionalModel()
-        if regime_model.load():
+        if regime_model.load(asset_name=asset.name):
             asset._regime_model = regime_model
         elif train_features is not None and features_df is not None:
             all_feats = asset._alpha_feature_cols + regime_feats
@@ -204,7 +237,7 @@ class AssetTrainingPipeline:
             if y_regime.loc[common].nunique() < 2:
                 logger.warning("%s: regime labels only one class — skipping", asset.name)
                 return
-            regime_model.train(x_regime.loc[common], y_regime.loc[common], available)
+            regime_model.train(x_regime.loc[common], y_regime.loc[common], available, asset_name=asset.name)
             asset._regime_model = regime_model
         else:
             return

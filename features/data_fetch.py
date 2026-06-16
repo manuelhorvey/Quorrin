@@ -45,6 +45,18 @@ _ZERO_RATE_ASSETS: set[str] = {"BTC", "GC", "CL", "ES", "NQ", "IWM", "VIX", "DJI
 # Known major currency codes — built from CURRENCY_YIELD_TICKERS keys
 _KNOWN_CURRENCIES: set[str] = set(CURRENCY_YIELD_TICKERS.keys())
 
+# FRED API series IDs used as fallback when yfinance fails for macro tickers.
+_FRED_FALLBACK: dict[str, str] = {
+    "^VIX": "VIXCLS",
+    "DX-Y.NYB": "DTWEXBGS",
+    "^GSPC": "SP500",
+    "CL=F": "DCOILWTICO",
+    "^TNX": "DGS10",
+    "^FVX": "DGS5",
+    "^TYX": "DGS30",
+    "^IRX": "DGS3MO",
+}
+
 
 class _TTLCache:
     """Thread-safe TTL cache for fetched data.
@@ -130,6 +142,15 @@ def _fetch_macro_batch() -> dict[str, pd.Series]:
             except Exception:
                 pass
 
+    # FRED API fallback for any ticker still missing or empty
+    for ticker in _MACRO_TICKERS:
+        if ticker in result and not result[ticker].empty:
+            continue
+        logger.info("macro ticker %s unavailable via yfinance — trying FRED fallback", ticker)
+        s = _fetch_fred_series(ticker)
+        if not s.empty:
+            result[ticker] = s
+
     # Normalise all yield tickers from percentage to decimal
     _yield_tickers = {"^TNX", "^FVX", "^TYX", "^IRX"}
     for yt in _yield_tickers:
@@ -157,6 +178,27 @@ def _fetch_single_series(ticker: str, name: str | None = None) -> pd.Series:
     if name:
         s.name = name
     return s
+
+
+def _fetch_fred_series(ticker: str) -> pd.Series:
+    """Fetch a single macro series from FRED as fallback when yfinance fails."""
+    import pandas_datareader.data as web
+
+    series_id = _FRED_FALLBACK.get(ticker)
+    if series_id is None:
+        return pd.Series(dtype=float)
+    try:
+        data = web.DataReader(series_id, "fred", start="2020-01-01")
+        if data.empty:
+            return pd.Series(dtype=float)
+        s = data.iloc[:, 0].squeeze().copy()
+        s.index = _normalize_index(s.index)
+        s.name = ticker
+        logger.debug("FRED fallback succeeded for %s (%s)", ticker, series_id)
+        return s
+    except Exception as exc:
+        logger.debug("FRED fallback failed for %s (%s): %s", ticker, series_id, exc)
+        return pd.Series(dtype=float)
 
 
 def fetch_yf_series(ticker: str, name: str, period: str | None = None) -> pd.Series:
@@ -257,19 +299,22 @@ def fetch_asset_data(
     tnx = macro.get("^TNX", pd.Series(dtype=float))
 
     # Deduplicate indices — yfinance can return duplicate dates on some tickers
-    if not dxy.empty and dxy.index.duplicated().any():
-        dxy = dxy[~dxy.index.duplicated(keep="last")]
-    if not vix.empty and vix.index.duplicated().any():
-        vix = vix[~vix.index.duplicated(keep="last")]
-    if not spx.empty and spx.index.duplicated().any():
-        spx = spx[~spx.index.duplicated(keep="last")]
-    if not wti.empty and wti.index.duplicated().any():
-        wti = wti[~wti.index.duplicated(keep="last")]
-    if not tnx.empty and tnx.index.duplicated().any():
-        tnx = tnx[~tnx.index.duplicated(keep="last")]
+    macro_series = {"dxy": dxy, "vix": vix, "spx": spx, "wti": wti, "tnx": tnx}
+    for name in macro_series:
+        s = macro_series[name]
+        if not s.empty and s.index.duplicated().any():
+            macro_series[name] = s[~s.index.duplicated(keep="last")]
 
-    common = close.index.intersection(dxy.index).intersection(vix.index).intersection(spx.index).intersection(wti.index)
-    common = common.intersection(tnx.dropna().index)
+    dxy, vix, spx, wti, tnx = [macro_series[k] for k in ("dxy", "vix", "spx", "wti", "tnx")]
+
+    # Build common index from non-empty series only — a single failed macro
+    # ticker no longer zero-fills the entire batch.
+    # TNX uses dropna() because 10Y yield has NaN on non-business days.
+    common = close.index
+    for s, dropna in [(dxy, False), (vix, False), (spx, False), (wti, False), (tnx, True)]:
+        if not s.empty:
+            idx = s.dropna().index if dropna else s.index
+            common = common.intersection(idx)
 
     if common.empty:
         logger.warning(
@@ -280,16 +325,15 @@ def fetch_asset_data(
             close.index.min().date() if not close.empty else "?",
             close.index.max().date() if not close.empty else "?",
         )
-        # Zero-fill missing macro series so inference can proceed
         close_idx = close.index
-        for name, series in [("DXY", dxy), ("VIX", vix), ("SPX", spx), ("WTI", wti), ("TNX", tnx)]:
+        for s_name, series in [("DXY", dxy), ("VIX", vix), ("SPX", spx), ("WTI", wti), ("TNX", tnx)]:
             if series.empty:
-                logger.debug("  zero-filling %s for %s", name, asset_name)
-        dxy = pd.Series(0.0, index=close_idx)
-        vix = pd.Series(0.0, index=close_idx)
-        spx = pd.Series(0.0, index=close_idx)
-        wti = pd.Series(0.0, index=close_idx)
-        tnx = pd.Series(0.0, index=close_idx)
+                logger.debug("  zero-filling %s for %s", s_name, asset_name)
+        dxy = pd.Series(0.0, index=close_idx) if dxy.empty else dxy
+        vix = pd.Series(0.0, index=close_idx) if vix.empty else vix
+        spx = pd.Series(0.0, index=close_idx) if spx.empty else spx
+        wti = pd.Series(0.0, index=close_idx) if wti.empty else wti
+        tnx = pd.Series(0.0, index=close_idx) if tnx.empty else tnx
         common = close_idx
 
     logger.info(

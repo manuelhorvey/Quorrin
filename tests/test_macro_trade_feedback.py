@@ -1,4 +1,3 @@
-from models.macro_expert_head import MacroExpertHead
 from paper_trading.asset_engine import AssetEngine
 
 

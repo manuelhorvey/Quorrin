@@ -72,6 +72,8 @@ class EngineOrchestrator:
         self._last_health: dict | None = None
         self._broker = broker
         self._is_real_broker = is_real_broker
+        self._broker_equity_cache: float | None = None
+        self._broker_fallback_cycles: int = 0
 
         # Portfolio leverage guardrail (Phase 2)
         self._leverage_lock = threading.Lock()
@@ -116,9 +118,11 @@ class EngineOrchestrator:
 
         defaults = get_config().defaults or {}
         max_leverage = defaults.get("portfolio_max_leverage", 2.0)
-        # Use live MT5 equity when executing against a real broker;
-        # fall back to paper-simulated mtm_value if the fetch fails
-        # or the broker is PaperBroker (is_real_broker=False).
+        # Use live MT5 equity when executing against a real broker.
+        # On fetch failure, use the last known MT5 equity from cache to
+        # avoid flapping the equity basis on a 1-cycle bridge blip.
+        # Only fall back to paper mtm_value if no cached value exists
+        # (first-ever cycle or broker never connected).
         total_equity = None
         if self._is_real_broker and self._broker is not None:
             try:
@@ -126,10 +130,32 @@ class EngineOrchestrator:
                 live_equity = summary.portfolio_value
                 if live_equity is not None and live_equity > 0:
                     total_equity = live_equity
+                    self._broker_equity_cache = live_equity
+                    self._broker_fallback_cycles = 0
             except Exception as e:
-                logger.warning("Failed to fetch live broker equity: %s — falling back to paper mtm_value", e)
+                self._broker_fallback_cycles += 1
+                if self._broker_equity_cache is not None:
+                    total_equity = self._broker_equity_cache
+                    logger.error(
+                        "BROKER EQUITY FETCH FAILED (%d consecutive): %s — "
+                        "using cached equity %.2f from last successful fetch",
+                        self._broker_fallback_cycles,
+                        e,
+                        self._broker_equity_cache,
+                    )
+                else:
+                    logger.error(
+                        "BROKER EQUITY FETCH FAILED (no cache available): %s — falling back to paper mtm_value",
+                        e,
+                    )
         if total_equity is None:
             total_equity = sum(a._engine.mtm_value for a in self._actors.values() if hasattr(a._engine, "mtm_value"))
+            if self._is_real_broker and self._broker is not None:
+                logger.error(
+                    "PAPER MTM_VALUE USED FOR BROKER EQUITY: total_equity=%.2f — "
+                    "no cached MT5 equity available; broker may be disconnected",
+                    total_equity,
+                )
         if self._peak_portfolio_value is None or total_equity > self._peak_portfolio_value:
             self._peak_portfolio_value = total_equity
         current_dd = (

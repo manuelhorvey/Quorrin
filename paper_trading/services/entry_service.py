@@ -389,9 +389,9 @@ class EntryService:
                 remaining = budget_ref[0]
                 if remaining <= 0:
                     logger.warning(
-                        "%s: entry skipped — leverage budget exhausted (max_leverage=%.1fx total_eq=%.2f)",
+                        "%s: entry skipped — leverage budget exhausted (remaining=%.2f total_eq=%.2f)",
                         asset.name,
-                        remaining / max(getattr(asset, "_cycle_total_equity", 1.0), 1e-9),
+                        remaining,
                         getattr(asset, "_cycle_total_equity", 0.0),
                     )
                     asset._last_entry_notional = 0.0

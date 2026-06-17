@@ -132,6 +132,19 @@ class EntryService:
             logger.warning("%s: skipped entry — invalid price=%s or vol=%s", asset.name, entry_price, vol)
             return
 
+        current_price = getattr(asset, "current_price", None)
+        max_deviation = asset.config.get("max_entry_slippage_pct", 2.0) / 100.0
+        if current_price is not None and current_price > 0:
+            deviation = abs(current_price / entry_price - 1)
+            if deviation > max_deviation:
+                logger.warning(
+                    "%s: entry skipped — price deviated %.2f%% from signal price (max %.2f%%)",
+                    asset.name,
+                    deviation * 100,
+                    max_deviation * 100,
+                )
+                return
+
         state = asset.validity_sm.current_state.value if asset.validity_sm else "YELLOW"
         asset._entry_validity_state = state
         sl_mult, tp_mult, _ = compute_effective_multipliers(

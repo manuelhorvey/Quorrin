@@ -165,6 +165,19 @@ def manage_position(ctx: DecisionContext) -> None:
 
     # Close existing if flip allowed
     if engine.pos_mgr.has_position() and ctx.flip_allowed:
+        profit_lock_pct = engine.config.get("profit_lock_threshold_pct", 15.0)
+        current_price = getattr(engine, "current_price", None)
+        if current_price is not None and current_price > 0:
+            unrealized_pnl = engine.pos_mgr.position_pnl(current_price)
+            if unrealized_pnl > profit_lock_pct:
+                logger.info(
+                    "%s: profit lock — position up %.1f%%, holding instead of flipping to %s",
+                    engine.name,
+                    unrealized_pnl,
+                    ctx.new_side,
+                )
+                ctx.new_side = None
+                return
         engine._close_position(d.close_price, d.timestamp, "signal_flip")
 
     if ctx.new_side is None or not ctx.flip_allowed:

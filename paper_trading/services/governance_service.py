@@ -123,8 +123,12 @@ class GovernanceService:
                 name, len(prob_history), mean_conf, expected_prob_conf, drift, prob_drift_limit,
             )
             if drift > prob_drift_limit:
-                hard_reasons.append(f"Confidence drift: {drift:.3f} > {prob_drift_limit:.2f}")
+                soft_warnings.append(f"Confidence drift: {drift:.3f} > {prob_drift_limit:.2f}")
                 drift_ok = False
+                logger.info(
+                    "%s confidence drift: drift=%.3f limit=%.2f (soft, penalty -0.15)",
+                    name, drift, prob_drift_limit,
+                )
 
         narrative_ok = True
         narr_warnings = governance.narrative_warnings()

@@ -110,7 +110,8 @@ class GovernanceService:
                 hard_reasons.append(f"Signal drought: {days_since}d > {drought_days}d")
                 drought_ok = False
         drift_ok = True
-        if len(prob_history) >= 3:
+        prob_drift_min_samples = hc.get("prob_drift_min_samples", 10)
+        if len(prob_history) >= prob_drift_min_samples:
             prob_drift_limit = hc.get("prob_drift", 0.25)
             expected_prob_conf = hc.get("expected_prob_conf", 0.65)
             mean_conf = metrics.get("mean_confidence", 0) / 100

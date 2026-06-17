@@ -23,6 +23,7 @@ def _default_halt() -> dict:
         "signal_drought": 30,
         "prob_drift": 0.25,
         "expected_prob_conf": 0.65,
+        "prob_drift_min_samples": 10,
     }
 
 

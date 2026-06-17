@@ -157,8 +157,6 @@ class PaperTradingEngine:
         self._orchestrator = EngineOrchestrator(
             actors={name: AssetActor(name, asset, wal_writer=self._wal) for name, asset in self.assets.items()},
             wal_writer=self._wal,
-            broker=self.broker,
-            is_real_broker=is_real_broker,
         )
         self._narrative_api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
 

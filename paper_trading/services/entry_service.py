@@ -434,7 +434,7 @@ class EntryService:
         )
 
         if hasattr(asset.execution_bridge, "_is_real_broker") and asset.execution_bridge._is_real_broker:
-            return self._submit_mt5_order(asset, broker_side, entry_price, qty, intent_sl, final_tp)
+            return self._submit_mt5_order(asset, broker_side, entry_price, intent_sl, final_tp)
         fill_price, entry_slippage_bps, _ = asset.execution_bridge.fill_price(
             asset.ticker,
             broker_side,
@@ -443,7 +443,51 @@ class EntryService:
         )
         return fill_price, entry_slippage_bps, mt5_ticket
 
-    def _submit_mt5_order(self, asset, broker_side, entry_price, qty, intent_sl, final_tp):
+    def _compute_mt5_qty(self, asset, entry_price):
+        broker = asset.execution_bridge.broker
+        if broker is None or not hasattr(broker, "get_account_summary"):
+            return 0.0
+
+        try:
+            summary = broker.get_account_summary()
+            mt5_equity = summary.portfolio_value
+        except Exception:
+            logger.error("%s: failed to fetch MT5 equity for independent sizing", asset.name)
+            return 0.0
+
+        if not mt5_equity or mt5_equity <= 0:
+            logger.warning("%s: MT5 equity is %.2f, skipping MT5 sizing", asset.name, mt5_equity)
+            return 0.0
+
+        max_pos_pct = asset.config.get("max_position_pct_of_equity", 0.15)
+        notional = mt5_equity * max_pos_pct
+        qty = notional / entry_price if entry_price > 0 else 0.0
+
+        if hasattr(broker, "_quantity_to_lots"):
+            lots = broker._quantity_to_lots(asset.ticker, qty)
+            if lots <= 0:
+                logger.info(
+                    "%s: MT5 qty %.6f below min volume, skipping MT5 order",
+                    asset.name,
+                    qty,
+                )
+                return 0.0
+
+        logger.info(
+            "MT5_SIZING %s: mt5_equity=%.2f max_pct=%.2f%% notional=%.2f qty=%.6f",
+            asset.name,
+            mt5_equity,
+            max_pos_pct * 100,
+            notional,
+            qty,
+        )
+        return qty
+
+    def _submit_mt5_order(self, asset, broker_side, entry_price, intent_sl, final_tp):
+        qty = self._compute_mt5_qty(asset, entry_price)
+        if qty <= 0:
+            return entry_price, 0.0, None
+
         broker = asset.execution_bridge.broker
         existing_positions = broker.get_positions()
         mt5_symbol = getattr(broker, "_symbol_map", {}).get(asset.ticker, asset.ticker)

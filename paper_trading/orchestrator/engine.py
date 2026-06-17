@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -58,6 +59,8 @@ class EngineOrchestrator:
         max_halt_ratio: float = 0.5,
         wal_writer: WalWriter | None = None,
         max_workers: int = 8,
+        broker: Any | None = None,
+        is_real_broker: bool = False,
     ):
         self._actors = actors
         self._max_halt_ratio = max_halt_ratio
@@ -67,6 +70,14 @@ class EngineOrchestrator:
         self._emergency_halt: bool = False
         self._wal = wal_writer
         self._last_health: dict | None = None
+        self._broker = broker
+        self._is_real_broker = is_real_broker
+
+        # Portfolio leverage guardrail (Phase 2)
+        self._leverage_lock = threading.Lock()
+        self._backstop_multiplier: float = 1.0
+        self._backstop_decay_cycles: int = 0
+
         self._pool = ThreadPoolExecutor(
             max_workers=self._max_workers,
             thread_name_prefix="qf-actor",
@@ -96,6 +107,53 @@ class EngineOrchestrator:
             return results
 
         t0 = time.monotonic()
+
+        # ── Pre-phase: equity snapshot for sizing guardrails ────────────
+        # All actors see the same total_equity and drawdown derived from
+        # end-of-previous-cycle values, avoiding intra-cycle races.  The
+        # leverage budget is decremented atomically via Lock.
+        from paper_trading.config_manager import get_config
+
+        defaults = get_config().defaults or {}
+        max_leverage = defaults.get("portfolio_max_leverage", 2.0)
+        # Use live MT5 equity when executing against a real broker;
+        # fall back to paper-simulated mtm_value if the fetch fails
+        # or the broker is PaperBroker (is_real_broker=False).
+        total_equity = None
+        if self._is_real_broker and self._broker is not None:
+            try:
+                summary = self._broker.get_account_summary()
+                live_equity = summary.portfolio_value
+                if live_equity is not None and live_equity > 0:
+                    total_equity = live_equity
+            except Exception as e:
+                logger.warning("Failed to fetch live broker equity: %s — falling back to paper mtm_value", e)
+        if total_equity is None:
+            total_equity = sum(a._engine.mtm_value for a in self._actors.values() if hasattr(a._engine, "mtm_value"))
+        if self._peak_portfolio_value is None or total_equity > self._peak_portfolio_value:
+            self._peak_portfolio_value = total_equity
+        current_dd = (
+            (total_equity - self._peak_portfolio_value) / max(self._peak_portfolio_value, 1.0)
+            if self._peak_portfolio_value
+            else 0.0
+        )
+        # Leverage budget: max_leverage × equity × backstop_multiplier.
+        # _backstop_multiplier and exposure_multiplier (drawdown/risk) are
+        # independent dampers that compound multiplicatively — intentional
+        # since they respond to different triggers (notional overshoot vs PnL).
+        leverage_budget = max_leverage * total_equity * self._backstop_multiplier
+        self._backstop_initial_budget = leverage_budget
+        self._backstop_initial_equity = total_equity
+        with self._leverage_lock:
+            self._leverage_budget_remaining = leverage_budget
+        # Mutable list so all actors share the same budget object — each
+        # atomic decrement is visible to all readers.
+        budget_ref = [leverage_budget]
+        for actor in self._actors.values():
+            actor._engine._cycle_total_equity = total_equity
+            actor._engine._cycle_drawdown_pct = current_dd
+            actor._engine._leverage_budget_ref = budget_ref
+            actor._engine._leverage_lock = self._leverage_lock
 
         # ── Phase 1: Refresh + Signal (parallel, isolated) ──────────────
         results["phasetimestamps"][EnginePhase.REFRESH] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
@@ -191,6 +249,42 @@ class EngineOrchestrator:
                 "threshold": self._max_halt_ratio,
             }
             return results
+
+        # ── Phase 3b: Portfolio leverage backstop ─────────────────────────
+        # Should never fire in normal operation: the atomic Lock decrement
+        # in _submit_to_broker() prevents overshoot.  If it does fire,
+        # the equity snapshot was stale (intra-cycle PnL move) or there
+        # is a wiring/ordering bug.  The backstop ratchets down and decays
+        # exponentially toward 1.0 on subsequent breach-free cycles.
+        #
+        # The correction uses the fair budget (max_leverage × equity) as its
+        # denominator — NOT the backstop-compounded budget — so consecutive
+        # breaches of the same severity don't feed back into themselves and
+        # produce runaway decay toward zero.  The min() ratchet still provides
+        # "memory" across cycles: the worst correction ever seen is retained
+        # until decay gradually loosens it.
+        total_entered = sum(getattr(actor._engine, "_last_entry_notional", 0.0) for actor in self._actors.values())
+        tolerance = defaults.get("portfolio_leverage_tolerance", 0.001)
+        fair_budget = max_leverage * self._backstop_initial_equity
+        if total_entered > fair_budget * (1.0 + tolerance):
+            correction = fair_budget / max(total_entered, 1e-9)
+            self._backstop_multiplier = min(self._backstop_multiplier, correction)
+            self._backstop_decay_cycles = 0
+            logger.warning(
+                "LEVERAGE BACKSTOP FIRED: entered=%.2f fair_budget=%.2f overshoot=%.2f%% correction=%.4f new_mult=%.4f",
+                total_entered,
+                fair_budget,
+                (total_entered / fair_budget - 1) * 100,
+                correction,
+                self._backstop_multiplier,
+            )
+        else:
+            # Exponential decay of the penalty (1 - multiplier) toward 1.0.
+            # Decay rate 10%/cycle → 37 cycles to recover from 0.5 to 0.99.
+            self._backstop_decay_cycles += 1
+            penalty = 1.0 - self._backstop_multiplier
+            penalty *= 0.9
+            self._backstop_multiplier = 1.0 - penalty
 
         # ── Phase 4: Persist all queues ───────────────────────────────────
         results["phasetimestamps"][EnginePhase.PERSIST] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()

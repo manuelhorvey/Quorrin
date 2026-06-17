@@ -27,6 +27,20 @@ class EntryService:
         vol = returns.rolling(vol_lookback).std()
         return vol.iloc[-1] if not pd.isna(vol.iloc[-1]) else 0.01
 
+    def drawdown_taper(
+        self,
+        current_drawdown_pct: float,
+        start_dd: float = -0.05,
+        end_dd: float = -0.15,
+        min_size: float = 0.50,
+    ) -> float:
+        if current_drawdown_pct >= start_dd:
+            return 1.0
+        if current_drawdown_pct <= end_dd:
+            return min_size
+        t = (current_drawdown_pct - start_dd) / (end_dd - start_dd)
+        return max(1.0 - t * (1.0 - min_size), min_size)
+
     def composite_size_scalar(
         self,
         extra_scalar: float = 1.0,
@@ -38,6 +52,7 @@ class EntryService:
         governance,
         pos_mgr,
         meta_size_multiplier,
+        drawdown_taper: float = 1.0,
     ) -> float:
         _, _, effective_size = compute_effective_multipliers(
             base_sl=sl_mult,
@@ -50,7 +65,12 @@ class EntryService:
             liquidity_size_scalar=governance._liquidity_size_scalar,
         )
         return (
-            pos_mgr.position_size * pos_mgr.exposure_multiplier * extra_scalar * meta_size_multiplier * effective_size
+            pos_mgr.position_size
+            * pos_mgr.exposure_multiplier
+            * extra_scalar
+            * meta_size_multiplier
+            * effective_size
+            * drawdown_taper
         )
 
     def compute_notional(self, effective_capital_val: float, size_scalar_val: float) -> float:
@@ -142,6 +162,8 @@ class EntryService:
             final_tp,
             state,
         )
+        if fill_price is None:
+            return
         asset._last_entry_slippage = entry_slippage_bps
 
         intent = PositionIntent(
@@ -295,6 +317,23 @@ class EntryService:
         if asset.execution_bridge is None:
             return fill_price, entry_slippage_bps, mt5_ticket
 
+        # ── Load config for guardrails ────────────────────────────────
+        cfg = asset.config
+        total_equity = getattr(asset, "_cycle_total_equity", 0.0)
+        max_pos_pct = cfg.get("max_position_pct_of_equity", 0.15)
+        max_risk_pct = cfg.get("max_risk_per_trade_pct", 2.0)
+        min_viable_pct = cfg.get("min_viable_position_pct", 0.01)
+        max_risk_usd = max_risk_pct / 100.0 * total_equity if total_equity > 0 else float("inf")
+        min_viable_notional = min_viable_pct * total_equity if total_equity > 0 else 0.0
+
+        # ── Drawdown taper ────────────────────────────────────────────
+        dd_taper = self.drawdown_taper(
+            getattr(asset, "_cycle_drawdown_pct", 0.0),
+            start_dd=cfg.get("size_taper_start_dd", -0.05),
+            end_dd=cfg.get("size_taper_end_dd", -0.15),
+            min_size=cfg.get("size_taper_min", 0.50),
+        )
+
         effective_cap = self.effective_capital(
             initial_capital=asset.initial_capital,
             capital_base=asset.capital_base,
@@ -309,11 +348,90 @@ class EntryService:
             governance=asset.governance,
             pos_mgr=asset.pos_mgr,
             meta_size_multiplier=asset._meta_size_multiplier(),
+            drawdown_taper=dd_taper,
         )
+
+        # ── Notional: apply per-position equity cap ───────────────────
         notional = self.compute_notional(effective_cap, size_scalar)
+        max_pos_notional = max_pos_pct * total_equity if total_equity > 0 else float("inf")
+        notional = min(notional, max_pos_notional)
+
+        # ── Quantity: apply risk-per-trade cap ────────────────────────
         side_str = side.value if hasattr(side, "value") else side
         broker_side = "buy" if side_str == "long" else "sell"
+        sl_dist = abs(intent_sl - entry_price)
+        risk_usd = sl_dist * (notional / entry_price)
+        if total_equity > 0 and risk_usd > max_risk_usd:
+            capped_qty = max_risk_usd / sl_dist if sl_dist > 0 else 0.0
+            capped_notional = capped_qty * entry_price
+
+            if capped_notional < min_viable_notional:
+                logger.warning(
+                    "%s: entry skipped — risk cap (%.2f%%) would shrink position below min viable (%.2f%%)",
+                    asset.name,
+                    max_risk_pct,
+                    min_viable_pct * 100,
+                )
+                asset._last_entry_notional = 0.0
+                return None, entry_slippage_bps, mt5_ticket
+
+            notional = capped_notional
+
+        # ── Leverage budget: atomic decrement from shared pool ───────
+        # IMPORTANT: the entire read-check-decrement must stay inside the
+        # lock to prevent races.  If a refactor ever moves the check outside,
+        # it re-introduces the exact race this guardrail was built to prevent.
+        lock = getattr(asset, "_leverage_lock", None)
+        budget_ref = getattr(asset, "_leverage_budget_ref", None)
+        leverage_budget_total = float("inf")
+        if lock is not None and budget_ref is not None:
+            with lock:
+                remaining = budget_ref[0]
+                if remaining <= 0:
+                    logger.warning(
+                        "%s: entry skipped — leverage budget exhausted (max_leverage=%.1fx total_eq=%.2f)",
+                        asset.name,
+                        remaining / max(getattr(asset, "_cycle_total_equity", 1.0), 1e-9),
+                        getattr(asset, "_cycle_total_equity", 0.0),
+                    )
+                    asset._last_entry_notional = 0.0
+                    return None, entry_slippage_bps, mt5_ticket
+                notional = min(notional, remaining)
+                budget_ref[0] = remaining - notional
+                leverage_budget_total = remaining
+        elif not getattr(self, "_leverage_fallback_warned", False):
+            self._leverage_fallback_warned = True
+            logger.warning(
+                "%s: leverage budget not attached — portfolio leverage cap is disabled this cycle",
+                asset.name,
+            )
+
         qty = max(notional / entry_price, 1e-6)
+        asset._last_entry_notional = notional
+
+        # ── Decomposed sizing attribution log ─────────────────────────
+        logger.info(
+            "SIZING %s: eff_cap=%.2f base=%.2f exp=%.2f gov=%.2f meta=%.2f "
+            "dd=%.2f pos_cap=%.2f risk_cap=%.2f lev_budget=%.2f -> "
+            "final_not=%.2f qty=%.6f",
+            asset.name,
+            effective_cap,
+            size_scalar / max(getattr(asset.pos_mgr, "position_size", 1.0), 1e-9),
+            getattr(asset.pos_mgr, "exposure_multiplier", 1.0),
+            effective_cap
+            * size_scalar
+            / max(
+                getattr(asset.pos_mgr, "position_size", 1.0) * getattr(asset.pos_mgr, "exposure_multiplier", 1.0),
+                1e-9,
+            ),
+            getattr(asset, "_last_meta_proba", 0.0),
+            dd_taper,
+            max_pos_notional if total_equity > 0 else 0.0,
+            max_risk_usd if total_equity > 0 else 0.0,
+            leverage_budget_total,
+            notional,
+            qty,
+        )
 
         if hasattr(asset.execution_bridge, "_is_real_broker") and asset.execution_bridge._is_real_broker:
             return self._submit_mt5_order(asset, broker_side, entry_price, qty, intent_sl, final_tp)

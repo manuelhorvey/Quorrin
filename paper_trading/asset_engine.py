@@ -292,6 +292,14 @@ class AssetEngine:
     def _meta_size_multiplier(self) -> float:
         return SignalService.meta_size_multiplier(self.config, getattr(self, "_last_meta_proba", None))
 
+    def _drawdown_taper(self) -> float:
+        return self._entry.drawdown_taper(
+            getattr(self, "_cycle_drawdown_pct", 0.0),
+            start_dd=self.config.get("size_taper_start_dd", -0.05),
+            end_dd=self.config.get("size_taper_end_dd", -0.15),
+            min_size=self.config.get("size_taper_min", 0.50),
+        )
+
     def _composite_size_scalar(self, extra_scalar: float = 1.0) -> float:
         state = self.validity_sm.current_state.value if self.validity_sm else "YELLOW"
         return self._entry.composite_size_scalar(
@@ -303,6 +311,7 @@ class AssetEngine:
             governance=self.governance,
             pos_mgr=self.pos_mgr,
             meta_size_multiplier=self._meta_size_multiplier(),
+            drawdown_taper=self._drawdown_taper(),
         )
 
     def _compute_notional(self, extra_scalar: float = 1.0) -> float:

@@ -269,6 +269,10 @@ Orders route through either:
 - **PaperBroker** — simulated fills with slippage and market impact
 - **MT5Broker** — live Exness demo via Wine bridge
 
+Two additional gates protect entry quality and existing winners:
+- **Entry price deviation gate** (`entry_service.py`): before submitting to MT5, compares current market price to the signal's reference price. If deviation exceeds `max_entry_slippage_pct` (default 2%), the entry is skipped — prevents entering far from the signal price due to gaps, reconnects, or execution lag.
+- **Profit lock gate** (`decision_pipeline.py`): before flipping a position, checks unrealized PnL. If it exceeds `profit_lock_threshold_pct` (default 15%), the flip is blocked — lets SL/TP/trailing stop manage the exit instead of closing a winner for a new signal.
+
 ## Key Invariants
 
 ### Single Entry Authority
@@ -292,15 +296,17 @@ Persistent state is stored in SQLite WAL mode with append-oriented semantics.
 
 QuantForge uses independently configurable governance layers with worst-wins aggregation.
 
-| Layer                  | Frequency   | Scope     | Effect                    |
-| ---------------------- | ----------- | --------- | ------------------------- |
-| Exposure state machine | Per tick    | Per asset | Exposure scaling          |
-| Feature stability      | Per retrain | Per asset | Validity penalty          |
-| Meta-labeling          | Per signal  | Per asset | Position scalar           |
-| Macro regime overlay   | Weekly      | Global    | Exposure + SL adjustments |
-| Liquidity regime       | Per signal  | Per asset | Exposure + halt logic     |
-| PSI drift              | Per cycle   | Per asset | Penalty + halt            |
-| Portfolio drawdown     | Global      | Portfolio | Global throttling         |
+| Layer                      | Frequency   | Scope     | Effect                              |
+| -------------------------- | ----------- | --------- | ----------------------------------- |
+| Exposure state machine     | Per tick    | Per asset | Exposure scaling                    |
+| Feature stability          | Per retrain | Per asset | Validity penalty                    |
+| Meta-labeling              | Per signal  | Per asset | Position scalar                     |
+| Macro regime overlay       | Weekly      | Global    | Exposure + SL adjustments           |
+| Liquidity regime           | Per signal  | Per asset | Exposure + halt logic               |
+| PSI drift                  | Per cycle   | Per asset | Penalty + halt                      |
+| Portfolio drawdown         | Global      | Portfolio | Global throttling                   |
+| Entry price deviation gate | Per entry   | Per asset | Skips entry if price drifted >2%    |
+| Profit lock gate           | Per flip    | Per asset | Blocks flip if PnL >15%             |
 
 ---
 

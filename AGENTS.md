@@ -9,7 +9,8 @@ Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commod
 - **Models**: Per-asset XGBClassifier (base) + RegimeConditionalModel (regime) — 60/40 ensemble blend
 - **Features**: 13 alpha (includes COT flag) + 7 regime (hurst, kaufman_er, adx, vol_zscore, compression, utc_hour, session_vol_profile)
 - **Labels**: Triple-barrier with per-asset pt_sl, vertical_barrier=20, gap >= vb
-- **Config**: `configs/paper_trading.yaml` — global + per-asset (21 assets)
+- **Config**: `configs/paper_trading.yaml` — global + per-asset (21 assets); `max_entry_slippage_pct` (def 2%), `profit_lock_threshold_pct` (def 15%) under defaults
+- **Entry gates**: `entry_service.py` price deviation check (skips entry if current price deviated > max_entry_slippage_pct from signal price); `decision_pipeline.py` profit lock (blocks flips when unrealized PnL > profit_lock_threshold_pct)
 - **Inference**: `paper_trading/inference/pipeline.py` — alpha → regime → base model → regime model → ensemble → governance → execute
 - **Training**: `paper_trading/inference/training.py` — base + regime models, scale_pos_weight, meta-labeling
 - **MT5 Bridge**: `paper_trading/ops/mt5_client.py` — TCP frame protocol to Wine-hosted MT5 (port 9879)
@@ -27,6 +28,8 @@ Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commod
 | `paper_trading/inference/regime_model.py` | `RegimeConditionalModel` — per-asset regime classifier |
 | `paper_trading/inference/ensemble.py` | `EnsembleSignal` — 60/40 blend logic |
 | `paper_trading/ops/monitor.py` | Main entry point — loads models, runs engine, serves dashboard |
+| `paper_trading/execution/decision_pipeline.py` | Decision pipeline stages — includes profit lock gate |
+| `paper_trading/services/entry_service.py` | Entry service — includes price deviation gate |
 | `features/alpha_features.py` | Alpha feature builder (13 cols) |
 | `features/regime_features.py` | Regime feature builder (7 cols) |
 | `features/data_fetch.py` | Data fetching with MT5/yfinance fallback |
@@ -86,6 +89,8 @@ curl http://127.0.0.1:5000/state.json | python3 -m json.tool
 - **SL/TP triple bug (FIXED 2026-06-16)**: Three independent issues (deactivated `atr_mult_tp`, uncalibrated `atr_mult_sl`, TP compiler convexity applied to inflated SL distance) produced TP distances up to 44%. Fixes: (1) `_atr_barriers()` now uses `atr_mult_tp` for TP vol basis, (2) `tp_compiler.py` caps R:R at `MAX_RR=5.0`. Restarted engine post-fix.
 - **THIN liquidity (FIXED 2026-06-17)**: THIN regime was routing to hard_reasons (halted all assets). Fixed: only STRESSED halts; THIN → soft_warnings (SL/size adjust, no halt).
 - **Prob drift min samples (FIXED 2026-06-17)**: Raised from 3 to 10 for stable mean estimate before confidence drift halt check activates.
+- **Entry price deviation gate (ADDED 2026-06-17)**: `entry_service.py` compares `asset.current_price` to signal `entry_price` before submitting to MT5. Skips entry if deviation > `max_entry_slippage_pct` (default 2%, configurable per-asset).
+- **Profit lock gate (ADDED 2026-06-17)**: `decision_pipeline.py` checks unrealized PnL before flipping a position. Blocks flip if PnL > `profit_lock_threshold_pct` (default 15%), letting SL/TP/trailing stop manage the exit instead.
 
 ## Ruff
 

@@ -232,11 +232,11 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 13. Archetype classification → `TradeDecision`
 14. Route through governance layers
 15. Execute position lifecycle:
-    - **Open**: `pos_mgr.open(intent)` + MT5 `place_order` (SL/TP attached)
-    - **SL/TP hit**: `pos_mgr.close()` + MT5 `close_position(ticket)`
-    - **Flip**: close + re-open in same cycle (MT5 close + place_order)
-    - **Trailing stop**: `pos_mgr.update_stop_loss()` + MT5 `modify_position(ticket, sl)`
-    - **Post-entry adjust**: `pos_mgr.update_stop_loss/tp()` + MT5 `modify_position()`
+     - **Open**: `pos_mgr.open(intent)` + MT5 `place_order` (SL/TP attached); entry skipped if current price deviated > `max_entry_slippage_pct` from signal price (entry service gate)
+     - **SL/TP hit**: `pos_mgr.close()` + MT5 `close_position(ticket)`
+     - **Flip**: profit-lock check first — if unrealized PnL > `profit_lock_threshold_pct`, flip is blocked and position holds; else close + re-open in same cycle (MT5 close + place_order)
+     - **Trailing stop**: `pos_mgr.update_stop_loss()` + MT5 `modify_position(ticket, sl)`
+     - **Post-entry adjust**: `pos_mgr.update_stop_loss/tp()` + MT5 `modify_position()`
 
 ---
 
@@ -332,7 +332,7 @@ final_size = base × governance_scalar × meta_confidence_scalar
 
 ## 12. GOVERNANCE CONTRACT
 
-Seven layered governance mechanisms, each independently configurable:
+Nine layered governance mechanisms (7 existing + 2 entry gates), each independently configurable:
 
 | Layer | Frequency | Effect | Config key |
 |---|---|---|---|
@@ -344,6 +344,8 @@ Seven layered governance mechanisms, each independently configurable:
 | | | STRESSED: SL +30%, size −30%, hard halt | `liquidity_config` |
 | PSI drift | Per cycle | Validity penalty, halt at 3+ SEVERE | — |
 | Portfolio drawdown | Per cycle | Circuit breaker at −15% | `portfolio_drawdown_limit` |
+| Entry price deviation | Per entry | Skips entry if price moved > `max_entry_slippage_pct` since signal (default 2%) | `max_entry_slippage_pct` |
+| Profit lock | Per flip | Blocks flip if unrealized PnL > `profit_lock_threshold_pct` (default 15%) | `profit_lock_threshold_pct` |
 
 See `docs/GOVERNANCE_LAYER.md` for full detail.
 

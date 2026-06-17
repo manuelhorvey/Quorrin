@@ -29,7 +29,8 @@ class ExecutionContext:
         from paper_trading.state_store import StateStore
 
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return StateStore(base)
+        self.state_store = StateStore(base)
+        return self.state_store
 
     def get_execution_bridge(self) -> object | None:
         return self.execution_bridge

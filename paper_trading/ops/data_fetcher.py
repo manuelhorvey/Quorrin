@@ -8,14 +8,21 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
-from paper_trading.state_store import StateStore
-
 logger = logging.getLogger("quantforge.data_fetcher")
 
 ET = pytz.timezone("US/Eastern")
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_STORE = StateStore(BASE)
+
+_STORE: object | None = None
+
+
+def _get_store():
+    global _STORE
+    if _STORE is None:
+        from paper_trading.state_store import StateStore
+        _STORE = StateStore(BASE)
+    return _STORE
 
 _MIN_REQUEST_INTERVAL = 1.0
 _last_request_time: float = 0.0
@@ -168,7 +175,7 @@ def norm_index(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _cache_path(ticker: str) -> str:
-    return _STORE.cache_path(ticker)
+    return _get_store().cache_path(ticker)
 
 
 def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
@@ -189,7 +196,7 @@ def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
         df = _mt5_fetch_ohlcv(ticker, years=int(years) + 1)
         if not df.empty:
             _cache_set(cache_key, df, "download")
-            _STORE.save_cache(ticker, df)
+            _get_store().save_cache(ticker, df)
             _check_data_quality(df, ticker, source="mt5")
             return df
 
@@ -200,7 +207,7 @@ def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
             df = yf.download(ticker, **kwargs)
             if not df.empty:
                 _cache_set(cache_key, df, "download")
-                _STORE.save_cache(ticker, df)
+                _get_store().save_cache(ticker, df)
                 _check_data_quality(df, ticker, source="live")
                 return df
             logger.warning(f"{ticker} empty response attempt {attempt}/3")
@@ -209,9 +216,9 @@ def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
         if attempt < len(delays):
             time.sleep(delay)
     logger.error(f"{ticker} failed after 3 attempts — using cached data")
-    df = _STORE.load_cache(ticker)
+    df = _get_store().load_cache(ticker)
     if df is not None:
-        logger.info(f"{ticker} using cached data from {_STORE.cache_path(ticker)}")
+        logger.info(f"{ticker} using cached data from {_get_store().cache_path(ticker)}")
         _check_data_quality(df, ticker, source="cache")
         return df
     logger.error(f"{ticker} no cached data available")

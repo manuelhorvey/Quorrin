@@ -2,10 +2,23 @@ import os
 import time
 from urllib.parse import unquote
 
-from paper_trading.state_store import StateStore
-
-_STORE = StateStore(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class _LazyStore:
+    def __getattr__(self, name):
+        cls = type(self)
+        if cls._instance is None:
+            from paper_trading.state_store import StateStore
+            cls._instance = StateStore(_PROJECT_ROOT)
+        return getattr(cls._instance, name)
+
+    _instance = None
+
+
+_STORE = _LazyStore()
 
 DASHBOARD_DIST = os.path.join(BASE, "dashboard", "dist")
 FRONTEND_DIR = os.path.join(BASE, "frontend")

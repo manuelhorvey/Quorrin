@@ -78,16 +78,24 @@ class _DatabaseStore:
     """SQLite-backed append store for trades, attribution, shadow trades,
     confidence buckets, and equity history."""
 
+    REQUIRED_TABLES = [
+        "trades", "attribution", "shadow_trades",
+        "confidence_buckets", "equity_history",
+    ]
+
     def __init__(self, db_path: str, checkpoint_interval: int = 50):
         self._db_path = db_path
         self._write_count = 0
         self._checkpoint_interval = checkpoint_interval
-        self._init_db()
+        try:
+            self._init_db()
+        except RuntimeError:
+            logger.warning("DB init verification failed — retrying once: %s", db_path)
+            self._init_db()
 
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript("""
-                PRAGMA journal_mode=WAL;
                 PRAGMA synchronous=NORMAL;
                 PRAGMA wal_autocheckpoint=1000;
 
@@ -219,9 +227,30 @@ class _DatabaseStore:
                     assets TEXT,
                     created_at TEXT DEFAULT (datetime('now'))
                 );
+
+                CREATE TABLE IF NOT EXISTS strategy_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
             """)
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE equity_history ADD COLUMN assets TEXT")
+        self.verify()
+
+    def verify(self) -> None:
+        with self._connect() as conn:
+            existing = {
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+        missing = [t for t in self.REQUIRED_TABLES if t not in existing]
+        if missing:
+            raise RuntimeError(
+                f"Database {self._db_path} missing tables after init: {missing}"
+            )
+        logger.debug("Database %s — all %d tables present", self._db_path, len(self.REQUIRED_TABLES))
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path, timeout=5.0)

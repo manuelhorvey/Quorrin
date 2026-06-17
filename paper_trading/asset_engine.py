@@ -24,7 +24,7 @@ from paper_trading.position.scale_out import build_scale_out_from_config
 from paper_trading.services.entry_service import EntryService
 from paper_trading.services.position_service import PositionService
 from paper_trading.shadow.engine import ShadowSLTPEngine
-from paper_trading.state_store import _SKIP_JOURNAL, StateStore
+from paper_trading.state_store import _SKIP_JOURNAL
 from shared.registry import StrategyRegistry
 
 logger = logging.getLogger("quantforge.asset_engine")
@@ -32,7 +32,6 @@ logger = logging.getLogger("quantforge.asset_engine")
 ET = pytz.timezone("US/Eastern")
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_STORE = StateStore(BASE)
 
 
 class AssetEngine:

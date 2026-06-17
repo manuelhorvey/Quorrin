@@ -133,9 +133,12 @@ class GovernanceService:
         liquidity_ok = True
         liq_warnings = governance.liquidity_warnings()
         if liq_warnings:
-            hard_reasons.extend(liq_warnings)
             if governance._liquidity_halted:
+                hard_reasons.extend(liq_warnings)
                 liquidity_ok = False
+            else:
+                soft_warnings.extend(liq_warnings)
+                logger.info("%s liquidity soft: %s", name, "; ".join(liq_warnings))
 
         psi_ok = True
         if last_psi_drift is not None and not last_psi_drift.psi_ok:

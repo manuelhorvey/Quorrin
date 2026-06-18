@@ -269,6 +269,9 @@ class EngineOrchestrator:
             penalty *= 0.9
             self._backstop_multiplier = 1.0 - penalty
 
+        # ── Phase 3c: MT5 orphan reconciliation ───────────────────────────
+        self._reconcile_mt5_orphans()
+
         # ── Phase 4: Persist all queues ───────────────────────────────────
         results["phasetimestamps"][EnginePhase.PERSIST] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         persist_count = 0
@@ -331,6 +334,114 @@ class EngineOrchestrator:
         for actor in self._actors.values():
             actor.reset()
         logger.warning("Emergency halt reset — all actors restored to GREEN")
+
+    def _resolve_broker(self):
+        """Get the MT5 broker from the first actor that has one."""
+        for actor in self._actors.values():
+            bridge = getattr(actor._engine, "execution_bridge", None)
+            if bridge is not None and getattr(bridge, "_is_real_broker", False):
+                return bridge.broker
+        return None
+
+    MAX_CLEANUP_RETRIES = 5
+
+    def _reconcile_mt5_orphans(self) -> None:
+        """Reconcile MT5 orphaned positions every cycle.
+
+        Phase A — Drain cleanup queues (event-triggered from close failures).
+        Phase B — Detect stale paper mt5_tickets (MT5-native SL/TP, manual close).
+        """
+        broker = self._resolve_broker()
+        if broker is None:
+            return
+
+        # ── Phase A: Drain cleanup queues ──────────────────────────────────
+        for name, actor in self._actors.items():
+            engine = actor._engine
+            queue = getattr(engine, "_mt5_cleanup_queue", [])
+            if not queue:
+                continue
+            retries = getattr(engine, "_mt5_cleanup_retries", 0)
+
+            if retries >= self.MAX_CLEANUP_RETRIES:
+                logger.error(
+                    "MT5_ORPHAN abandoned after %d retries: %s queue=%s — manual MT5 cleanup required",
+                    self.MAX_CLEANUP_RETRIES,
+                    name,
+                    queue,
+                )
+                # FIXME: add abandoned-orphan counter to diagnostics/metrics
+                # FIXME: Phase C deferral — orphaned MT5 positions without any
+                # paper-side record (e.g. after engine restart) need a separate
+                # startup recovery pass. Tracked as follow-up.
+                engine._mt5_cleanup_queue = []
+                engine._mt5_cleanup_retries = 0
+                continue
+
+            still_pending: list[tuple[str, int]] = []
+            for mt5_symbol, ticket in queue:
+                try:
+                    ok = broker.close_position(mt5_symbol, str(ticket))
+                    if ok:
+                        logger.warning(
+                            "MT5_ORPHAN cleaned: %s ticket=%s on %s",
+                            name,
+                            ticket,
+                            mt5_symbol,
+                        )
+                    else:
+                        still_pending.append((mt5_symbol, ticket))
+                        logger.warning(
+                            "MT5_ORPHAN retry %d/%d: %s ticket=%s on %s",
+                            retries + 1,
+                            self.MAX_CLEANUP_RETRIES,
+                            name,
+                            ticket,
+                            mt5_symbol,
+                        )
+                except Exception as e:
+                    still_pending.append((mt5_symbol, ticket))
+                    logger.error(
+                        "MT5_ORPHAN exception on retry %d: %s ticket=%s on %s: %s",
+                        retries + 1,
+                        name,
+                        ticket,
+                        mt5_symbol,
+                        e,
+                    )
+
+            engine._mt5_cleanup_queue = still_pending
+            engine._mt5_cleanup_retries = retries + 1 if still_pending else 0
+
+        # ── Phase B: Stale ticket detection ────────────────────────────────
+        # Catches MT5-native SL/TP hits and manual closes where paper still
+        # holds a stale mt5_ticket but the MT5 position no longer exists.
+        if not broker.ensure_connected():
+            return
+        try:
+            mt5_positions = broker.get_positions()
+        except Exception:
+            return
+
+        mt5_by_ticket: dict[str, object] = {}
+        for p in mt5_positions:
+            if p.position_id:
+                mt5_by_ticket[p.position_id] = p
+
+        for name, actor in self._actors.items():
+            engine = actor._engine
+            if not engine.position:
+                continue
+            mt5_ticket = engine.position.get("mt5_ticket")
+            if mt5_ticket is None:
+                continue
+            if str(mt5_ticket) not in mt5_by_ticket:
+                logger.warning(
+                    "MT5_STALE_TICKET: %s ticket=%s not found on broker — clearing from paper state",
+                    name,
+                    mt5_ticket,
+                )
+                engine.position.pop("mt5_ticket", None)
 
     def shutdown(self) -> None:
         """Shut down the persistent thread pool (called on exit via atexit)."""

@@ -4,6 +4,7 @@ This module contains the loop-based ``triple_barrier_labels`` and
 ``PurgedWalkForwardFolds`` cross-validator.  New code should prefer
 the vectorized ``apply_triple_barrier`` from ``labels.triple_barrier``.
 """
+
 import logging
 
 import numpy as np

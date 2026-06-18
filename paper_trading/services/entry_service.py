@@ -529,9 +529,19 @@ class EntryService:
 
         broker = asset.execution_bridge.broker
         existing_positions = broker.get_positions()
-        mt5_symbol = getattr(broker, "_symbol_map", {}).get(asset.ticker, asset.ticker)
-        if any(p.asset == mt5_symbol for p in existing_positions):
-            logger.warning("%s: skipping MT5 order — position already open in broker", asset.name)
+        mt5_symbol = broker.ticker_to_mt5_symbol(asset.ticker)
+        matching = [p for p in existing_positions if p.asset == mt5_symbol]
+        if matching:
+            # Load-bearing guard: prevents double-position on MT5 when orphan
+            # cleanup from a previous close failure hasn't resolved yet.
+            tickets = [p.position_id or "?" for p in matching]
+            logger.error(
+                "%s: MT5_ORPHAN blocking entry — %d open position(s) on %s (tickets=%s)",
+                asset.name,
+                len(matching),
+                mt5_symbol,
+                tickets,
+            )
             return entry_price, 0.0, None
 
         mt5_sl = float(intent_sl)

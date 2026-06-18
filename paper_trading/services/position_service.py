@@ -187,21 +187,29 @@ class PositionService:
         # ── Real broker close (MT5) ──
         mt5_ticket = position.get("mt5_ticket") if position else None
         is_real = getattr(self.execution_bridge, "_is_real_broker", False)
+        mt5_orphan = None
         if mt5_ticket is not None and self.execution_bridge is not None and is_real:
+            broker = self.execution_bridge.broker
             try:
-                success = self.execution_bridge.broker.close_position(self.ticker, str(mt5_ticket))
+                success = broker.close_position(self.ticker, str(mt5_ticket))
                 if not success:
+                    mt5_symbol = broker.ticker_to_mt5_symbol(self.ticker)
+                    mt5_orphan = (mt5_symbol, mt5_ticket)
                     logger.error(
-                        "%s: MT5 close returned failure for ticket=%s — position may be orphaned",
+                        "%s: MT5 close returned failure for ticket=%s — orphaning %s",
                         self.name,
                         mt5_ticket,
+                        mt5_symbol,
                     )
             except Exception as e:
+                mt5_symbol = broker.ticker_to_mt5_symbol(self.ticker)
+                mt5_orphan = (mt5_symbol, mt5_ticket)
                 logger.error(
-                    "%s: MT5 close raised exception for ticket=%s: %s — position may be orphaned",
+                    "%s: MT5 close raised exception for ticket=%s: %s — orphaning %s",
                     self.name,
                     mt5_ticket,
                     e,
+                    mt5_symbol,
                 )
 
         new_trade_log = list(self.pos_mgr.trade_log)
@@ -211,6 +219,8 @@ class PositionService:
             "current_value": self.pos_mgr.current_value,
             "trade_log": new_trade_log,
         }
+        if mt5_orphan:
+            mutations["mt5_orphan"] = mt5_orphan
         if reason == "signal_flip":
             mutations["last_signal_flip_cycle"] = cycle_counter
 

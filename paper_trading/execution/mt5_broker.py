@@ -191,6 +191,17 @@ class MT5Broker(BrokerInterface):
         self.ensure_connected()
         ticket = int(position_id)
         result = self._client.close_position(ticket)
+
+        error = result.get("error", "")
+        if "not found" in error:
+            logger.info(
+                "Position already closed: ticket=%s asset=%s (raw=%s)",
+                ticket,
+                asset,
+                result,
+            )
+            return True
+
         retcode = result.get("result", {}).get("retcode", -1)
         if retcode != 10009:
             logger.error("Close position failed: retcode=%d ticket=%s asset=%s", retcode, ticket, asset)
@@ -218,6 +229,9 @@ class MT5Broker(BrokerInterface):
 
     # ── Positions ──────────────────────────────────────────────────────
 
+    def ticker_to_mt5_symbol(self, ticker: str) -> str:
+        return self._symbol_map.get(ticker, ticker)
+
     def get_positions(self) -> list[Position]:
         self.ensure_connected()
         now = time.monotonic()
@@ -243,6 +257,7 @@ class MT5Broker(BrokerInterface):
                 current_price=float(p.get("price_current", 0)),
                 unrealized_pnl=float(p.get("profit", 0)),
                 realized_pnl=float(p.get("commission", 0)),
+                position_id=str(p.get("ticket", "")),
             )
             positions.append(pos)
 

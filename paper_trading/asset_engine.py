@@ -165,6 +165,10 @@ class AssetEngine:
         self._churn_ratio_threshold = self.config.get("churn_ratio_threshold", 0.50)
         self._initial_settlement_done = False
 
+        # ── MT5 orphan cleanup ────────────────────────────────────────
+        self._mt5_cleanup_queue: list[tuple[str, int]] = []
+        self._mt5_cleanup_retries: int = 0
+
         # ── Inference & training state ───────────────────────────────
         self._last_label = None
         self._last_confidence = 0.0
@@ -384,6 +388,10 @@ class AssetEngine:
         self.trade_log = mutations.get("trade_log", self.trade_log)
         if "last_signal_flip_cycle" in mutations:
             self._last_signal_flip_cycle = mutations["last_signal_flip_cycle"]
+        orphan = mutations.pop("mt5_orphan", None)
+        if orphan:
+            self._mt5_cleanup_queue.append(orphan)
+            self._mt5_cleanup_retries = 0
 
     def _record_stop_out(self, side: str, exit_price: float) -> None:
         mutations = self._position.record_stop_out(

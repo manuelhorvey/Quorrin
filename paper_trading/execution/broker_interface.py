@@ -26,6 +26,7 @@ class Position:
     current_price: float
     unrealized_pnl: float
     realized_pnl: float
+    position_id: str | None = None
 
 
 @dataclass

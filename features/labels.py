@@ -1,4 +1,5 @@
 """Deprecated — import from ``labels.compat`` instead."""
+
 import warnings
 
 from labels.compat import PurgedWalkForwardFolds, triple_barrier_labels  # noqa: F401

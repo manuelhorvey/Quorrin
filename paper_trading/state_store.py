@@ -142,6 +142,7 @@ class _DatabaseStore:
                     entry_date TEXT,
                     exit_date TEXT,
                     side TEXT,
+                    entry_price REAL,
                     exit_price REAL,
                     exit_reason TEXT,
                     realized_r REAL,
@@ -341,7 +342,7 @@ class _DatabaseStore:
             conn.execute(
                 """INSERT INTO attribution (
                     asset, trade_id, entry_date, exit_date,
-                    side, exit_price, exit_reason,
+                    side, entry_price, exit_price, exit_reason,
                     realized_r, realized_return, realized_pnl, theoretical_r,
                     policy_hash, archetype_version, exit_archetype,
                     pred_signal, pred_label, pred_confidence,
@@ -352,13 +353,14 @@ class _DatabaseStore:
                     friction_entry_slippage_bps, friction_exit_slippage_bps,
                     exit_mae, exit_mfe, exit_mae_per_bar, exit_mfe_per_bar,
                     exit_realized_r, exit_bars_held, exit_exit_archetype
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     record_dict.get("asset"),
                     record_dict.get("trade_id"),
                     str(record_dict.get("entry_date", "")),
                     str(record_dict.get("exit_date", "")),
                     record_dict.get("side"),
+                    record_dict.get("entry_price"),
                     record_dict.get("exit_price"),
                     record_dict.get("exit_reason"),
                     record_dict.get("realized_r"),
@@ -421,7 +423,11 @@ class _DatabaseStore:
                     f"SELECT * FROM attribution WHERE {where_sql} ORDER BY exit_date DESC LIMIT ? OFFSET ?",
                     tuple(params),
                 ).fetchall()
-                return [dict(r) for r in rows]
+                records = [dict(r) for r in rows]
+                for rec in records:
+                    if "entry_price" not in rec or rec["entry_price"] is None:
+                        rec["entry_price"] = rec.get("exec_entry_price")
+                return records
         except Exception as e:
             logger.warning("Failed to read attribution: %s", e)
             return []

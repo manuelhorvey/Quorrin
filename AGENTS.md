@@ -164,8 +164,9 @@ curl http://127.0.0.1:5000/state.json | python3 -m json.tool
   - (2) `decision_pipeline.py:apply_signal_hysteresis` (NEW) — 2-of-3 signal agreement required before a flip is allowed.
   - (3) `decision_pipeline.py:manage_position` — `_can_enter()` checked BEFORE `_close_position()`. If cool-down blocks re-entry, old position is kept open.
   - (4) `engine_state_service.py` — `mt5_ticket` now persisted in snapshot.
-  - (5) `position_service.py` — MT5 close failures logged as ERROR with "position may be orphaned".
+   - (5) `position_service.py` — MT5 close failures logged as ERROR with "position may be orphaned".
 
+- **pipeline.py indentation nesting (FIXED 2026-06-19)**: `_detect_bar_jump()` was accidentally defined at module level (0 indent) between `_ensure_ready()` and all remaining class methods. Everything from `_fetch_and_prepare_data` onward (16 methods, lines 119-577) was nested inside `_detect_bar_jump` as local inner functions instead of being class methods. This meant none of those methods were callable from `_generate_and_apply`. Fix: indented `_detect_bar_jump` by 4 spaces (class method) and changed the call site from `_detect_bar_jump(asset, ...)` to `self._detect_bar_jump(asset, ...)`.
 
 ## Ruff
 

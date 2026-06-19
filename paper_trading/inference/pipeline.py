@@ -94,27 +94,26 @@ class AssetInferencePipeline:
         if not asset._trained:
             asset.train()
 
+    def _detect_bar_jump(self, asset, bars: int) -> None:
+        """Detect significant bar-count changes and set suppression timer.
 
-def _detect_bar_jump(asset, bars: int) -> None:
-    """Detect significant bar-count changes and set suppression timer.
+        A bar jump indicates a data-source switch (yfinance↔MT5) that
+        contaminates feature vectors.  Suppress trading decisions for
+        60 minutes after detection.
+        """
+        import logging
+        logger = logging.getLogger("quantforge.pipeline")
+        threshold = 100
+        suppress_secs = 3600
 
-    A bar jump indicates a data-source switch (yfinance↔MT5) that
-    contaminates feature vectors.  Suppress trading decisions for
-    60 minutes after detection.
-    """
-    import logging
-    logger = logging.getLogger("quantforge.pipeline")
-    threshold = 100
-    suppress_secs = 3600
-
-    last = getattr(asset, "_last_bar_count", None)
-    if last is not None and abs(bars - last) > threshold:
-        asset._suppress_until = time.time() + suppress_secs
-        logger.warning(
-            "%s: bar jump detected %d→%d (Δ=%d), suppressing decisions for %ds",
-            asset.name, last, bars, bars - last, suppress_secs,
-        )
-    asset._last_bar_count = bars
+        last = getattr(asset, "_last_bar_count", None)
+        if last is not None and abs(bars - last) > threshold:
+            asset._suppress_until = time.time() + suppress_secs
+            logger.warning(
+                "%s: bar jump detected %d→%d (Δ=%d), suppressing decisions for %ds",
+                asset.name, last, bars, bars - last, suppress_secs,
+            )
+        asset._last_bar_count = bars
 
     def _fetch_and_prepare_data(self, asset):
         df = fetch_live(asset.ticker)
@@ -136,7 +135,7 @@ def _detect_bar_jump(asset, bars: int) -> None:
         from features.data_fetch import fetch_asset_data, fetch_asset_ohlcv, fetch_cot_features
 
         hist_prices, rate_diffs, dxy, vix, spx, commodities = fetch_asset_data(asset.name, asset.ticker)
-        _detect_bar_jump(asset, len(hist_prices))
+        self._detect_bar_jump(asset, len(hist_prices))
         cot_data = fetch_cot_features(hist_prices.index)
         if getattr(asset, "_truncate_inference", False):
             _trunc_rows = _MAX_INDICATOR_LOOKBACK + 50

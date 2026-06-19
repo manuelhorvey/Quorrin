@@ -4,7 +4,6 @@ import pytest
 
 from shared.signal import FixedThresholdStrategy, SignalResult
 
-
 # ── FixedThresholdStrategy ───────────────────────────────────────────────────
 
 @pytest.fixture

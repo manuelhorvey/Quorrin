@@ -40,7 +40,7 @@ defaults:
   spread_gate:
     enabled: true
     staleness_secs: 300
-    min_observe_cycles: 10
+    min_observe_cycles: 720
     tiers:
       fx_major: 10
       fx_cross: 20

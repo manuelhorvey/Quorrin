@@ -410,7 +410,7 @@ def apply_risk_off_suppression(ctx: DecisionContext) -> None:
 # ── Spread gate stage ────────────────────────────────────────────────────
 
 SPREAD_GATE_STALENESS_SECS = 300  # 5 minutes — refreshed every cycle
-SPREAD_GATE_MIN_OBSERVE_CYCLES = 10  # cycles before gate blocks (dry-run)
+SPREAD_GATE_MIN_OBSERVE_CYCLES = 720  # ~6h at 30s — covers opens, mid-session, closes
 
 # Per-asset-class spread thresholds in bps.  These are starting defaults
 # that should be validated via observe-mode logging before being trusted.
@@ -428,9 +428,9 @@ def apply_spread_gate(ctx: DecisionContext) -> None:
     Fail-closed: if spread data is missing or stale, the entry is blocked
     (conservative — entering blind is worse than missing a trade).
 
-    Observe mode: for the first SPREAD_GATE_MIN_OBSERVE_CYCLES cycles the
-    gate logs what it *would* do but does not block, to validate thresholds
-    against real market conditions before going live.
+    Observe mode: for the first SPREAD_GATE_MIN_OBSERVE_CYCLES cycles (~6h
+    at 30s cadence) the gate logs what it *would* do but does not block, to
+    validate thresholds against real market conditions before going live.
     """
     engine = ctx.engine
     # ── Gather spread data ─────────────────────────────────────────

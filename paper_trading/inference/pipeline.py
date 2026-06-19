@@ -89,6 +89,11 @@ class AssetInferencePipeline:
     def _apply_async_diagnostics(self, asset) -> None:
         get_diagnostics_queue().apply_pending(asset.name, asset)
 
+    def _ensure_ready(self, asset) -> None:
+        asset._ensure_position_synced()
+        if not asset._trained:
+            asset.train()
+
 
 def _detect_bar_jump(asset, bars: int) -> None:
     """Detect significant bar-count changes and set suppression timer.
@@ -110,11 +115,6 @@ def _detect_bar_jump(asset, bars: int) -> None:
             asset.name, last, bars, bars - last, suppress_secs,
         )
     asset._last_bar_count = bars
-
-    def _ensure_ready(self, asset) -> None:
-        asset._ensure_position_synced()
-        if not asset._trained:
-            asset.train()
 
     def _fetch_and_prepare_data(self, asset):
         df = fetch_live(asset.ticker)

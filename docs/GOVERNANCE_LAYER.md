@@ -1,6 +1,9 @@
 # QuantForge — Risk & Governance Layer
 
-Seven independent governance mechanisms operating at different frequencies and granularities.
+Nine independent governance mechanisms operating at different frequencies and granularities,
+plus decision pipeline suppression stages and position sizing guardrails.
+
+## Governance Layers (9)
 
 | Layer | Frequency | Scope | Effect |
 |---|---|---|---|
@@ -12,6 +15,31 @@ Seven independent governance mechanisms operating at different frequencies and g
 STRESSED: SL +30%, size −30%, halt |
 | PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE |
 | Portfolio drawdown | Per cycle | Global | Circuit breaker at −15% |
+| Entry price deviation | Per entry | Per asset | Skip entry if price drifted >2% |
+| Profit lock | Per flip | Per asset | Block flip if PnL >15% |
+
+## Decision Pipeline Stages
+
+| Stage | Effect |
+|-------|--------|
+| Bar-jump suppression | Suppress 60min if bar count changed >100 (data-source switch) |
+| Spread gate | Block entry if spread > per-class threshold (observe 720 cycles first) |
+| Signal stability filter | Require >0.65 max(prob_long, prob_short) to proceed |
+| Signal hysteresis | 2-of-3 agreement required before flip |
+| Risk-off suppression | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0 |
+| First-cycle suppression | Suppress trading on cold-start cycle 1 |
+| Conviction gate | Flip gate based on regime conviction |
+| Profit lock gate | Block flip if unrealized PnL > threshold |
+| Manage position | Close/re-open with entry gate check |
+
+## Position Sizing Guardrails
+
+Applied multiplicatively in entry sizing:
+1. Drawdown taper — linear 1.0→min between start_dd/end_dd
+2. Per-position cap — clip to max_position_pct_of_equity
+3. Risk-per-trade cap — clip or skip if SL risk exceeds max_risk_per_trade_pct
+4. Leverage budget — atomic lock from max_leverage × equity pool
+5. Backstop multiplier — ratchet down on breach, 0.9 decay/cycle
 
 ## 1. Validity State Machine
 

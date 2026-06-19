@@ -176,7 +176,7 @@ Rate_diffs are simulated from TNX yield with noise. All indices normalized to TZ
 | `spx_mom_5d` | SPX 5-day return |
 | `WTI_mom_21d` | WTI 21-day return |
 
-12 feature columns per asset. Some assets have additional `yield_slope` or `mom126` variants.
+13 feature columns per asset. Some assets have additional `yield_slope` or `mom126` variants.
 
 ### 4.3 Labeling
 
@@ -233,7 +233,7 @@ Format: XGBoost `.json` (not pickle)
 2. Normalize index to UTC TZ-naive date (fixes FX cross date shift)
 3. `refresh_price()` — real-time price via MT5 bridge or 5d fallback
 4. `ffill()` close column, deduplicate index
-5. `fetch_asset_data()` + `build_alpha_features()` — alpha_df (12 feature cols)
+5. `fetch_asset_data()` + `build_alpha_features()` — alpha_df (13 feature cols)
 6. Archetype features from OHLCV: ema_spread, ADX(14), RSI(14), BB_zscore(20)
 7. PSI drift check (rolling 21d vs baseline; skipped first cycle)
 8. Inference truncation validation — if proven safe, predict only last row
@@ -323,6 +323,10 @@ final_size = base × governance_scalar × meta_confidence_scalar
 | Liquidity regime | Per signal | SL +15/30%, size −15/30%, halt |
 | PSI drift | Per cycle | Validity penalty, halt at 3+ SEVERE |
 | Portfolio drawdown | Per cycle | Circuit breaker at −15% |
+| Entry price deviation gate | Per entry | Skip if price drifted >2% |
+| Profit lock gate | Per flip | Block flip if PnL >15% |
+
+Plus decision pipeline stages (bar-jump suppression, spread gate, signal stability filter, signal hysteresis, risk-off suppression, first-cycle suppression) and position sizing guardrails (drawdown taper, per-position cap, risk-per-trade cap, leverage budget, backstop multiplier).
 
 ---
 

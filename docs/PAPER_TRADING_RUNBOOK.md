@@ -15,7 +15,7 @@ Operational procedures for the paper trading system. This document is for the pe
 | State store (SQLite) | `data/live/state.db` (5 tables: trades, attribution, shadow_trades, confidence_buckets, equity_history) |
 | Model files | `paper_trading/models/*.json` (base), `models/regime/*.json` (regime) |
 | Logs | stdout (redirect to file as needed) |
-| Refresh interval | 300s / 5 min (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var) |
+| Refresh interval | 30s (configurable via `QUANTFORGE_REFRESH_INTERVAL` env var) |
 | Weekend behavior | Auto-pauses Fri 17:00 ET — Sun 17:00 ET; no signal computation occurs |
 | Weekend polling | Reduced to every 120s (state) / 5 min (secondary endpoints) |
 | Market hours logic | `paper_trading/ops/market_hours.py` — `is_market_closed()` |
@@ -167,13 +167,15 @@ config:
 
 The script:
 1. Loads cached models from `paper_trading/models/`
-2. Downloads fresh OHLCV data via yfinance
+2. Downloads fresh OHLCV data via MT5 / yfinance
 3. Downloads macro data (DXY, VIX, SPX, WTI, TNX) via yfinance
-4. Computes features
-5. Runs inference on all assets
-6. Opens/closes positions based on signal vs current position
-7. Serves dashboard on port 5000
-8. Repeats every refresh interval (default 300s, configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)
+4. Computes alpha + regime + archetype features
+5. Runs inference on all assets (base model + regime ensemble)
+6. Applies decision pipeline stages (bar-jump, spread gate, stability, hysteresis, risk-off, first-cycle, conviction, profit lock)
+7. Routes through 9 governance layers + position sizing guardrails
+8. Opens/closes positions based on signal vs current position (MT5 bridge + paper)
+9. Serves dashboard on port 5000
+10. Repeats every refresh interval (default 30s, configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)
 
 **Signal logging:** The `scripts/monitor_paper_trading.py` script polls the dashboard every 6 hours
 and appends a CSV row to `data/monitoring/paper_trade_monitor.csv`. Use it for daily signal checks:
@@ -198,6 +200,10 @@ curl http://127.0.0.1:5000/ping
 - No asset is in halt (check asset cards for RED status)
 - Per-asset drawdown % is not approaching per-asset limits
 - Portfolio drawdown value is not approaching -15% circuit breaker threshold
+- After restart: cycle 1 shows `first-cycle suppression` in logs (normal), trades resume cycle 2+
+- After MT5 reconnect: check for `bar-jump suppression` log — suppresses ~60min if bar count changed >100 (normal after source switch)
+- Risk-off conditions: if VIX>0 & SPX<0, expect AUDUSD/AUDCHF showing `risk-off suppression — holding flat` (validated behavior)
+- Spread gate observe mode: in first 720 cycles (~6h), check for `spread gate would block` logs; after observation window, `spread gate blocked entry` is expected for high-spread conditions
 - Market status badge shows **OPEN** (green) during trading hours, **CLSD** (yellow) on weekends
 - **LAST** timestamp in the header shows when signals were last refreshed
 - **Scale-out tiers** on open positions: check filled vs pending tier blocks in AssetCard

@@ -32,7 +32,7 @@ Data ingested from MT5 bridge (primary) or yfinance (fallback):
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in CFTC data) |
 
-#### Cross-Asset Features
+#### Cross-Asset Features (4 cols)
 
 | Feature | Source | Description |
 |---|---|---|
@@ -43,7 +43,7 @@ Data ingested from MT5 bridge (primary) or yfinance (fallback):
 
 ### Custom Feature Variants
 
-Some assets have additional or replacement features beyond the 12-base set:
+Some assets have additional or replacement features beyond the 13-base set:
 
 | Asset | Variant |
 |---|---|

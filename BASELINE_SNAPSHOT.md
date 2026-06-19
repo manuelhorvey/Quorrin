@@ -1,6 +1,6 @@
 # BASELINE SNAPSHOT — AUTO-GENERATED
 
-Generated: 2026-06-10
+Generated: 2026-06-19
 Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 
 ---
@@ -15,7 +15,13 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | Retrain window | 5y |
 | Drawdown limit | -0.15 |
 | Data source | MT5 (yfinance fallback) |
-| Ensemble | per-asset (60/40 when regime model exists) |
+| Ensemble | per-asset (60/40 when regime model exists, EURAUD threshold=0.25) |
+| Governance layers | 9 (validity, feature stability, meta-label, macro narrative, liquidity, PSI drift, portfolio drawdown, entry deviation gate, profit lock gate) |
+| Decision pipeline stages | bar-jump suppression, spread gate, signal stability, hysteresis, risk-off suppression, first-cycle suppression |
+| Position sizing guardrails | drawdown taper, per-position cap, risk-per-trade cap, leverage budget, backstop multiplier |
+| Spread gate tiers | fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps |
+| Exit reasons | UPPERCASE canonical (FLIP, SL, TP, BREAKEVEN, EXPIRY, GATE_CLOSED, PORTFOLIO_CIRCUIT_BREAKER) |
+| Cycle interval | 30s (configurable via QUANTFORGE_REFRESH_INTERVAL) |
 
 ---
 
@@ -86,6 +92,14 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | Meta-labeling | enabled |
 | PSI drift | enabled |
 | Portfolio drawdown | enabled |
+| Entry price deviation gate | enabled (max_entry_slippage_pct=2%) |
+| Profit lock gate | enabled (profit_lock_threshold_pct=15%) |
+| Spread gate | observe-only mode (720 cycles) |
+| Bar-jump suppression | enabled (120 cycles) |
+| Risk-off suppression | enabled (AUDUSD, AUDCHF) |
+| First-cycle suppression | enabled |
+| Signal stability filter | enabled (stability_margin=0.15) |
+| Signal hysteresis | enabled (2-of-3 agreement) |
 
 ---
 
@@ -99,6 +113,7 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | Vectorized labels | True |
 | Async diagnostics | True |
 | Regime conviction flip gate | enabled |
+| Exit reason canonicalization | enabled (SQLite migration, UPPERCASE) |
 
 ---
 
@@ -114,6 +129,10 @@ Key invariants from the contract:
 - 21 promoted assets with risk-parity weights
 - Per-asset max_depth (2–5)
 - Dynamic SL/TP with trailing stops and per-asset min_rr_ratio
+- 60/40 ensemble blend (regime model active when loaded)
+- Decision pipeline: 9 stages (bar-jump, spread gate, stability, hysteresis, risk-off, first-cycle, conviction, profit lock, manage)
+- Exit reasons canonicalized to UPPERCASE
+- Independent paper/MT5 sizing chains
 
 ---
 

@@ -8,8 +8,8 @@ Project documentation for the QuantForge cross-sectional factor ranking and pape
 |-------|-------------|
 | [`PAPER_TRADING_RUNBOOK.md`](PAPER_TRADING_RUNBOOK.md) | Daily/weekly ops, halt responses, troubleshooting |
 | [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) | Architecture, components, data flow, governance |
-| [`GOVERNANCE_LAYER.md`](GOVERNANCE_LAYER.md) | 7-layer governance: validity, narrative, liquidity, PSI, drawdown |
-| [`FEATURES.md`](FEATURES.md) | Alpha features (13 cols), regime features, archetype, labeling |
+| [`GOVERNANCE_LAYER.md`](GOVERNANCE_LAYER.md) | 9-layer governance + decision pipeline stages + position sizing guardrails |
+| [`FEATURES.md`](FEATURES.md) | Alpha features (13 cols), regime features (7 cols), archetype, labeling |
 | [`LIVE_CONTRACT.md`](../LIVE_CONTRACT.md) | Immutable production system contract |
 
 ## Quick Reference

@@ -45,7 +45,8 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 
 ### Ensemble
 **Weight:** `base_weight = 0.6` (regime weight = 0.4)
-**Threshold:** `0.15` — LONG when `P(LONG) > 0.575`, SHORT when `P(LONG) < 0.425`
+**Threshold:** `0.15` per-asset default — LONG when `P(LONG) > 0.575`, SHORT when `P(LONG) < 0.425`
+**Per-asset override:** EURAUD: threshold = 0.25
 **Formula:** `P(LONG)_final = base_weight * P(LONG)_base + (1-base_weight) * P(LONG)_regime`
 
 ---
@@ -73,8 +74,6 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Regime builder:** `features/regime_features.py:generate_regime_features()`
 **Per-asset contract:** Defined in `features/registry.py:FEATURE_REGISTRY` (36 tickers) — used for training custom features.
 **Input:** 13 standard alpha features + 7 regime features per asset.
-
-### Alpha features (all 21 dashboard assets use these 13 base features):
 
 13 features total (9 per-asset + 4 cross-asset), all with per-asset prefix (`{ASSET}_`):
 
@@ -215,28 +214,42 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 ## 7. INFERENCE PIPELINE CONTRACT
 
 **Pipeline:** `paper_trading/inference/pipeline.py:AssetInferencePipeline._generate_and_apply()`
-**Per-cycle (every 300s / 5 min):**
+**Per-cycle (every 30s):**
 
 1. `fetch_live(ticker)` — 5y OHLCV, deduplicate index
 2. Normalize index to UTC TZ-naive
 3. `refresh_price()` — patch last close with real-time or 5d fallback
 4. `ffill()` close column
-5. `fetch_asset_data()` + `build_alpha_features()` — 12 alpha feature cols
-6. Compute archetype features (ema_spread, adx, rsi, bb_zscore)
-7. PSI drift check (rolling 21d vs baseline; skipped on first cycle)
-8. Inference truncation validation — if proven safe, predict only last row
-9. XGBoost predict → 3-column proba expansion `[p_short, 0, p_long]`
-10. Optional ensemble blend (regime model, disabled by default)
-11. Optional meta-label inference
-12. `FixedThresholdStrategy(0.45)` → BUY/SELL/FLAT
-13. Archetype classification → `TradeDecision`
-14. Route through governance layers
-15. Execute position lifecycle:
-     - **Open**: `pos_mgr.open(intent)` + MT5 `place_order` (SL/TP attached); entry skipped if current price deviated > `max_entry_slippage_pct` from signal price (entry service gate)
-     - **SL/TP hit**: `pos_mgr.close()` + MT5 `close_position(ticket)`
-     - **Flip**: profit-lock check first — if unrealized PnL > `profit_lock_threshold_pct`, flip is blocked and position holds; else close + re-open in same cycle (MT5 close + place_order)
-     - **Trailing stop**: `pos_mgr.update_stop_loss()` + MT5 `modify_position(ticket, sl)`
-     - **Post-entry adjust**: `pos_mgr.update_stop_loss/tp()` + MT5 `modify_position()`
+5. `fetch_asset_data()` + `build_alpha_features()` — 13 alpha feature cols
+6. Compute regime features from OHLCV (7 cols via `generate_regime_features`)
+7. Compute archetype features (ema_spread, adx, rsi, bb_zscore)
+8. PSI drift check (rolling 21d vs baseline; skipped on first cycle)
+9. Inference truncation validation — if proven safe, predict only last row
+10. XGBoost predict → 3-column proba expansion `[p_short, 0, p_long]`
+11. Optional ensemble blend (regime model, 60/40 when loaded)
+12. Optional meta-label inference
+13. `FixedThresholdStrategy(0.45)` → BUY/SELL/FLAT
+14. Archetype classification → `TradeDecision`
+15. Refresh MT5 spread for spread gate
+16. Decision pipeline stages (applied sequentially):
+    a. Bar-jump suppression — suppress 60min if bar count changed >100
+    b. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
+    c. Signal stability filter — require >0.65 max(prob_long, prob_short)
+    d. Signal hysteresis — 2-of-3 agreement before flip
+    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    f. First-cycle suppression — suppress trading on cold-start cycle 1
+    g. Conviction gate — flip gate based on regime conviction
+    h. Profit lock gate — block flip if unrealized PnL > threshold
+    i. Manage position — close/re-open with entry gate check
+17. Route through governance layers (9 layers)
+18. Position sizing chain (drawdown taper → cap → risk cap → leverage budget → backstop)
+19. Independent MT5 sizing (`_compute_mt5_qty` with broker equity)
+20. Execute position lifecycle:
+      - **Open**: `pos_mgr.open(intent)` + MT5 `place_order` (SL/TP attached); entry skipped if current price deviated > `max_entry_slippage_pct` from signal price (entry service gate)
+      - **SL/TP hit**: `pos_mgr.close()` + MT5 `close_position(ticket)`
+      - **Flip**: profit-lock check first — if unrealized PnL > `profit_lock_threshold_pct`, flip is blocked and position holds; else close + re-open in same cycle (MT5 close + place_order)
+      - **Trailing stop**: `pos_mgr.update_stop_loss()` + MT5 `modify_position(ticket, sl)`
+      - **Post-entry adjust**: `pos_mgr.update_stop_loss/tp()` + MT5 `modify_position()`
 
 ---
 
@@ -390,7 +403,7 @@ desired-vs-actual notional diverge wildly for small accounts).
 
 ## 12. GOVERNANCE CONTRACT
 
-Nine layered governance mechanisms plus position sizing guardrails, each independently configurable:
+Nine layered governance mechanisms plus position sizing guardrails and decision pipeline suppression stages, each independently configurable:
 
 | Layer | Frequency | Effect | Config key |
 |---|---|---|---|---|
@@ -415,6 +428,20 @@ Nine layered governance mechanisms plus position sizing guardrails, each indepen
 | Portfolio leverage budget | Global | Atomic decrement from `max_leverage × equity` pool | `portfolio_max_leverage`, `portfolio_leverage_tolerance` |
 | Backstop multiplier | Global | Ratchets down on breach, decays 0.9/cycle otherwise | (no config — fixed 0.9 decay) |
 
+**Decision pipeline suppression stages:**
+
+| Stage | Effect | Config |
+|-------|--------|--------|
+| Bar-jump suppression | Suppress 60min if bar count changed >100 (data-source switch) | `bar_jump_suppression_cycles` (default 120) |
+| Spread gate | Block entry if spread > per-class tier (observe 720 cycles first) | `spread_gate_tiers` (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
+| Signal stability filter | Require >0.65 max(prob_long, prob_short) | `stability_margin` (default 0.15) |
+| Signal hysteresis | 2-of-3 agreement before flip allowed | HYSTERESIS_WINDOW=3, HYSTERESIS_MIN_AGREE=2 |
+| Risk-off suppression | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0 | (hardcoded, per-asset pair) |
+| First-cycle suppression | Suppress trading on cold-start cycle 1 | (hardcoded, _cycle_counter <= 1) |
+| Conviction gate | Flip gate based on regime conviction | `_evaluate_flip_gate()` |
+| Profit lock gate | Block flip if unrealized PnL > `profit_lock_threshold_pct` | `profit_lock_threshold_pct` (default 15%) |
+| Manage position | Close/re-open with entry gate check | `_can_enter()` 
+
 See `docs/GOVERNANCE_LAYER.md` for full detail.
 
 ---
@@ -432,6 +459,7 @@ See `docs/GOVERNANCE_LAYER.md` for full detail.
 9. Binary signal — model trains on {-1, 1} labels only; HOLD dropped
 10. Walk-forward validated — every promoted asset passes expanding-window backtest
 11. Per-asset model depth — `max_depth` configured per-asset, not global
+12. Exit reason canonicalization — all exit reasons are UPPERCASE (FLIP, SL, TP, BREAKEVEN, EXPIRY, GATE_CLOSED, PORTFOLIO_CIRCUIT_BREAKER)
 
 ---
 

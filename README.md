@@ -9,7 +9,7 @@
 
 ---
 
-Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, seven-layer governance, MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, nine-layer governance, decision pipeline suppression stages, MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
 
 ---
 
@@ -44,9 +44,13 @@ Asset Selection (GREEN / YELLOW / RED)
         ↓
 Per-Asset Model Training (XGBoost, per-asset depth)
         ↓
-Live Inference (every 300s)
+Live Inference (every 30s)
         ↓
-Governance Filters (7 layers)
+Decision Pipeline Stages (bar-jump → spread gate → stability → hysteresis → risk-off → first-cycle suppression)
+        ↓
+Governance Filters (9 layers)
+        ↓
+Position Sizing Guardrails (5 multiplicative)
         ↓
 Execution & Positioning (MT5 or PaperBroker)
         ↓
@@ -160,10 +164,11 @@ Each asset runs an independent XGBoost model with per-asset configuration.
 Base model:    XGBClassifier (binary:logistic, 300 trees, LR=0.02, depth 2-5)
 Regime model:  XGBClassifier (binary:logistic, 200 trees, LR=0.03, depth=2)
 Ensemble:      60% base P(LONG) + 40% regime P(LONG)
+Ensemble threshold: 0.15 per-asset default (EURAUD: 0.25)
 ```
 
 ### Base Model
-Per-asset `binary:logistic` classifier trained on 13 alpha features (9 per-asset + 4 cross-asset, includes COT flag).
+Per-asset `binary:logistic` classifier trained on 13 alpha features (9 per-asset + 4 cross-asset, includes COT flag, `has_cot` zero-filled for pairs not in CFTC data).
 Uses `scale_pos_weight` = imbalance ratio to correct the label skew.
 Saved to `paper_trading/models/{ASSET}_model.json`.
 
@@ -177,8 +182,9 @@ Saved to `models/regime/{ASSET}_regime.json`. Requires `scripts/train_regime_mod
 When regime models exist, the two P(LONG) values are blended at inference:
 `P(LONG)_final = 0.6 × P(LONG)_base + 0.4 × P(LONG)_regime`
 
-The ensemble threshold (±0.075 around 0.5) determines the neutral band. P(LONG) > 0.575 →
-BUY, < 0.425 → SELL, else FLAT.
+The ensemble threshold determines the neutral band. Default 0.15 (±0.075 around 0.5):
+P(LONG) > 0.575 → BUY, < 0.425 → SELL, else FLAT.
+Per-asset override via config (EURAUD: 0.25).
 
 Ensemble is configured programmatically per-asset (not globally gated). Base model only is used when no regime model is loaded.
 
@@ -240,22 +246,35 @@ Derived from OHLCV for execution conditioning:
 # Inference Pipeline
 
 ```text
-1. Fetch live OHLCV (MT5 or yfinance, 5y window)
-2. Refresh latest price
-3. Fetch macro data
-4. Build alpha features (build_alpha_features, 13 cols)
-5. Build regime features from OHLCV (generate_regime_features, 7 cols)
-6. Build archetype features (ema_spread, adx, rsi, bb_zscore)
-7. Optional truncation validation (predict last row only)
-8. PSI drift check (rolling 21d vs baseline)
-9. Base XGBoost inference (binary:logistic → P(LONG)_base)
+ 1. Fetch live OHLCV (MT5 or yfinance, 5y window)
+ 2. Refresh latest price
+ 3. Fetch macro data
+ 4. Build alpha features (build_alpha_features, 13 cols)
+ 5. Build regime features from OHLCV (generate_regime_features, 7 cols)
+ 6. Build archetype features (ema_spread, adx, rsi, bb_zscore)
+ 7. Optional truncation validation (predict last row only)
+ 8. PSI drift check (rolling 21d vs baseline)
+ 9. Base XGBoost inference (binary:logistic → P(LONG)_base)
 10. Regime model inference (binary:logistic → P(LONG)_regime)
 11. Ensemble blend: 0.6 × P(LONG)_base + 0.4 × P(LONG)_regime
 12. Optional meta-label inference
 13. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
 14. Archetype classification
-15. Route through 7 governance layers
-16. Execute or defer (MT5 bridge for real broker)
+15. Refresh MT5 spread (for spread gate)
+16. Decision pipeline stages (applied sequentially):
+    a. Bar-jump suppression — suppress 60min if bar count changed >100
+    b. Spread gate — block entry if spread > per-class threshold
+    c. Signal stability filter — require >0.65 max(prob_long, prob_short)
+    d. Signal hysteresis — 2-of-3 agreement before flip
+    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    f. First-cycle suppression — suppress trading on cold-start cycle 1
+    g. Conviction gate — flip gate based on regime conviction
+    h. Profit lock gate — block flip if unrealized PnL > threshold
+    i. Manage position — close/re-open with entry gate check
+17. Route through 9 governance layers
+18. Position sizing guardrails (drawdown taper → cap → risk cap → leverage budget → backstop)
+19. Independent MT5 sizing (same chain with broker equity)
+20. Execute or defer (MT5 bridge for real broker)
 ```
 
 ---
@@ -319,7 +338,10 @@ Persistent state is stored in SQLite WAL mode with append-oriented semantics.
 
 # Governance Framework
 
-QuantForge uses independently configurable governance layers with worst-wins aggregation.
+QuantForge uses independently configurable governance layers with worst-wins aggregation,
+plus decision pipeline suppression stages and position sizing guardrails.
+
+## Governance Layers (9)
 
 | Layer                      | Frequency   | Scope     | Effect                              |
 | -------------------------- | ----------- | --------- | ----------------------------------- |
@@ -333,8 +355,25 @@ QuantForge uses independently configurable governance layers with worst-wins agg
 | Entry price deviation gate | Per entry   | Per asset | Skips entry if price drifted >2%    |
 | Profit lock gate           | Per flip    | Per asset | Blocks flip if PnL >15%             |
 
-Plus position sizing guardrails (see Execution Architecture above) — drawdown taper,
-per-position cap, risk-per-trade cap, portfolio leverage budget, backstop multiplier.
+## Decision Pipeline Stages
+
+Applied in order within the decision pipeline before governance:
+
+| Stage                     | Effect                                  |
+| ------------------------- | --------------------------------------- |
+| Bar-jump suppression      | Suppress 60min if bar count changed >100 (data-source switch) |
+| Spread gate               | Block entry if spread > per-class threshold (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
+| Signal stability filter   | Require >0.65 max(prob_long, prob_short) |
+| Signal hysteresis         | 2-of-3 agreement before flip allowed    |
+| Risk-off suppression      | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0   |
+| First-cycle suppression   | Suppress trading on cold-start cycle 1  |
+| Conviction gate           | Flip gate based on regime conviction    |
+| Profit lock gate          | Blocks flip if unrealized PnL > threshold |
+| Manage position           | Close/re-open with entry gate check     |
+
+## Position Sizing Guardrails (5 multiplicative)
+
+Applied in `_submit_to_broker()` — drawdown taper, per-position cap, risk-per-trade cap, portfolio leverage budget, backstop multiplier.
 
 ---
 
@@ -523,15 +562,21 @@ tests/                        # Test suite
 * MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 * **GBPNZD** fails on `DX-Y.NYB` (DXY) data availability for certain MT5 brokers —
   trades without that macro feature; consider zero-fill or exclude from go-live
-* **AUDNZD ensemble** degraded signal quality in the pilot (IC -0.020);
-  candidate for per-asset ensemble disable if paper trading confirms weakness
+* **AUDNZD/EURAUD/AUDCHF inherent low IC** — these cross pairs have inherent negative IC
+   (-0.12 to -0.005) even with production-aligned pt_sl. Ensemble threshold tuning helps
+   EURAUD (0.25→IC -0.005) but AUDNZD/AUDCHF don't respond. Handle via governance chain.
 * **THIN liquidity regime** is a soft warning (SL/size adjustment, no halt);
-  only **STRESSED** liquidity regime halts trading
+   only **STRESSED** liquidity regime halts trading
 * **Confidence drift** halt requires 10+ signals for stable mean estimate (up from 3)
 * **Small MT5 account** ($107 demo) means MT5 positions always round to 0.01 lots
-  minimum — desired-vs-actual notional drifts upward. MT5 leverage budget deferred
+   minimum — desired-vs-actual notional drifts upward. MT5 leverage budget deferred
 * **Paper/MT5 sizing divergence** is expected — paper simulates $100K equity,
-  MT5 executes on $107. Two independent sizing chains, no overlap
+   MT5 executes on $107. Two independent sizing chains, no overlap
+* **Spread gate** is in observe-only mode for first 720 cycles (~6h) — logs what it would block
+   without actually blocking. Enforcement activates automatically after the observation window.
+* **Exit reason canonicalization** — all tags are UPPERCASE (FLIP, SL, TP, BREAKEVEN, EXPIRY,
+   GATE_CLOSED, PORTFOLIO_CIRCUIT_BREAKER). Legacy lowercase entries are migrated to uppercase
+   on first read from SQLite.
 
 ---
 

@@ -39,7 +39,11 @@ Per-Asset Training (XGBoost, per-asset depth)
         ↓
 Live Inference
         ↓
-Governance Filters (7 layers)
+Governance Filters (9 layers)
+        ↓
+Decision Pipeline Stages (bar-jump → spread gate → stability → hysteresis → risk-off → first-cycle suppression)
+        ↓
+Position Sizing Guardrails
         ↓
 Execution & Positioning (MT5 or PaperBroker)
         ↓
@@ -217,33 +221,44 @@ The live engine executes every 300 seconds.
 ## Runtime Pipeline
 
 ```text
-1. Fetch 5y OHLCV (MT5 or yfinance)
-2. Normalize timestamps (UTC TZ-naive)
-3. Refresh latest price (MT5 or 5d fallback)
-4. Build alpha features (9 per-asset + 4 cross-asset)
-5. Generate regime features from OHLCV (7 cols)
-6. Compute archetype features (ema_spread, adx, rsi, bb_zscore)
-7. PSI drift check (rolling 21d vs baseline, skipped first cycle)
-8. Validate inference truncation
-9. Run XGBoost inference → 3-col proba expansion
+ 1. Fetch 5y OHLCV (MT5 or yfinance)
+ 2. Normalize timestamps (UTC TZ-naive)
+ 3. Refresh latest price (MT5 or 5d fallback)
+ 4. Build alpha features (9 per-asset + 4 cross-asset)
+ 5. Generate regime features from OHLCV (7 cols)
+ 6. Compute archetype features (ema_spread, adx, rsi, bb_zscore)
+ 7. PSI drift check (rolling 21d vs baseline, skipped first cycle)
+ 8. Validate inference truncation
+ 9. Run XGBoost inference → 3-col proba expansion
 10. Regime ensemble blend (60/40, if regime model exists)
 11. Meta-label inference (optional, XGBoost)
 12. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
 13. Archetype classification → TradeDecision
-14. Route through governance (9 layers + sizing guardrails)
-15. Entry price deviation gate (skip if price drifted > max_entry_slippage_pct)
-16. Position sizing chain (drawdown taper → position cap → risk cap → leverage budget → backstop)
-17. Independent MT5 sizing (same chain with real broker equity)
-18. Execute position lifecycle (open/close/flip/trailing)
+14. Refresh MT5 spread for spread gate
+15. Decision pipeline stages:
+    a. Bar-jump suppression — suppress 60min if bar count changed >100
+    b. Spread gate — block entry if spread > per-class threshold
+    c. Signal stability filter — require >0.65 max(prob_long, prob_short)
+    d. Signal hysteresis — 2-of-3 agreement before flip
+    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    f. First-cycle suppression — suppress trading on cold-start cycle 1
+    g. Conviction gate — flip gate based on regime conviction
+    h. Profit lock gate — block flip if unrealized PnL > threshold
+    i. Manage position — close/re-open with entry gate check
+16. Route through governance (9 layers + sizing guardrails)
+17. Entry price deviation gate (skip if price drifted > max_entry_slippage_pct)
+18. Position sizing chain (drawdown taper → position cap → risk cap → leverage budget → backstop)
+19. Independent MT5 sizing (same chain with real broker equity)
+20. Execute position lifecycle (open/close/flip/trailing)
 ```
 
 ---
 
 # Governance Architecture
 
-QuantForge uses independently configurable governance layers with worst-wins aggregation, plus position sizing guardrails.
+QuantForge uses independently configurable governance layers with worst-wins aggregation, plus decision pipeline suppression stages and position sizing guardrails.
 
-## Governance Layers
+## Governance Layers (9)
 
 | Layer                  | Scope      | Effect                    |
 | ---------------------- | ---------- | ------------------------- |
@@ -256,6 +271,20 @@ QuantForge uses independently configurable governance layers with worst-wins agg
 | Portfolio drawdown     | Global     | Circuit breaker at −15%   |
 | Entry price deviation  | Per entry  | Skip if price drifted >2% |
 | Profit lock            | Per flip   | Block flip if PnL >15%    |
+
+## Decision Pipeline Stages
+
+| Stage | Effect |
+|-------|--------|
+| Bar-jump suppression | Suppress 60min if bar count changed >100 |
+| Spread gate | Block entry if spread > per-class threshold |
+| Signal stability filter | Require >0.65 max(prob_long, prob_short) |
+| Signal hysteresis | 2-of-3 agreement before flip |
+| Risk-off suppression | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0 |
+| First-cycle suppression | Suppress trading on cold-start cycle 1 |
+| Conviction gate | Flip gate based on regime conviction |
+| Profit lock gate | Block flip if unrealized PnL > threshold |
+| Manage position | Close/re-open with entry gate check |
 
 ## Position Sizing Guardrails
 

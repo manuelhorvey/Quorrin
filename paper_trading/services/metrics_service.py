@@ -142,9 +142,11 @@ class MetricsService:
             reasons = [t.get("reason", "unknown") for t in trade_log]
             n = len(reasons)
             exit_reasons = {
-                "tp_rate": round(reasons.count("tp") / n, 4),
-                "sl_rate": round(reasons.count("sl") / n, 4),
-                "signal_flip_rate": round(reasons.count("signal_flip") / n, 4),
+                "tp_rate": round(reasons.count("TP") / n, 4),
+                "sl_rate": round(reasons.count("SL") / n, 4),
+                "breakeven_rate": round(reasons.count("BREAKEVEN") / n, 4),
+                "flip_rate": round(reasons.count("FLIP") / n, 4),
+                "expiry_rate": round(reasons.count("EXPIRY") / n, 4),
                 "avg_r": round(np.mean([t.get("realized_r", 0) for t in trade_log]), 4),
             }
 
@@ -158,9 +160,9 @@ class MetricsService:
                 if t.get("pnl", 0) > 0:
                     archetype_stats[arch]["wins"] += 1
                 archetype_stats[arch]["total_r"] += t.get("realized_r", 0)
-                if t.get("reason") == "sl":
+                if t.get("reason") == "SL":
                     archetype_stats[arch]["sl"] += 1
-                elif t.get("reason") == "tp":
+                elif t.get("reason") == "TP":
                     archetype_stats[arch]["tp"] += 1
         archetype_stats = {
             k: {

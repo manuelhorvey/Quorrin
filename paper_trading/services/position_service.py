@@ -221,7 +221,7 @@ class PositionService:
         }
         if mt5_orphan:
             mutations["mt5_orphan"] = mt5_orphan
-        if reason == "signal_flip":
+        if reason == "FLIP":
             mutations["last_signal_flip_cycle"] = cycle_counter
 
         if self.state_store is not None:

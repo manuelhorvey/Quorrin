@@ -225,12 +225,16 @@ class AssetTrainingPipeline:
     ) -> None:
         asset = self.asset
         regime_feats = getattr(asset, "regime_feature_names", None)
-        if not regime_feats:
-            return
 
+        # Try loading regime model from disk first (regime_feature_names may be
+        # empty on first load after training, since __init__ sets it to []).
         regime_model = RegimeConditionalModel()
         if regime_model.load(asset_name=asset.name):
             asset._regime_model = regime_model
+            asset.regime_feature_names = list(regime_model._feature_names)
+            regime_feats = asset.regime_feature_names
+        elif not regime_feats:
+            return
         elif train_features is not None and features_df is not None:
             all_feats = asset._alpha_feature_cols + regime_feats
             available = [c for c in all_feats if c in features_df.columns]

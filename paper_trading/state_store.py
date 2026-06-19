@@ -96,6 +96,17 @@ class _DatabaseStore:
             logger.warning("DB init verification failed — retrying once: %s", db_path)
             self._init_db()
 
+    def _migrate_exit_reasons(self, conn) -> None:
+        """One-time migration: canonicalize legacy lowercase exit reasons."""
+        with contextlib.suppress(Exception):
+            conn.executescript("""
+                UPDATE trades SET reason = 'SL' WHERE reason = 'sl';
+                UPDATE trades SET reason = 'TP' WHERE reason = 'tp';
+                UPDATE trades SET reason = 'BREAKEVEN' WHERE reason = 'breakeven';
+                UPDATE trades SET reason = 'EXPIRY' WHERE reason = 'time_stop';
+                UPDATE trades SET reason = 'FLIP' WHERE reason = 'signal_flip';
+            """)
+
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript("""
@@ -239,6 +250,7 @@ class _DatabaseStore:
             """)
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE equity_history ADD COLUMN assets TEXT")
+            self._migrate_exit_reasons(conn)
         self.verify()
 
     def verify(self) -> None:
@@ -635,8 +647,8 @@ class _AnalyticsStore:
                 df[reason_col] = (
                     df[reason_col]
                     .astype(str)
-                    .str.lower()
-                    .replace({"sl_hit": "sl", "tp_hit": "tp", "gate_closed": "signal_flip"})
+                    .str.upper()
+                    .replace({"SL_HIT": "SL", "TP_HIT": "TP", "GATE_CLOSED": "FLIP"})
                 )
             if ret_col in df.columns:
                 df[ret_col] = pd.to_numeric(df[ret_col], errors="coerce").fillna(0.0)
@@ -644,9 +656,9 @@ class _AnalyticsStore:
             by_asset = []
             for asset_name, group in df.groupby("asset"):
                 n = len(group)
-                tp = int((group[reason_col] == "tp").sum())
-                sl = int((group[reason_col] == "sl").sum())
-                flip = int((group[reason_col] == "signal_flip").sum())
+                tp = int((group[reason_col] == "TP").sum())
+                sl = int((group[reason_col] == "SL").sum())
+                flip = int((group[reason_col] == "FLIP").sum())
                 wins = int((group[ret_col] > 0).sum())
                 total_profit = float(group[ret_col].clip(lower=0).sum())
                 total_loss = float((-group[ret_col].clip(upper=0)).sum())

@@ -90,7 +90,7 @@ class ExitAttribution:
     `exit_archetype` captures structural drift from entry.
     """
 
-    exit_reason: str  # sl, tp, signal_flip, time_stop, trailing
+    exit_reason: str  # SL, TP, BREAKEVEN, EXPIRY, FLIP, MANUAL
     realized_r: float
     theoretical_r: float
     mae: float  # max adverse excursion (in price)
@@ -439,7 +439,7 @@ class AttributionCollector:
             return None
 
         # Resolve forecast direction at exit
-        if exit_reason != "signal_flip":
+        if exit_reason != "FLIP":
             price_moved_up = exit_price > exec_attr.entry_price if exec_attr else False
             if side == "long":
                 pred.forecast_direction_correct = price_moved_up

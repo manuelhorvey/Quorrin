@@ -204,7 +204,8 @@ class AssetPnlController:
         if hasattr(asset, "_shadow_sltp") and asset._shadow_sltp is not None:
             asset._shadow_sltp.close_shadow(float(hit[1]), last_bar, hit[0])
             asset._shadow_sltp.set_live_outcome(hit[0], _compute_r(asset, float(hit[1])))
-        asset._close_position(hit[1], last_bar, hit[0])
+        _exit_reason = "BREAKEVEN" if hit[0] == "breakeven" else "TP" if hit[0] == "tp" else "SL"
+        asset._close_position(hit[1], last_bar, _exit_reason)
         if asset.current_value > asset.peak_value:
             asset.peak_value = asset.current_value
         return True
@@ -310,7 +311,7 @@ class AssetPnlController:
                 logger.info("%s: TIME STOP after %d days (max=%d)", asset.name, elapsed, max_hold)
                 if hasattr(asset, "_shadow_sltp") and asset._shadow_sltp is not None:
                     asset._shadow_sltp.close_shadow(asset.current_price, last_bar, "time_stop")
-                asset._close_position(asset.current_price, last_bar, "time_stop")
+                asset._close_position(asset.current_price, last_bar, "EXPIRY")
                 return True
         except (AttributeError, TypeError, ValueError):
             logger.debug("%s: could not parse entry date for time stop", asset.name)

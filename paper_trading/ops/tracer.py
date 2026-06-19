@@ -35,6 +35,10 @@ def trace_decision(
     current_side: str | None,
     halt_flags: dict,
     current_price: float | None = None,
+    regime_long_prob: float | None = None,
+    regime_short_prob: float | None = None,
+    regime_label: str | None = None,
+    regime_features: dict | None = None,
 ) -> None:
     _append(
         {
@@ -54,6 +58,39 @@ def trace_decision(
             "current_position_side": current_side,
             "halted": halt_flags.get("halted", False),
             "halt_reasons": halt_flags.get("reasons", []),
+            "regime_long_prob": regime_long_prob,
+            "regime_short_prob": regime_short_prob,
+            "regime_label": regime_label,
+            "regime_features": regime_features,
+        }
+    )
+
+
+def trace_exit(
+    asset: str,
+    exit_price: float,
+    reason: str,
+    realized_r: float,
+    bars_held: int,
+    regime_long_prob: float | None = None,
+    regime_short_prob: float | None = None,
+    regime_label: str | None = None,
+    regime_features: dict | None = None,
+) -> None:
+    """Trace a position exit event."""
+    _append(
+        {
+            "event": "exit",
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "asset": asset,
+            "exit_price": exit_price,
+            "exit_reason": reason,
+            "realized_r": realized_r,
+            "bars_held": bars_held,
+            "regime_long_prob": regime_long_prob,
+            "regime_short_prob": regime_short_prob,
+            "regime_label": regime_label,
+            "regime_features": regime_features,
         }
     )
 

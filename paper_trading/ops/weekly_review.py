@@ -82,13 +82,16 @@ def _compute_trade_metrics(df: pd.DataFrame) -> dict:
 
 def _exit_reason_breakdown(df: pd.DataFrame) -> dict:
     if df.empty:
-        return {"tp": 0, "sl": 0, "signal_flip": 0, "other": 0}
-    reasons = df["reason"].str.lower()
-    tp = int((reasons == "tp").sum())
-    sl = int((reasons == "sl").sum())
-    flip = int((reasons == "signal_flip").sum())
-    other = int((~reasons.isin(["tp", "sl", "signal_flip"])).sum())
-    return {"tp": tp, "sl": sl, "signal_flip": flip, "other": other}
+        return {"SL": 0, "TP": 0, "BREAKEVEN": 0, "FLIP": 0, "EXPIRY": 0, "MANUAL": 0, "other": 0}
+    reasons = df["reason"].str.upper()
+    sl = int((reasons == "SL").sum())
+    tp = int((reasons == "TP").sum())
+    be = int((reasons == "BREAKEVEN").sum())
+    flip = int((reasons == "FLIP").sum())
+    expiry = int((reasons == "EXPIRY").sum())
+    manual = int((reasons == "MANUAL").sum())
+    other = int((~reasons.isin(["SL", "TP", "BREAKEVEN", "FLIP", "EXPIRY", "MANUAL"])).sum())
+    return {"SL": sl, "TP": tp, "BREAKEVEN": be, "FLIP": flip, "EXPIRY": expiry, "MANUAL": manual, "other": other}
 
 
 def _top_trades(df: pd.DataFrame, field: str = "return", n: int = 3, ascending: bool = False) -> list[dict]:

@@ -30,6 +30,7 @@ from paper_trading.governance.regime import RegimeClassifier
 from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.inference.training import AssetTrainingPipeline
 from paper_trading.ops.data_fetcher import flatten
+from paper_trading.ops.tracer import trace_exit
 from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
 from paper_trading.position.manager import PositionManager
 from paper_trading.position.scale_out import build_scale_out_from_config
@@ -204,6 +205,11 @@ class AssetEngine:
         self._signal_chain: list = []
         self._last_bar_count: int | None = None
         self._suppress_until: float = 0.0
+
+        # ── Regime raw output logging ───────────────────────────────────
+        self._last_regime_raw_probas: tuple[float, float] | None = None  # (P_SHORT, P_LONG)
+        self._last_regime_long_prob: float | None = None
+        self._last_regime_features: dict[str, float] | None = None  # regime input feature values
 
         # ── Shadow engine ────────────────────────────────────────────
         self._shadow_sltp = None
@@ -396,6 +402,24 @@ class AssetEngine:
         self.trade_log = mutations.get("trade_log", self.trade_log)
         if "last_signal_flip_cycle" in mutations:
             self._last_signal_flip_cycle = mutations["last_signal_flip_cycle"]
+        trade = mutations.get("trade", {})
+        trace_exit(
+            asset=self.name,
+            exit_price=exit_price,
+            reason=reason,
+            realized_r=float(trade.get("realized_r", 0)),
+            bars_held=int(trade.get("bars", 0)),
+            regime_long_prob=self._last_regime_long_prob,
+            regime_short_prob=(
+                round(float(self._last_regime_raw_probas[0]), 6)
+                if self._last_regime_raw_probas is not None else None
+            ),
+            regime_label=(
+                self._last_regime_row.regime_label
+                if getattr(self, "_last_regime_row", None) is not None else None
+            ),
+            regime_features=self._last_regime_features,
+        )
         orphan = mutations.pop("mt5_orphan", None)
         if orphan:
             self._mt5_cleanup_queue.append(orphan)

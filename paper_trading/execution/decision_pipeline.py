@@ -227,7 +227,7 @@ def manage_position(ctx: DecisionContext) -> None:
                 )
                 ctx.new_side = None
                 return
-        engine._close_position(d.close_price, d.timestamp, "signal_flip")
+        engine._close_position(d.close_price, d.timestamp, "FLIP")
 
     if ctx.new_side is None or not ctx.flip_allowed:
         return

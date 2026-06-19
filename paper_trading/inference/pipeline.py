@@ -183,6 +183,16 @@ class AssetInferencePipeline:
             archetype_df["bb_zscore"] = ((ohlcv["close"] - bb_mavg) / (bb_std / 2)).reindex(alpha_idx)
         archetype_df = archetype_df.bfill()
 
+        # Generate regime features from same OHLCV, prefixed per-asset (matches training)
+        regime_inference_df = pd.DataFrame(index=alpha_idx)
+        if not ohlcv.empty:
+            raw_regime = generate_regime_features(ohlcv)
+            prefix = asset.name.upper()
+            renaming = {col: f"{prefix}_{col}" for col in raw_regime.columns}
+            prefixed = raw_regime.rename(columns=renaming)
+            common_idx = alpha_idx.intersection(prefixed.index)
+            regime_inference_df = prefixed.reindex(common_idx)
+
         feature_cols = getattr(asset, "_alpha_feature_cols", None)
         if not feature_cols:
             feature_cols = [c for c in alpha_df.columns]
@@ -191,7 +201,7 @@ class AssetInferencePipeline:
         if not available:
             raise ValueError(f"No alpha feature columns found for {asset.name}")
         x = alpha_df[available]
-        features_df = pd.concat([alpha_df, archetype_df], axis=1)
+        features_df = pd.concat([alpha_df, archetype_df, regime_inference_df], axis=1)
 
         self._detect_risk_off(asset, features_df)
         return alpha_df, features_df, x
@@ -260,6 +270,11 @@ class AssetInferencePipeline:
             regime_feats = rm_feats if rm_feats else getattr(asset, "regime_feature_names", None)
             if regime_feats:
                 regime_available = [c for c in regime_feats if c in features_df.columns]
+                if not regime_available:
+                    logger.warning(
+                        "%s: regime features not found in features_df (%d requested, 0 available) — skipping blend",
+                        asset.name, len(regime_feats),
+                    )
                 if regime_available:
                     try:
                         regime_raw = asset._regime_model.predict_proba(features_df[regime_available])
@@ -267,6 +282,15 @@ class AssetInferencePipeline:
                         base_p_long = raw[:, 1]
                         three_col, _ = ensemble.combine_and_expand(base_p_long, regime_p_long)
                         proba = three_col
+                        # Store regime raw output for observability
+                        try:
+                            asset._last_regime_raw_probas = (float(regime_raw[0, 0]), float(regime_raw[0, 1]))
+                            asset._last_regime_long_prob = float(regime_p_long[0])
+                            asset._last_regime_features = {
+                                str(k): float(v) for k, v in features_df[regime_available].iloc[-1].items()
+                            }
+                        except Exception as e:
+                            logger.warning("%s: regime feature storage failed: %s", asset.name, e)
                         logger.debug(
                             "%s: ensemble blended (base=%.2f regime=%.2f)",
                             asset.name,
@@ -275,6 +299,13 @@ class AssetInferencePipeline:
                         )
                     except Exception as e:
                         logger.debug("%s: ensemble inference failed: %s", asset.name, e)
+                        asset._last_regime_raw_probas = None
+                        asset._last_regime_long_prob = None
+                        asset._last_regime_features = None
+        else:
+            asset._last_regime_raw_probas = None
+            asset._last_regime_long_prob = None
+            asset._last_regime_features = None
 
         asset._last_meta_proba = None
         if asset._meta_label_model is not None and asset._meta_label_model._trained:
@@ -328,6 +359,10 @@ class AssetInferencePipeline:
                 "dow_signal": round(float(dow_val), 4) if not np.isnan(dow_val) else 0.0,
                 "vol_ratio": round(float(vol_ratio), 4) if not np.isnan(vol_ratio) else 0.0,
                 "ensemble_score": round(float(result.confidence_pct / 100.0), 4),
+                "regime_long_prob": round(float(asset._last_regime_long_prob), 4)
+                if asset._last_regime_long_prob is not None else None,
+                "regime_short_prob": round(float(asset._last_regime_raw_probas[0]), 4)
+                if asset._last_regime_raw_probas is not None else None,
             }
             logger.info(
                 "%s ensemble breakdown — xgb=%.4f carry=%.4f mom=%.4f rev=%.4f dow=%.4f vol=%.4f score=%.4f",
@@ -389,6 +424,11 @@ class AssetInferencePipeline:
         return decision
 
     def _trace_and_diagnostics(self, asset, decision, proba, x, df, threshold) -> None:
+        _regime_label = (
+            asset._last_regime_row.regime_label
+            if getattr(asset, "_last_regime_row", None) is not None
+            else None
+        )
         trace_decision(
             asset=asset.name,
             features={k: round(float(v), 6) for k, v in x.iloc[-1].items()},
@@ -401,6 +441,13 @@ class AssetInferencePipeline:
             current_side=asset.pos_mgr.current_side(),
             halt_flags=asset.check_halt_conditions(),
             current_price=asset.current_price,
+            regime_long_prob=asset._last_regime_long_prob,
+            regime_short_prob=(
+                round(float(asset._last_regime_raw_probas[0]), 6)
+                if asset._last_regime_raw_probas is not None else None
+            ),
+            regime_label=_regime_label,
+            regime_features=asset._last_regime_features,
         )
 
         _shadow_signal_df = _w.compute_signals(proba[-1:], x.index[-1:], threshold)

@@ -472,7 +472,22 @@ def apply_spread_gate(ctx: DecisionContext) -> None:
 
 # ── Pipeline definition ─────────────────────────────────────────────────
 
+def apply_first_cycle_suppression(ctx: DecisionContext) -> None:
+    """Suppress all trading on cycle 1 after a cold start.
+
+    The first inference cycle post-restart uses full-row inference (truncation
+    validation hasn't run yet), producing a transient prediction that differs
+    from steady-state single-row inference. Skipping it prevents basing
+    decisions on a known- divergent one-time value.
+    """
+    engine = ctx.engine
+    if getattr(engine, "_cycle_counter", 0) <= 1:
+        ctx.abort = True
+        logger.info("%s: first-cycle suppression — skipping decision", engine.name)
+
+
 DEFAULT_STAGES: list[StageFn] = [
+    apply_first_cycle_suppression,
     apply_bar_jump_suppression,
     store_prediction_metadata,
     update_mae_mfe,

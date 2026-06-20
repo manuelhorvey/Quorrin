@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 
@@ -165,8 +166,18 @@ class AssetTrainingPipeline:
         asset._trained = True
         asset._enable_adaptive_macro()
         model.save_model(model_path)
+        hash_path = model_path.replace(".json", "_hash.txt")
+        with open(model_path, "rb") as _fm:
+            model_hash = hashlib.sha256(_fm.read()).hexdigest()[:16]
+        with open(hash_path, "w") as _fh:
+            _fh.write(model_hash)
+        asset._model_hash = model_hash
         logger.info(
-            "%s: binary model saved to %s (%d features)", asset.name, model_path, len(asset._alpha_feature_cols)
+            "%s: binary model saved to %s (%d features, hash=%s)",
+            asset.name,
+            model_path,
+            len(asset._alpha_feature_cols),
+            model_hash,
         )
 
         # Persist PSI baseline

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import os
 import time
@@ -59,16 +61,23 @@ class AssetInferencePipeline:
         self._check_psi_drift(asset, x)
         x, features_df = self._validate_and_truncate(asset, x, features_df)
 
+        # ── Feature snapshot (causal boundary P0.1) ─────────────────────
+        feature_vector = {k: float(v) for k, v in x.iloc[-1].items()}
+        feature_hash = hashlib.md5(json.dumps(feature_vector, sort_keys=True).encode()).hexdigest()[:12]
+        asset._last_feature_vector = feature_vector
+        asset._last_feature_hash = feature_hash
+        asset._last_feature_schema = sorted(feature_vector.keys())
+
         _t_infer = time.perf_counter()
-        proba, _infer_idx = self._run_inference(asset, x, features_df)
+        proba, _infer_idx = self._run_inference(asset, x, features_df, feature_hash)
         result, pos_size = self._compute_sizing_and_signal(asset, df, proba, _infer_idx, threshold)
 
         self._log_ensemble_breakdown(asset, alpha_df, proba, result)
         archetype = self._classify_archetype(asset, features_df)
-        decision = self._build_decision(asset, result, pos_size, archetype, df)
+        decision = self._build_decision(asset, result, pos_size, archetype, df, feature_hash=feature_hash)
 
         asset._apply_decision(decision, df)
-        self._trace_and_diagnostics(asset, decision, proba, x, df, threshold)
+        self._trace_and_diagnostics(asset, decision, proba, x, df, threshold, feature_vector, feature_hash)
 
         _t_total = time.perf_counter()
         self._log_pipeline_benchmark(asset, x, _t0, _t_fetch, _t_features, _t_infer, _t_total)
@@ -258,7 +267,7 @@ class AssetInferencePipeline:
             return x.iloc[-1:], features_df.iloc[-1:]
         return x, features_df
 
-    def _run_inference(self, asset, x, features_df):
+    def _run_inference(self, asset, x, features_df, feature_hash=""):
         _infer_idx = x.index[-1:] if getattr(asset, "_truncate_inference", False) else x.index
 
         raw = asset._model_iface.predict(asset.model, x)
@@ -319,6 +328,21 @@ class AssetInferencePipeline:
                 asset._last_meta_proba = asset._meta_label_model.predict_proba(x, proba)
             except Exception as e:
                 logger.debug("%s: meta-label inference failed: %s", asset.name, e)
+
+        # ── Inference output WAL event (causal boundary P0.3, pre-gate) ──
+        wal = getattr(asset, "_wal_writer", None)
+        if wal is not None:
+            wal.write(
+                "inference_output",
+                {
+                    "asset": asset.name,
+                    "prob_long": round(float(proba[-1, 2]), 6),
+                    "prob_short": round(float(proba[-1, 0]), 6),
+                    "prob_neutral": round(float(proba[-1, 1]), 6),
+                    "model_hash": getattr(asset, "_model_hash", "unknown"),
+                    "feature_hash": feature_hash,
+                },
+            )
 
         return proba, _infer_idx
 
@@ -396,7 +420,7 @@ class AssetInferencePipeline:
                 logger.debug("%s: archetype classification failed: %s", asset.name, e)
         return archetype
 
-    def _build_decision(self, asset, result, pos_size, archetype, df):
+    def _build_decision(self, asset, result, pos_size, archetype, df, feature_hash=""):
         self._record_inference_proxies(result.signal_data, result.signal_type)
         asset.signal_data = result.signal_data
         latest = asset.signal_data.iloc[-1]
@@ -419,6 +443,7 @@ class AssetInferencePipeline:
             timestamp=str(datetime.now(tz=ET).date()),
             position_size=float(pos_size),
             archetype=archetype,
+            feature_hash=feature_hash,
         )
         logger.debug(
             "%s ENTRY: signal=%s close_price=%.4f current_price=%s confidence=%.1f pos_size=%.4f",
@@ -431,13 +456,40 @@ class AssetInferencePipeline:
         )
         return decision
 
-    def _trace_and_diagnostics(self, asset, decision, proba, x, df, threshold) -> None:
+    def _trace_and_diagnostics(
+        self,
+        asset,
+        decision,
+        proba,
+        x,
+        df,
+        threshold,
+        feature_vector=None,
+        feature_hash="",
+    ) -> None:
+        # ── WAL: features_snapshot (causal boundary P0.1) ─────────────────
+        wal = getattr(asset, "_wal_writer", None)
+        if wal is not None and feature_vector is not None:
+            wal.write(
+                "features_snapshot",
+                {
+                    "asset": asset.name,
+                    "features": feature_vector,
+                    "feature_hash": feature_hash,
+                    "feature_schema": getattr(asset, "_last_feature_schema", sorted(feature_vector.keys())),
+                    "model_hash": getattr(asset, "_model_hash", "unknown"),
+                },
+            )
+
+        # ── Trace.jsonl decision entry (derives from same feature_vector) ──
         _regime_label = (
             asset._last_regime_row.regime_label if getattr(asset, "_last_regime_row", None) is not None else None
         )
         trace_decision(
             asset=asset.name,
-            features={k: round(float(v), 6) for k, v in x.iloc[-1].items()},
+            features=(
+                feature_vector if feature_vector is not None else {k: round(float(v), 6) for k, v in x.iloc[-1].items()}
+            ),
             proba=[float(proba[-1, 0]), float(proba[-1, 1]), float(proba[-1, 2])],
             threshold=threshold,
             signal=decision.signal,
@@ -453,6 +505,8 @@ class AssetInferencePipeline:
             ),
             regime_label=_regime_label,
             regime_features=asset._last_regime_features,
+            feature_hash=feature_hash,
+            model_hash=getattr(asset, "_model_hash", "unknown"),
         )
 
         _shadow_signal_df = _w.compute_signals(proba[-1:], x.index[-1:], threshold)

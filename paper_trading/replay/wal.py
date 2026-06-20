@@ -4,11 +4,14 @@ The WAL records every step in the trading decision chain as an ordered event
 stream. Each event captures both the input context and the output decision,
 enabling full causal reconstruction of engine state.
 
-Event types (decision chain):
+Causal boundary events (P0 — required for deterministic replay):
+    features_snapshot  — exact model input vector + feature hash + model hash
+    inference_output   — model probabilities BEFORE governance gating
+    decision_output    — final action AFTER governance gating + model hash
+
+Observability events (supporting — not required for causal replay):
     price_update      — OHLC bar data received
-    feature_computed  — feature vector for an asset
     signal_generated  — model signal (entry/flat/exit + confidence)
-    risk_approved     — risk gate decision
     entry_executed    — fill result for position entry
     sl_executed       — fill result for stop-loss
     tp_executed       — fill result for take-profit

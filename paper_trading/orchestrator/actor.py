@@ -106,6 +106,8 @@ class AssetActor:
         self._max_failures = max_consecutive_failures
         self._recovery_cooldown = recovery_cooldown_seconds
         self._wal = wal_writer
+        if wal_writer is not None:
+            engine._wal_writer = wal_writer
 
         self.health: ActorHealth = ActorHealth.GREEN
         self.metrics = ActorMetrics()

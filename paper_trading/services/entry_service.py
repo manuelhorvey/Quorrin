@@ -667,6 +667,19 @@ class EntryService:
                 to_remove.append(direction)
                 continue
 
+            # SELL_ONLY filter: suppress deferred BUY entries on flagged assets
+            if direction == "long":
+                from paper_trading.execution.decision_pipeline import SELL_ONLY_ASSETS
+
+                if asset.name in SELL_ONLY_ASSETS:
+                    logger.info(
+                        "%s: sell-only filter — canceling deferred BUY entry",
+                        asset.name,
+                    )
+                    entry.cancel(reason="sell_only_filter")
+                    to_remove.append(direction)
+                    continue
+
             entry.update()
             if entry.status == DeferredEntryStatus.EXPIRED:
                 to_remove.append(direction)

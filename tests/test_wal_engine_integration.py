@@ -4,16 +4,24 @@ Validates:
     - WAL events are emitted at each decision step
     - ReplayRunner can reconstruct state from WAL
     - Replayed state is consistent with engine execution
+    - Causal chain hash integrity (features → inference → decision)
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import tempfile
 from unittest.mock import MagicMock, PropertyMock
 
+import numpy as np
+import pandas as pd
 import pytest
+import xgboost as xgb
 
+from shared.model import XGBoostModel
+from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.orchestrator.actor import AssetActor
 from paper_trading.orchestrator.engine import EngineOrchestrator
 from paper_trading.replay.runner import ReplayRunner
@@ -271,3 +279,136 @@ class TestEndToEndReplay:
 
         assert state["events_replayed"] > 0
         assert "assets" in state
+
+
+class TestCausalChainHashIntegrity:
+    """Verifies feature_hash and model_hash flow consistently through
+    features_snapshot → inference_output → decision_output."""
+
+    def test_inference_output_hash_chain(self, tmp_path):
+        """_run_inference emits inference_output with matching hashes."""
+        np.random.seed(42)
+        X = np.random.randn(60, 3)
+        y = (X[:, 0] + X[:, 1] > 0).astype(int)
+        clf = xgb.XGBClassifier(n_estimators=10, max_depth=2, random_state=42, verbosity=0)
+        clf.fit(X, y)
+
+        model_path = tmp_path / "test_model.json"
+        clf.save_model(str(model_path))
+        model_hash = hashlib.sha256(open(model_path, "rb").read()).hexdigest()[:16]
+
+        loaded = xgb.XGBClassifier()
+        loaded.load_model(str(model_path))
+
+        engine = MagicMock()
+        engine.name = "TESTASSET"
+        engine._model_iface = XGBoostModel()
+        engine.model = loaded
+        engine._model_hash = model_hash
+        engine._ensemble = None
+        engine._regime_model = None
+        engine._meta_label_model = None
+        engine._truncate_inference = False
+        engine._last_regime_raw_probas = None
+        engine._last_regime_long_prob = None
+        engine._last_regime_features = None
+        engine._last_meta_proba = None
+
+        wal_dir = tmp_path / "wal"
+        wal_dir.mkdir()
+        writer = WalWriter(str(wal_dir), source="test_chain")
+        engine._wal_writer = writer
+
+        features = {"feature_0": 0.75, "feature_1": -0.30, "feature_2": 0.10}
+        feature_df = pd.DataFrame([features])
+        feature_hash = hashlib.md5(json.dumps(features, sort_keys=True).encode()).hexdigest()[:12]
+
+        pipeline = AssetInferencePipeline(engine)
+        proba, _ = pipeline._run_inference(engine, feature_df, feature_df, feature_hash=feature_hash)
+
+        reader = WalReader(str(wal_dir), source="test_chain")
+        events = reader.read_all()
+        inference_events = [e for e in events if e.event_type == "inference_output"]
+        assert len(inference_events) == 1
+        ie = inference_events[0]
+
+        assert ie.payload["feature_hash"] == feature_hash
+        assert ie.payload["model_hash"] == model_hash
+        assert ie.payload["prob_long"] == round(float(proba[-1, 2]), 6)
+        assert ie.payload["prob_short"] == round(float(proba[-1, 0]), 6)
+        assert ie.payload["prob_neutral"] == round(float(proba[-1, 1]), 6)
+        assert ie.payload["asset"] == "TESTASSET"
+
+    def test_full_causal_chain_replay(self, tmp_path):
+        """Full WAL replay: hash consistency + model reload → proba match."""
+        np.random.seed(1)
+        X = np.random.randn(60, 4)
+        y = (X[:, 0] - X[:, 2] > 0).astype(int)
+        clf = xgb.XGBClassifier(n_estimators=10, max_depth=2, random_state=42, verbosity=0)
+        clf.fit(X, y)
+
+        model_path = tmp_path / "chain_model.json"
+        clf.save_model(str(model_path))
+        model_hash = hashlib.sha256(open(model_path, "rb").read()).hexdigest()[:16]
+
+        wal_dir = tmp_path / "wal"
+        wal_dir.mkdir()
+        writer = WalWriter(str(wal_dir), source="test_chain")
+
+        features = {"f0": 0.5, "f1": -0.1, "f2": 0.3, "f3": 0.0}
+        feature_hash = hashlib.md5(json.dumps(features, sort_keys=True).encode()).hexdigest()[:12]
+
+        writer.write("features_snapshot", {
+            "asset": "TESTASSET", "features": features,
+            "feature_hash": feature_hash, "feature_schema": sorted(features.keys()),
+            "model_hash": model_hash,
+        })
+
+        loaded = xgb.XGBClassifier()
+        loaded.load_model(str(model_path))
+        iface = XGBoostModel()
+        raw = iface.predict(loaded, pd.DataFrame([features]))
+        proba = (
+            np.column_stack([1.0 - raw[:, 1], np.zeros(raw.shape[0]), raw[:, 1]])
+            if raw.shape[1] == 2 else raw[:, :3]
+        )
+
+        writer.write("inference_output", {
+            "asset": "TESTASSET",
+            "prob_long": round(float(proba[-1, 2]), 6),
+            "prob_short": round(float(proba[-1, 0]), 6),
+            "prob_neutral": round(float(proba[-1, 1]), 6),
+            "model_hash": model_hash, "feature_hash": feature_hash,
+        })
+        writer.write("decision_output", {
+            "asset": "TESTASSET", "final_signal": "LONG",
+            "gates_aborted": False,
+            "feature_hash": feature_hash, "model_hash": model_hash,
+        })
+
+        reader = WalReader(str(wal_dir), source="test_chain")
+        runner = ReplayRunner(reader)
+        state = runner.replay(from_sequence=0)
+        ast = state["assets"].get("TESTASSET", {})
+
+        assert ast.get("feature_hash") == feature_hash
+        assert ast.get("model_hash") == model_hash
+        assert ast["last_inference"]["feature_hash"] == feature_hash
+        assert ast["last_decision"]["feature_hash"] == feature_hash
+        assert ast["last_inference"]["model_hash"] == model_hash
+        assert ast["last_decision"]["model_hash"] == model_hash
+
+        # Reload model by hash → re-run inference → compare proba
+        reloaded = xgb.XGBClassifier()
+        reloaded.load_model(str(model_path))
+        assert hashlib.sha256(open(model_path, "rb").read()).hexdigest()[:16] == model_hash
+
+        re_raw = iface.predict(reloaded, pd.DataFrame([features]))
+        re_proba = (
+            np.column_stack([1.0 - re_raw[:, 1], np.zeros(re_raw.shape[0]), re_raw[:, 1]])
+            if re_raw.shape[1] == 2 else re_raw[:, :3]
+        )
+        recorded = ast["last_inference"]
+        assert re_proba[0, 2] == pytest.approx(recorded["prob_long"], abs=1e-6)
+        assert re_proba[0, 0] == pytest.approx(recorded["prob_short"], abs=1e-6)
+        assert re_proba[0, 1] == pytest.approx(recorded["prob_neutral"], abs=1e-6)

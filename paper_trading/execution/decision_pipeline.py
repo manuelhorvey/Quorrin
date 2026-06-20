@@ -41,6 +41,9 @@ class DecisionContext:
     abort: bool = False
     current_side: PositionSide | None = None
 
+    # Causal replay identifiers (set before pipeline runs)
+    feature_hash: str = ""
+
 
 # ── Stage type ──────────────────────────────────────────────────────────
 
@@ -571,14 +574,31 @@ def run_decision_pipeline(
     if stages is None:
         stages = DEFAULT_STAGES
 
+    feature_hash = getattr(decision, "feature_hash", "")
     ctx = DecisionContext(
         engine=engine,
         decision=decision,
         df=df,
         current_side=engine.pos_mgr.current_side(),
+        feature_hash=feature_hash,
     )
 
     for stage in stages:
         stage(ctx)
         if ctx.abort:
             break
+
+    # ── Decision output WAL event (causal boundary P0.3, post-gate) ──
+    wal = getattr(engine, "_wal_writer", None)
+    if wal is not None:
+        final_signal = ctx.new_side.value if ctx.new_side is not None else "NONE"
+        wal.write(
+            "decision_output",
+            {
+                "asset": engine.name,
+                "final_signal": final_signal,
+                "gates_aborted": ctx.abort,
+                "feature_hash": ctx.feature_hash,
+                "model_hash": getattr(engine, "_model_hash", "unknown"),
+            },
+        )

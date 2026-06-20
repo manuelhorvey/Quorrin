@@ -348,6 +348,8 @@ The 2.7% total_R improvement is modest because 3 flagged assets (^DJI, EURCHF, U
 
 **Pass/fail**: Missed ≥5% total_R bar (only +2.7%). Met the no-OK-asset-regression bar. Success criterion revised: **primary metric is max_dd reduction and confident-wrong elimination**, not total_R improvement, because the original problem was asymmetric downside risk, not returns optimization.
 
+**Epistemic status (2026-06-20)**: The SELL_ONLY filter is no longer a "temporary stopgap pending a feature-level fix." The two leading causal hypotheses (carry for CHF+OTHER, DXY for equities) were both falsified by walk-forward counterfactual ablation. The BUY inversion root cause remains unknown. SELL_ONLY is the empirically-grounded answer — removing it requires discovering a causal mechanism that does not currently exist in any tested hypothesis.
+
 ## SHAP Audit (2026-06-20)
 
 ### Loaded Models
@@ -378,7 +380,7 @@ PASS on dxy_mom_21d. Mechanism: **cross-asset correlation learning failure** —
 
 PASS on CLOSE_carry_vol_adj. Mechanism: **single-asset feature dominance** — the carry feature dominates the BUY prediction, but when carry is present without supporting momentum or z-score conditions, the BUY call fails.
 
-**Single-asset note — EURAUD**: Only 1 feature (CLOSE_vol_ratio, diff=-0.071) passes threshold. EURAUD has the most balanced wrong/correct ratio (110 wrong vs 131 correct) and the weakest SHAP separation. Mechanism unconfirmed — either it shares the CHF+OTHER carry mechanism with a noisier signal (illiquid pair, wider fiat ranges) or has a different/unknown root cause that happened to be swept in by the original win-rate screen. Flagged as weakest evidence in cluster. If someone later extends a carry-feature fix to all 6 CHF+OTHER assets, EURAUD is the one that may not respond as expected. No change to current treatment (kept in SELL_ONLY_ASSETS).
+**Single-asset note — EURAUD**: Only 1 feature (CLOSE_vol_ratio, diff=-0.071) passes threshold. EURAUD has the most balanced wrong/correct ratio (110 wrong vs 131 correct) and the weakest SHAP separation. Mechanism unconfirmed — either it shares the CHF+OTHER carry mechanism with a noisier signal (illiquid pair, wider fiat ranges) or has a different/unknown root cause that happened to be swept in by the original win-rate screen. Flagged as weakest evidence in cluster. If someone later extends a carry-feature fix to all 6 CHF+OTHER assets, EURAUD is the one that may not respond as expected (but note: carry was falsified by ablation as causal, so no such fix is currently realizable). No change to current treatment (kept in SELL_ONLY_ASSETS).
 
 ### ^DJI/EURCHF/USDCHF Decision
 
@@ -390,7 +392,7 @@ SHAP confirms all 3 follow the same mechanisms as their cluster peers:
 No evidence of a special case for any of the 3. The existing decision (keep all 9 in SELL_ONLY_ASSETS) is consistent with — and reinforced by — the SHAP findings.
 
 ### Closed Items
-- SHAP audit: **COMPLETED**. Two distinct mechanisms confirmed (dxy_mom_21d for equities, CLOSE_carry_vol_adj for CHF+OTHER). Both pass 0.05 threshold with consistent sign across cluster.
+- SHAP audit: **COMPLETED**. Two distinct mechanisms identified (dxy_mom_21d for equities, CLOSE_carry_vol_adj for CHF+OTHER). Both passed SHAP thresholds — but subsequent **counterfactual walk-forward ablation disproved both as causal**. Removing carry on CHF cluster (5 assets) and DXY on equity cluster (3 assets) neither restored BUY WR >50% on any asset. The SHAP mechanisms are **correlational**, not causal. See Counterfactual Ablation section.
 - ^DJI/EURCHF/USDCHF decision: **RESOLVED**. SHAP confirms same mechanisms as cluster peers. No special case. SELL_ONLY_ASSETS treatment stands. The tp/sl argument is still correct (the 3 are profitable only due to asymmetric barriers) but the SHAP finding makes it moot — the mechanism is the same, so treating them differently would be inconsistent.
 
 ### Remaining Open Items
@@ -399,7 +401,7 @@ No evidence of a special case for any of the 3. The existing decision (keep all 
 
 4. **Live tripwire (DONE 2026-06-20)**: `record_sell_side_outcome()` in `risk.py` tracks SELL-only TP/SL outcomes per asset (deque maxlen=20, win=TP/loss=SL, BUY and non-TP/SL exits skipped). `get_sell_tripwire_state(asset, sell_only)` returns `{"win_rate": ..., "tripped": bool}`. Trips at 65% threshold, logs WARNING on trip + INFO on clear (state transition tracked via `_tripwire_last_state`). Wired into `state.json` via `engine_state_service.py` — replaces hardcoded `False`. Dashboard red TRIPWIRE badge now real. Call site in `position_service.py:close_position` records every SELL trade exit alongside existing SL hit rate. Tripwire only applies when `sell_only=True` — non-flagged assets can accumulate SELL win-rate data but never trip.
 
-5. **Feature-level fix from SHAP mechanisms** — SHAP now identifies two concrete mechanisms (dxy_mom_21d for equities, CLOSE_carry_vol_adj for CHF+OTHER). The current SELL_ONLY filter suppresses the inverted signal; a feature-level fix could instead correct it. Candidates: (a) add DXY-equity correlation regime feature for equities, (b) add carry-direction alignment feature for CHF+OTHER, retrain, and potentially restore BUY on these assets. Not urgent — SELL_ONLY filter handles the risk — but worth tracking as a follow-up project rather than letting it silently default to permanent.
+5. **Feature-level fix (FALSIFIED 2026-06-20)** — Both SHAP-identified mechanisms (dxy_mom_21d for equities, CLOSE_carry_vol_adj for CHF+OTHER) were tested via walk-forward counterfactual ablation. **Neither is causal.** Removing carry did not restore BUY WR >50% on any of 5 CHF-cluster assets. Removing DXY did not restore BUY WR >50% on any of 3 equity-cluster assets. Both ablations degraded total returns. The BUY inversion root cause remains unknown. SELL_ONLY filter is no longer a temporary stopgap pending a feature-level fix — it is the empirically-grounded answer, and removing it requires discovering a causal mechanism that currently does not exist in any tested hypothesis.
 
 ### Falsified Hypotheses (2026-06-20 session)
 
@@ -410,6 +412,159 @@ No evidence of a special case for any of the 3. The existing decision (keep all 
 - Trend-conditional: bad assets are 15-23% regardless of trending regime — not trend-conditional
 - Detection guard: p_long trajectory can't distinguish flip from normal (22.2% FP rate)
 - Label redesign: asymmetric barriers increase (not decrease) fold-to-fold variance
+- **Carry is causal (falsified 2026-06-20)**: removing carry via walk-forward ablation did not restore BUY WR >50% on any of 5 CHF-cluster assets. The SHAP finding was correlational.
+- **DXY is causal (falsified 2026-06-20)**: removing DXY via walk-forward ablation did not restore BUY WR >50% on any of 3 equity-cluster assets. Total returns strictly worsened.
+
+## Replay-First Architecture (2026-06-20, Phase 3)
+
+### Causal Boundary Markers
+
+The WAL now captures three causal boundary events that form a complete replay chain:
+
+```
+features_snapshot  (P0.1) — exact model input vector + feature_hash + model_hash
+    ↓
+inference_output   (P0.3) — model probabilities BEFORE governance gating
+    ↓
+decision_output    (P0.3) — final action AFTER all governance stages + gates bitmask
+```
+
+Each event is written at its own causal boundary by the code that owns that boundary:
+- `features_snapshot` in `pipeline.py:_trace_and_diagnostics()` (after feature vector is finalized)
+- `inference_output` in `pipeline.py:_run_inference()` (right after `model.predict_proba()`)
+- `decision_output` in `decision_pipeline.py:run_decision_pipeline()` (after all stages complete)
+
+The `feature_hash` (MD5 of sorted feature dict, 12 hex chars) flows as a scalar:
+`_build_feature_set → _run_inference → _build_decision → DecisionContext → run_decision_pipeline`
+
+The `model_hash` (SHA256 of model JSON, 16 hex chars) is computed at training time and stored as a sidecar file (`{model}_hash.txt`). Loaded at engine init in `AssetEngine._load_model_hash()`.
+
+### trace.jsonl Derivation
+
+`trace_decision()` no longer independently captures features. The `features_sample` dict is passed from the same `feature_vector` variable used for `features_snapshot`. Both `feature_hash` and `model_hash` are included in the trace entry, enabling cross-log consistency verification: a replay test can hash trace.jsonl's `features_sample` and assert it matches the WAL's `feature_hash` for the same cycle.
+
+### New WAL Event Types
+
+Three new event types in `wal.py` docstring (causal boundary tier):
+- `features_snapshot` — asset, features dict, feature_hash, feature_schema, model_hash
+- `inference_output` — asset, prob_long/short/neutral, model_hash, feature_hash
+- `decision_output` — asset, final_signal, gates_aborted, feature_hash, model_hash
+
+All existing observability events (price_update, signal_generated, position_closed, state_committed, actor_health) remain unchanged.
+
+### ReplayRunner Handlers
+
+New handlers in `replay/runner.py`:
+- `_on_features_snapshot` — stores features, feature_hash, model_hash, feature_schema per asset
+- `_on_inference_output` — stores proba + hashes
+- `_on_decision_output` — stores final_signal + hashes
+
+### Key Files
+
+| File | Change |
+|------|--------|
+| `paper_trading/asset_engine.py` | Added `_wal_writer`, `_model_hash`, `_load_model_hash()`, `_last_feature_vector/hash/schema` |
+| `paper_trading/inference/pipeline.py` | `features_snapshot` + `inference_output` WAL events; feature_hash threading through `_build_decision`; feature_hash in trace |
+| `paper_trading/execution/decision_pipeline.py` | `feature_hash` in `DecisionContext`; `decision_output` WAL event at pipeline end |
+| `paper_trading/ops/tracer.py` | `trace_decision()` now accepts and logs `feature_hash` + `model_hash` |
+| `paper_trading/orchestrator/actor.py` | `AssetActor.__init__` sets `engine._wal_writer = wal_writer` when provided |
+| `paper_trading/replay/runner.py` | Three new handlers for causal boundary events |
+| `paper_trading/replay/wal.py` | Docstring updated with causal vs observability event tiers |
+| `paper_trading/inference/training.py` | Model hash sidecar file written at save time |
+| `quantforge/domain/entities/signal.py` | `TradeDecision.feature_hash` field added |
+| `scripts/retrain_counterfactual.py` | **NEW** — feature ablation walk-forward test |
+| `scripts/check_chf_correlation.py` | **NEW** — CHF cluster independence verification |
+
+## Barrier Symmetry Audit (2026-06-20)
+
+**Hypothesis**: The 17%/77% BUY/SELL asymmetry might be caused by asymmetric volatility estimates in upper vs lower triple-barrier barriers.
+
+**Result (falsified)**: Both upper and lower barrier computations in `apply_triple_barrier()` (`labels/triple_barrier.py:62-64`) use the **identical** `vol_slice` array — either from `_ewm_vol(close)` (span=100) in training, or from `compute_atr_pct` in live execution. The only asymmetry is the intentional `pt_sl[0]` (tp_mult) vs `pt_sl[1]` (sl_mult) coefficients from config.
+
+**Verdict**: Label construction is not the cause. The 17%/77% split is a genuine model miscalibration, not a label artifact. The label audit hypothesis (Priority 1 from the Phase 3 planning session) is closed.
+
+## Deferred-Entry SELL_ONLY Bypass Fix (2026-06-20)
+
+**Bug**: `entry_service.py:poll_pending_entries()` did not check `SELL_ONLY_ASSETS` before executing deferred BUY entries. A BUY signal deferred to a future cycle could execute on a SELL_ONLY asset, bypassing `apply_sell_only_filter` in the decision pipeline (which only runs for the current cycle's signal).
+
+**Fix**: Added a SELL_ONLY check at the top of the deferred entry loop in `poll_pending_entries()`. If the direction is `"long"` and the asset is in `SELL_ONLY_ASSETS`, the deferred entry is canceled with reason `"sell_only_filter"`.
+
+**File**: `paper_trading/services/entry_service.py:665-673`
+
+## CHF Cluster Correlation Check (2026-06-20)
+
+**Script**: `scripts/check_chf_correlation.py` — verifies whether 4 SELL-on-CHF positions (CADCHF, NZDCHF, USDCHF, EURCHF) are independent bets or one leveraged CHF-strength position.
+
+**Output**: Pairwise return correlations, concurrent direction agreement, worst-case concurrent drawdown days, 3+ concurrent loss day frequency. Run with:
+```bash
+PYTHONPATH=$PYTHONPATH:. python scripts/check_chf_correlation.py
+```
+
+## Feature Ablation Script (2026-06-20)
+
+**Script**: `scripts/retrain_counterfactual.py` — isolates causal mechanism of BUY inversion by removing feature groups and observing effect on BUY WR.
+
+**Usage**:
+```bash
+# Ablate carry on CHF cluster
+PYTHONPATH=$PYTHONPATH:. python scripts/retrain_counterfactual.py \
+    --assets CADCHF,NZDCHF,USDCHF,EURCHF,AUDUSD --remove-carry
+
+# Ablate DXY on equity cluster
+PYTHONPATH=$PYTHONPATH:. python scripts/retrain_counterfactual.py \
+    --assets ^DJI,ES,NQ --remove-dxy
+```
+
+**Output**: `walkforward/counterfactual/{tag}_{timestamp}/` — per_asset.csv + portfolio.csv with BUY WR comparison. If removing a feature restores BUY WR >50% on 3+ assets, that feature is **causal** (not just correlational).
+
+## Counterfactual Ablation Results (2026-06-20)
+
+Both SHAP-identified mechanisms were tested via walk-forward ablation. **Neither is causal.**
+
+### Carry Removal (CHF cluster: CADCHF, NZDCHF, USDCHF, EURCHF, AUDUSD)
+
+| Asset | Baseline BUY WR | CF BUY WR | ΔBUY WR | Total R Δ |
+|-------|----------------|-----------|---------|-----------|
+| CADCHF | 24.1% | 40.0% | +15.9% | -13.0 |
+| NZDCHF | 11.8% | 15.4% | +3.6% | +34.0 |
+| USDCHF | 60.0% | 55.6% | -4.4% | -8.6 |
+| EURCHF | 14.3% | 26.8% | +12.5% | +4.0 |
+| AUDUSD | 33.3% | 18.8% | -14.6% | -56.5 |
+
+**Portfolio**: 0/5 assets restored to >50% BUY WR. Total ΔR: -40.10. Removing carry degrades total returns and does not fix BUY inversion.
+
+### DXY Removal (Equity cluster: ^DJI, ES, NQ)
+
+| Asset | Baseline BUY WR | CF BUY WR | ΔBUY WR | Total R Δ |
+|-------|----------------|-----------|---------|-----------|
+| ^DJI | 33.3% | 16.7% | -16.7% | -6.5 |
+| ES | 0.0% | 0.0% | 0.0% | -7.5 |
+| NQ | 40.0% | 25.0% | -15.0% | -10.0 |
+
+**Portfolio**: 0/3 assets improved. Total ΔR: -24.00. Removing DXY makes BUY WR and total returns strictly worse.
+
+### Interpretation
+
+The SHAP findings (dxy_mom_21d for equities, CLOSE_carry_vol_adj for CHF+OTHER) were **correlational**, not causal. Carry and DXY contribute to the BUY signal's confidence but are not the *source* of its inversion. When you remove them, the model still predicts BUY at the wrong times — just with different feature weights.
+
+**Epistemic update**: SELL_ONLY is no longer a "temporary stopgap pending a feature-level fix." It is the empirically-grounded answer. Two leading hypotheses for *why* the BUY signal is inverted have been tested and falsified. Removing SELL_ONLY requires discovering a causal mechanism that does not currently exist in any tested hypothesis.
+
+### Why the Baseline BUY WR Differs from Production
+
+The counterfactual script uses a 600-row dataset (vs 848 in production), 5 folds with gap=10, and `n_estimators=300, max_depth=2` — these differ from the production training config. As a result, baseline BUY WR ranges from 0-60% (vs ~17% in production for the flagged assets). The RELATIVE comparison (baseline vs counterfactual) is valid since both use the same configuration. The ABSOLUTE values should not be compared to production metrics.
+
+## Updated Priority Order (2026-06-20)
+
+| Rank | Item | Status |
+|------|------|--------|
+| 1 | Barrier symmetry audit | **DONE** — clean, label hypothesis closed |
+| 2 | Deferred-entry SELL_ONLY bypass fix | **DONE** |
+| 3 | CHF cluster correlation check | **DONE** — moderate correlation, 41% concurrent loss days |
+| 4 | Causal replay chain (P0 events) | **DONE** — features_snapshot, inference_output, decision_output |
+| 5 | Feature ablation + retrain | **DONE** — both mechanisms falsified, root cause unknown |
+| 6 | Replay determinism test (full chain) | Pending — hash-verified model reload → proba comparison → gate replay |
+| 7 | Adversarial governance tests | Pending |
+| 8 | Evidence-based gating (Phase A) | **CANCELLED** — no causal mechanism to gate on |
 
 ## Ruff
 

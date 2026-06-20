@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import time
@@ -68,6 +69,7 @@ class AssetEngine:
         position_size=None,
         retrain_window=None,
         context=None,
+        wal_writer=None,
     ):
         ctx = context or ExecutionContext()
         engine_cfg = ctx.get_engine_config()
@@ -111,6 +113,8 @@ class AssetEngine:
         self._research_mode = engine_cfg.research_mode
         self._retrain_window = retrain_window if retrain_window is not None else engine_cfg.retrain_window
         self.model_path = os.path.join(BASE, "paper_trading", "models", f"{contract.name}_model.json")
+        self._wal_writer = wal_writer
+        self._model_hash = self._load_model_hash()
 
         # ── Infrastructure dependencies ──────────────────────────────
         self.execution_bridge = ctx.get_execution_bridge()
@@ -177,6 +181,9 @@ class AssetEngine:
         self._spread_tier: str = self.config.get("spread_tier", "fx_cross")
 
         # ── Inference & training state ───────────────────────────────
+        self._last_feature_vector: dict[str, float] | None = None
+        self._last_feature_hash: str = ""
+        self._last_feature_schema: list[str] | None = None
         self._last_label = None
         self._last_confidence = 0.0
         self._last_prob_long = 0.0
@@ -278,6 +285,16 @@ class AssetEngine:
             model=self.model,
             shadow_sltp=self._shadow_sltp,
         )
+
+    def _load_model_hash(self) -> str:
+        hash_path = self.model_path.replace(".json", "_hash.txt")
+        if os.path.exists(hash_path):
+            with open(hash_path) as f:
+                return f.read().strip()
+        if os.path.exists(self.model_path):
+            with open(self.model_path, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()[:16]
+        return "unknown"
 
     def set_experiment_context(self, experiment_id: str, export_dir: str | None = None) -> None:
         self._attribution_export_dir = _AttributionService.set_experiment_context(

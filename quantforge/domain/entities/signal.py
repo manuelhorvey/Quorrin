@@ -67,6 +67,7 @@ class TradeDecision:
     timestamp: str
     position_size: float
     archetype: str = "UNKNOWN"
+    feature_hash: str = ""
 
     @property
     def direction(self) -> int:
@@ -93,4 +94,5 @@ class TradeDecision:
             "timestamp": self.timestamp,
             "position_size": self.position_size,
             "archetype": self.archetype,
+            "feature_hash": self.feature_hash,
         }

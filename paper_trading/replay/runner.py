@@ -123,6 +123,9 @@ class ReplayRunner:
     def _get_handler(self, event_type: str):
         handlers = {
             "price_update": self._on_price_update,
+            "features_snapshot": self._on_features_snapshot,
+            "inference_output": self._on_inference_output,
+            "decision_output": self._on_decision_output,
             "signal_generated": self._on_signal,
             "entry_executed": self._on_entry,
             "sl_executed": self._on_sl,
@@ -132,6 +135,35 @@ class ReplayRunner:
             "state_committed": self._on_commit,
         }
         return handlers.get(event_type)
+
+    def _on_features_snapshot(self, event: WalEvent) -> None:
+        asset = event.payload.get("asset", event.source)
+        self._state["assets"].setdefault(asset, {})
+        self._state["assets"][asset]["last_features"] = event.payload.get("features")
+        self._state["assets"][asset]["feature_hash"] = event.payload.get("feature_hash")
+        self._state["assets"][asset]["model_hash"] = event.payload.get("model_hash")
+        self._state["assets"][asset]["feature_schema"] = event.payload.get("feature_schema")
+
+    def _on_inference_output(self, event: WalEvent) -> None:
+        asset = event.payload.get("asset", event.source)
+        self._state["assets"].setdefault(asset, {})
+        self._state["assets"][asset]["last_inference"] = {
+            "prob_long": event.payload.get("prob_long"),
+            "prob_short": event.payload.get("prob_short"),
+            "prob_neutral": event.payload.get("prob_neutral"),
+            "model_hash": event.payload.get("model_hash"),
+            "feature_hash": event.payload.get("feature_hash"),
+        }
+
+    def _on_decision_output(self, event: WalEvent) -> None:
+        asset = event.payload.get("asset", event.source)
+        self._state["assets"].setdefault(asset, {})
+        self._state["assets"][asset]["last_decision"] = {
+            "final_signal": event.payload.get("final_signal"),
+            "gates_aborted": event.payload.get("gates_aborted"),
+            "feature_hash": event.payload.get("feature_hash"),
+            "model_hash": event.payload.get("model_hash"),
+        }
 
     def _on_price_update(self, event: WalEvent) -> None:
         asset = event.payload.get("asset", event.source)

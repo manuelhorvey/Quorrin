@@ -39,6 +39,8 @@ def trace_decision(
     regime_short_prob: float | None = None,
     regime_label: str | None = None,
     regime_features: dict | None = None,
+    feature_hash: str = "",
+    model_hash: str = "",
 ) -> None:
     _append(
         {
@@ -46,6 +48,8 @@ def trace_decision(
             "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "asset": asset,
             "features_sample": features,
+            "feature_hash": feature_hash,
+            "model_hash": model_hash,
             "proba_short": round(proba[0], 6),
             "proba_neutral": round(proba[1], 6),
             "proba_long": round(proba[2], 6),

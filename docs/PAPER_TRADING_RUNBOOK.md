@@ -27,7 +27,7 @@ Operational procedures for the paper trading system. This document is for the pe
 
 ### Assets
 
-**Core portfolio (21 assets promoted from walk-forward screening):**
+**Core portfolio (19 assets promoted from walk-forward screening):**
 
 Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_depth calibrated via walk-forward optimization.
 
@@ -35,7 +35,6 @@ Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_
 |---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| AUDCHF | AUDCHF=X | 5.0% | 2.75 | 3.50 | 3 |
 | USDCAD | USDCAD=X | 5.0% | 2.50 | 2.03 | 5 |
 | ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
 | NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
@@ -43,21 +42,20 @@ Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_
 | GBPNZD | GBPNZD=X | 5.0% | 3.00 | 1.00 | 3 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| EURUSD | EURUSD=X | 4.0% | 3.00 | 1.50 | 4 |
 | NZDUSD | NZDUSD=X | 5.0% | 2.50 | 1.50 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
 | AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
-| AUDNZD | AUDNZD=X | 3.0% | 2.00 | 1.00 | 3 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
 | EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 
-**Total allocation: ~1.00.**
+**Total allocation: ~0.95** (remaining capacity held as cash buffer).
 
-**Backtest performance (pre-leak-fix baseline, 5-year: 2021–2025):** PF 1.908, avgR +0.268, 2383 trades, 21 assets.
+**Backtest performance (pre-leak-fix baseline, 5-year: 2021–2025):** PF 1.908, avgR +0.268, 2383 trades, 19 assets.
 > Note: These are the screening baseline. Current walk-forward diagnostics after look-ahead fixes
 > show lower, honest metrics. Live performance will differ.
 

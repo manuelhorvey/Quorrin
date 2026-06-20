@@ -16,14 +16,14 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 
 1. **Screening output**: Composite scores + promotion classifications (GREEN/YELLOW/RED) for 30+ tickers
 2. **Per-asset models**: Binary XGBoost classifiers, one per promoted asset
-3. **Live signals**: BUY/SELL/FLAT decisions every 5 minutes for 21 assets
+3. **Live signals**: BUY/SELL/FLAT decisions every 30s for 19 assets
 4. **Portfolio allocation**: Risk-parity weighted long/short basket with governance overlay
 5. **Execution traces**: Full attribution records (prediction, execution, exit, friction) per trade
 
 ### What the system does NOT do
 
 - Does NOT predict price direction with consistent accuracy across all assets
-- Does NOT use ensemble/regime routing by default — enabled per-asset when regime models are trained and loaded
+- Does NOT use ensemble/regime routing — disabled portfolio-wide (base_weight=1.0); see ADR-026
 - Does NOT use FRED macro data in the live pipeline
 - Does NOT operate with live capital (paper trading only)
 - Does NOT deploy every screened ticker (approximately 13 of 36+ screened RED, not promoted)
@@ -94,7 +94,7 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    PORTFOLIO LAYER                                       │
 │                                                                         │
-│  21 assets, risk-parity weights (2.0–7.0% each)                        │
+│  19 assets, risk-parity weights (1.0–7.0% each)                        │
 │  SQLite state store (WAL mode): trades, attribution, equity_history     │
 │  PaperBroker → StateStore → state.json + state.db → dashboard           │
 │  7-layer governance overlay                                             │
@@ -191,7 +191,7 @@ Rate_diffs are simulated from TNX yield with noise. All indices normalized to TZ
 ### 4.4 Model Training
 
 **Algorithm**: XGBoost `binary:logistic`
-**Architecture**: Single binary XGBoost per asset (ensemble + regime model optional, enabled when regime model is trained and loaded)
+**Architecture**: Single binary XGBoost per asset (ensemble + regime model disabled portfolio-wide; see ADR-026)
 **Hyperparameters**:
 
 | Parameter | Value |
@@ -210,7 +210,7 @@ Rate_diffs are simulated from TNX yield with noise. All indices normalized to TZ
 **Post-training**:
 - PSI baseline persist
 - Meta-label model (XGBoost)
-- Regime-conditional model (trained via `scripts/train_regime_models.py`, enables 60/40 ensemble blend)
+- Regime-conditional model (trained via `scripts/train_regime_models.py`, not loaded in production — ensemble disabled)
 - Feature importance + stability logging
 
 ### 4.5 Model Files
@@ -242,7 +242,7 @@ Format: XGBoost `.json` (not pickle)
     if raw.shape[1] == 2:  # binary model
         proba = np.column_stack([1.0 - raw[:,1], zeros, raw[:,1]])
     ```
-11. Regime ensemble blend (60/40, active if regime model exists and feature names align)
+11. Ensemble blend skipped (disabled portfolio-wide; base_weight=1.0)
 12. Meta-label inference (XGBoost, continuous size scalar)
 13. `FixedThresholdStrategy(threshold=0.45)` → SignalType (BUY/SELL/FLAT)
 16. Archetype classification → `TradeDecision(close_price, confidence, probs, ...)`
@@ -277,13 +277,12 @@ Computed from OHLCV feature vector (no model inference):
 
 ### 6.1 Current Composition
 
-**21 assets** promoted from 34-ticker walk-forward screening, risk-parity weighted:
+**19 assets** promoted from 34-ticker walk-forward screening, risk-parity weighted:
 
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| AUDCHF | AUDCHF=X | 5.0% | 2.75 | 3.50 | 3 |
 | USDCAD | USDCAD=X | 5.0% | 2.50 | 2.03 | 5 |
 | ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
 | NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
@@ -291,17 +290,16 @@ Computed from OHLCV feature vector (no model inference):
 | GBPNZD | GBPNZD=X | 5.0% | 3.00 | 1.00 | 3 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| EURUSD | EURUSD=X | 4.0% | 3.00 | 1.50 | 4 |
 | NZDUSD | NZDUSD=X | 5.0% | 2.50 | 1.50 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
 | AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
-| AUDNZD | AUDNZD=X | 3.0% | 2.00 | 1.00 | 3 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
 | EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 
 ### 6.2 Position Sizing
 
@@ -379,7 +377,7 @@ In-memory TTL cache per download type:
 
 | Path | Role |
 |---|---|
-| `configs/paper_trading.yaml` | Production config (21 assets, params) |
+| `configs/paper_trading.yaml` | Production config (19 assets, params) |
 | `features/alpha_features.py` | Alpha feature factory |
 | `features/data_fetch.py` | YFinance data ingestion |
 | `features/labels.py` | Triple-barrier labeling |
@@ -410,7 +408,7 @@ In-memory TTL cache per download type:
 1. **Paper trading only** — no live capital execution
 2. **Yahoo Finance single source** — all data via yfinance, including macro
 3. **FX cross price NaN on first cycle** — incomplete daily bar; resolves after next cycle with full bar
-4. **Ensemble per-asset** — 60/40 blend active when regime model exists; not globally gated
+4. **Ensemble disabled** — base_weight=1.0 portfolio-wide; see ADR-026 for decision record and re-enable criteria
 5. **13/34 tickers RED** — not promoted; reflects weak IC for most FX pairs
 6. **No FRED** — macro derived from yfinance tickers only; no FRED API dependency in production
 7. **JPY/CHF cross TZ issue** — fixed via UTC normalization + index deduplication in pipeline

@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Status](https://img.shields.io/badge/status-paper%20trading-green)
 ![WalkForward](https://img.shields.io/badge/walk--forward-36%20assets%20screened-success)
-![Portfolio](https://img.shields.io/badge/portfolio-21%20dashboard%20assets-blue)
+![Portfolio](https://img.shields.io/badge/portfolio-19%20dashboard%20assets-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/QuantForge/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/QuantForge)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
@@ -61,13 +61,12 @@ State Persistence + Replay
 
 # Current Portfolio
 
-21 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
+19 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
 
 | Asset      | Ticker       | sl_mult | tp_mult | Allocation | max_depth |
 | ---------- | ------------ | ------- | ------- | ---------- | --------- |
 | GC         | GC=F         | 1.00    | 4.00    | 7.0%       | 2         |
 | USDCHF     | USDCHF=X     | 0.85    | 3.00    | 4.0%       | 4         |
-| AUDCHF     | AUDCHF=X     | 2.75    | 3.50    | 5.0%       | 3         |
 | USDCAD     | USDCAD=X     | 2.50    | 2.03    | 5.0%       | 5         |
 | ES         | ES=F         | 2.00    | 5.50    | 7.0%       | 2         |
 | NQ         | NQ=F         | 2.50    | 5.00    | 7.0%       | 2         |
@@ -75,31 +74,30 @@ State Persistence + Replay
 | GBPNZD     | GBPNZD=X     | 3.00    | 1.00    | 5.0%       | 3         |
 | NZDCAD     | NZDCAD=X     | 2.50    | 4.00    | 5.0%       | 2         |
 | ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
-| EURUSD     | EURUSD=X     | 3.00    | 1.50    | 4.0%       | 4         |
 | NZDUSD     | NZDUSD=X     | 2.50    | 1.50    | 5.0%       | 5         |
 | GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 5.0%       | 3         |
 | NZDCHF     | NZDCHF=X     | 1.00    | 4.00    | 7.0%       | 2         |
 | CADCHF     | CADCHF=X     | 1.00    | 4.00    | 5.0%       | 2         |
 | AUDUSD     | AUDUSD=X     | 1.50    | 4.00    | 4.0%       | 2         |
-| AUDNZD     | AUDNZD=X     | 2.00    | 1.00    | 3.0%       | 3         |
 | EURCHF     | EURCHF=X     | 1.00    | 3.00    | 5.0%       | 4         |
 | EURCAD     | EURCAD=X     | 1.00    | 1.00    | 2.0%       | 3         |
 | EURNZD     | EURNZD=X     | 1.50    | 2.50    | 3.0%       | 3         |
 | GBPCHF     | GBPCHF=X     | 1.00    | 2.00    | 3.0%       | 2         |
+| EURAUD     | EURAUD=X     | 0.54    | 1.77    | 1.0%       | 2         | |
 
 Allocation sums to ~1.00. Daily risk-parity rebalancing redistributes capital proportionally.
 
-### Backtest Performance (pre-leak-fix baseline — 5-Year 2021–2025, 21-asset portfolio)
+### Backtest Performance (pre-leak-fix baseline — 5-Year 2021–2025, 19-asset portfolio)
 
 > Metrics from the original screening (before look-ahead leak fixes). Current walk-forward
-> diagnostics (post-fix) show lower, honest metrics. These numbers are preserved as the
+> diagnostics (post-fix, 19-asset portfolio) show lower, honest metrics. These numbers are preserved as the
 > baseline that justified promotion; live performance will differ.
 
 | Metric | Value |
 |--------|-------|
 | Profit factor | 1.908 |
 | Avg R | +0.268 |
-| All assets positive | 21/21 |
+| All assets positive | 19/19 |
 | Total trades | 2383 |
 
 ---
@@ -163,8 +161,7 @@ Each asset runs an independent XGBoost model with per-asset configuration.
 ```text
 Base model:    XGBClassifier (binary:logistic, 300 trees, LR=0.02, depth 2-5)
 Regime model:  XGBClassifier (binary:logistic, 200 trees, LR=0.03, depth=2)
-Ensemble:      60% base P(LONG) + 40% regime P(LONG)
-Ensemble threshold: 0.15 per-asset default (EURAUD: 0.25)
+Ensemble:      disabled portfolio-wide (base_weight=1.0; see ADR-026)
 ```
 
 ### Base Model
@@ -177,16 +174,14 @@ Second `binary:logistic` classifier trained on the same alpha features **plus** 
 features (hurst, kaufman_er, adx, vol_zscore, compression, utc_hour, session_vol_profile).
 Generates a separate P(LONG) conditioned on market regime context.
 Saved to `models/regime/{ASSET}_regime.json`. Requires `scripts/train_regime_models.py` to generate.
+Not currently loaded in production (ensemble disabled).
 
-### Ensemble Blend
-When regime models exist, the two P(LONG) values are blended at inference:
-`P(LONG)_final = 0.6 × P(LONG)_base + 0.4 × P(LONG)_regime`
-
-The ensemble threshold determines the neutral band. Default 0.15 (±0.075 around 0.5):
-P(LONG) > 0.575 → BUY, < 0.425 → SELL, else FLAT.
-Per-asset override via config (EURAUD: 0.25).
-
-Ensemble is configured programmatically per-asset (not globally gated). Base model only is used when no regime model is loaded.
+### Ensemble (Disabled 2026-06-20)
+Ensemble was disabled portfolio-wide after walk-forward validation showed
++2.5% PnL improvement (p=0.0446, fails Bonferroni correction against prior
+IC test p=0.83) did not justify 22 extra model loads and debug surface.
+See `docs/adr/ADR-026-ensemble-disabled.md` for full decision record and
+re-enable criteria.
 
 No shared multi-asset model exists.
 
@@ -255,8 +250,8 @@ Derived from OHLCV for execution conditioning:
  7. Optional truncation validation (predict last row only)
  8. PSI drift check (rolling 21d vs baseline)
  9. Base XGBoost inference (binary:logistic → P(LONG)_base)
-10. Regime model inference (binary:logistic → P(LONG)_regime)
-11. Ensemble blend: 0.6 × P(LONG)_base + 0.4 × P(LONG)_regime
+10. Regime model inference skipped (ensemble disabled portfolio-wide)
+11. No ensemble blend — base model only
 12. Optional meta-label inference
 13. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
 14. Archetype classification
@@ -266,7 +261,7 @@ Derived from OHLCV for execution conditioning:
     b. Spread gate — block entry if spread > per-class threshold
     c. Signal stability filter — require >0.65 max(prob_long, prob_short)
     d. Signal hysteresis — 2-of-3 agreement before flip
-    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    e. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
     f. First-cycle suppression — suppress trading on cold-start cycle 1
     g. Conviction gate — flip gate based on regime conviction
     h. Profit lock gate — block flip if unrealized PnL > threshold
@@ -365,7 +360,7 @@ Applied in order within the decision pipeline before governance:
 | Spread gate               | Block entry if spread > per-class threshold (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
 | Signal stability filter   | Require >0.65 max(prob_long, prob_short) |
 | Signal hysteresis         | 2-of-3 agreement before flip allowed    |
-| Risk-off suppression      | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0   |
+| Risk-off suppression      | Flat AUDUSD when VIX>0 & SPX<0          |
 | First-cycle suppression   | Suppress trading on cold-start cycle 1  |
 | Conviction gate           | Flip gate based on regime conviction    |
 | Profit lock gate          | Blocks flip if unrealized PnL > threshold |
@@ -562,9 +557,6 @@ tests/                        # Test suite
 * MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 * **GBPNZD** fails on `DX-Y.NYB` (DXY) data availability for certain MT5 brokers —
   trades without that macro feature; consider zero-fill or exclude from go-live
-* **AUDNZD/EURAUD/AUDCHF inherent low IC** — these cross pairs have inherent negative IC
-   (-0.12 to -0.005) even with production-aligned pt_sl. Ensemble threshold tuning helps
-   EURAUD (0.25→IC -0.005) but AUDNZD/AUDCHF don't respond. Handle via governance chain.
 * **THIN liquidity regime** is a soft warning (SL/size adjustment, no halt);
    only **STRESSED** liquidity regime halts trading
 * **Confidence drift** halt requires 10+ signals for stable mean estimate (up from 3)

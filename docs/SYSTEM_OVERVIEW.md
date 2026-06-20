@@ -210,7 +210,7 @@ persist model + PSI baseline
 | Learning Rate | 0.02              |
 | Scale Pos Weight | Imbalance ratio (n_neg/n_pos) |
 
-Per-asset max_depth from `configs/paper_trading.yaml`. Regime model: 200 trees, LR=0.03, depth=2. No shared multi-asset model exists.
+Per-asset max_depth from `configs/paper_trading.yaml`. Regime model: 200 trees, LR=0.03, depth=2 (not loaded in production — ensemble disabled). No shared multi-asset model exists.
 
 ---
 
@@ -230,7 +230,7 @@ The live engine executes every 300 seconds.
  7. PSI drift check (rolling 21d vs baseline, skipped first cycle)
  8. Validate inference truncation
  9. Run XGBoost inference → 3-col proba expansion
-10. Regime ensemble blend (60/40, if regime model exists)
+10. Regime ensemble blend skipped (disabled portfolio-wide; base_weight=1.0)
 11. Meta-label inference (optional, XGBoost)
 12. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
 13. Archetype classification → TradeDecision
@@ -240,7 +240,7 @@ The live engine executes every 300 seconds.
     b. Spread gate — block entry if spread > per-class threshold
     c. Signal stability filter — require >0.65 max(prob_long, prob_short)
     d. Signal hysteresis — 2-of-3 agreement before flip
-    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    e. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed)
     f. First-cycle suppression — suppress trading on cold-start cycle 1
     g. Conviction gate — flip gate based on regime conviction
     h. Profit lock gate — block flip if unrealized PnL > threshold
@@ -280,7 +280,7 @@ QuantForge uses independently configurable governance layers with worst-wins agg
 | Spread gate | Block entry if spread > per-class threshold |
 | Signal stability filter | Require >0.65 max(prob_long, prob_short) |
 | Signal hysteresis | 2-of-3 agreement before flip |
-| Risk-off suppression | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0 |
+| Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed) |
 | First-cycle suppression | Suppress trading on cold-start cycle 1 |
 | Conviction gate | Flip gate based on regime conviction |
 | Profit lock gate | Block flip if unrealized PnL > threshold |

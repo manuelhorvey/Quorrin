@@ -17,9 +17,9 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Per-asset max_depth:**
 | Depth | Assets |
 |-------|--------|
-| 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF |
-| 3 | AUDCHF, GBPNZD, GBPAUD, AUDNZD, EURCAD, EURNZD |
-| 4 | USDCHF, ^DJI, EURUSD, EURCHF |
+| 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, EURAUD |
+| 3 | GBPNZD, GBPAUD, EURCAD, EURNZD |
+| 4 | USDCHF, ^DJI, EURCHF |
 | 5 | USDCAD, NZDUSD |
 
 **Signature:** `model.predict(X: pd.DataFrame) -> np.ndarray`
@@ -43,11 +43,10 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Per-asset:** One per asset, stored at `models/regime/{asset_name}_regime.json`
 **Feature names:** Persisted in a sidecar `{asset_name}_regime_features.txt` file.
 
-### Ensemble
-**Weight:** `base_weight = 0.6` (regime weight = 0.4)
-**Threshold:** `0.15` per-asset default — LONG when `P(LONG) > 0.575`, SHORT when `P(LONG) < 0.425`
-**Per-asset override:** EURAUD: threshold = 0.25
-**Formula:** `P(LONG)_final = base_weight * P(LONG)_base + (1-base_weight) * P(LONG)_regime`
+### Ensemble (Disabled 2026-06-20)
+**Weight:** `base_weight = 1.0` (regime model not loaded at inference)
+**Status:** Disabled portfolio-wide after walk-forward PnL comparison (+2.5% / p=0.0446 raw, fails Bonferroni correction). Regime model training path still active for future re-enable; see `docs/adr/ADR-026-ensemble-disabled.md`.
+**Re-enable criteria:** Pooled sign test p < 0.10 across 25+ assets AND ≥3 assets with per-asset sign-p < 0.10 on ≥6 months fresh OOS data.
 
 ---
 
@@ -201,8 +200,8 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 - Second XGBoost trained on alpha features + 7 regime features (generated from OHLCV via `fetch_asset_ohlcv()`)
 - 20 total features (13 alpha + 7 regime, all prefixed by asset name)
 - Saved to `models/regime/{ASSET}_regime.json`
-- Loaded at engine startup by `_train_regime_if_configured()`
-- Ensemble configured (60/20) only when regime model exists
+- Loaded at engine startup by `_train_regime_if_configured()` — skipped when `base_weight >= 1.0`
+- Ensemble disabled portfolio-wide (base_weight=1.0) — regime models not loaded at inference
 
 **Post-training:**
 - Persist PSI baseline from training feature distribution
@@ -226,7 +225,7 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 8. PSI drift check (rolling 21d vs baseline; skipped on first cycle)
 9. Inference truncation validation — if proven safe, predict only last row
 10. XGBoost predict → 3-column proba expansion `[p_short, 0, p_long]`
-11. Optional ensemble blend (regime model, 60/40 when loaded)
+11. Ensemble blend skipped (regime model not loaded — disabled portfolio-wide)
 12. Optional meta-label inference
 13. `FixedThresholdStrategy(0.45)` → BUY/SELL/FLAT
 14. Archetype classification → `TradeDecision`
@@ -236,7 +235,7 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
     b. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
     c. Signal stability filter — require >0.65 max(prob_long, prob_short)
     d. Signal hysteresis — 2-of-3 agreement before flip
-    e. Risk-off suppression — flat AUDUSD/AUDCHF when VIX>0 & SPX<0
+    e. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed from trading)
     f. First-cycle suppression — suppress trading on cold-start cycle 1
     g. Conviction gate — flip gate based on regime conviction
     h. Profit lock gate — block flip if unrealized PnL > threshold
@@ -282,12 +281,11 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 **Builder:** `paper_trading/portfolio_builder.py:build_paper_portfolio()`
 **Source:** `configs/paper_trading.yaml`
 
-### Current assets (21 promoted)
+### Current assets (19 promoted)
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| AUDCHF | AUDCHF=X | 5.0% | 2.75 | 3.50 | 3 |
 | USDCAD | USDCAD=X | 5.0% | 2.50 | 2.03 | 5 |
 | ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
 | NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
@@ -295,21 +293,23 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 | GBPNZD | GBPNZD=X | 5.0% | 3.00 | 1.00 | 3 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| EURUSD | EURUSD=X | 4.0% | 3.00 | 1.50 | 4 |
 | NZDUSD | NZDUSD=X | 5.0% | 2.50 | 1.50 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
 | AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
-| AUDNZD | AUDNZD=X | 3.0% | 2.00 | 1.00 | 3 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
 | EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 
-**Total allocation: ~1.00.**
+**Total allocation: ~0.95** (remaining capacity held as cash buffer).
 
-### Removed (post walk-forward, insufficient edge)
+### Removed from trading (2026-06-20)
+AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base model directional instability (confident wrong-direction bets during trend periods).
+
+### Previously removed (post walk-forward, insufficient edge)
 CHFJPY, CADJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPUSD, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM
 
 ---
@@ -436,7 +436,7 @@ Nine layered governance mechanisms plus position sizing guardrails and decision 
 | Spread gate | Block entry if spread > per-class tier (observe 720 cycles first) | `spread_gate_tiers` (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
 | Signal stability filter | Require >0.65 max(prob_long, prob_short) | `stability_margin` (default 0.15) |
 | Signal hysteresis | 2-of-3 agreement before flip allowed | HYSTERESIS_WINDOW=3, HYSTERESIS_MIN_AGREE=2 |
-| Risk-off suppression | Flat AUDUSD/AUDCHF when VIX>0 & SPX<0 | (hardcoded, per-asset pair) |
+| Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed from trading) | (hardcoded, per-asset pair) |
 | First-cycle suppression | Suppress trading on cold-start cycle 1 | (hardcoded, _cycle_counter <= 1) |
 | Conviction gate | Flip gate based on regime conviction | `_evaluate_flip_gate()` |
 | Profit lock gate | Block flip if unrealized PnL > `profit_lock_threshold_pct` | `profit_lock_threshold_pct` (default 15%) |

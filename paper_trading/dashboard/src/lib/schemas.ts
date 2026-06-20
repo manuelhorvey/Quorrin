@@ -245,6 +245,6 @@ export const EngineSnapshotSchema = z.object({
     signal_drought: 0,
     prob_drift: 0,
   }),
-  risk_signals: z.record(z.string(), z.unknown()).optional(),
-  shadow_actions: z.record(z.string(), z.unknown()).optional(),
+  risk_signals: z.record(z.string(), z.unknown()).nullable().optional(),
+  shadow_actions: z.record(z.string(), z.unknown()).nullable().optional(),
 }).passthrough()

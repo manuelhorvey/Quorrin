@@ -13,7 +13,7 @@ mt5:
 # Ensemble is configured programmatically per-asset after regime model training.
 # Config values here serve as global defaults for all assets.
 ensemble:
-  base_weight: 0.6
+  base_weight: 1.0
   threshold: 0.15
   regime_feature_window: 63
 meta_labeling:
@@ -706,6 +706,7 @@ assets:
         tp_mult: 0.8
     config:
       ensemble:
+        base_weight: 1.0  # ensemble disabled portfolio-wide as of 2026-06-20; threshold no-op
         threshold: 0.25
       shadow_sltp:
         enabled: true

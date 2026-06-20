@@ -2,16 +2,16 @@
 
 ## Project Identity
 
-Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commodities, equity indices) with per-asset XGBoost models, regime-conditional ensemble, 9-layer governance, position sizing guardrails, and MT5 bridge execution (Exness demo via Wine).
+Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commodities, equity indices) with per-asset XGBoost models, regime-conditional ensemble (disabled 2026-06-20), 9-layer governance, position sizing guardrails, and MT5 bridge execution (Exness demo via Wine).
 
 ## Architecture Quick Reference
 
-- **Models**: Per-asset XGBClassifier (base) + RegimeConditionalModel (regime) — 60/40 ensemble blend
+- **Models**: Per-asset XGBClassifier (base only) — regime-conditional ensemble disabled 2026-06-20 (walk-forward p=0.83; see ADR-026)
 - **Features**: 13 alpha (includes COT flag) + 7 regime (hurst, kaufman_er, adx, vol_zscore, compression, utc_hour, session_vol_profile)
 - **Labels**: Triple-barrier with per-asset pt_sl, vertical_barrier=20, gap >= vb
 - **Config**: `configs/paper_trading.yaml` — global defaults + per-asset (21 assets)
-- **Inference**: `paper_trading/inference/pipeline.py` — alpha → regime → base model → regime model → ensemble → governance → execute
-- **Training**: `paper_trading/inference/training.py` — base + regime models, scale_pos_weight, meta-labeling
+- **Inference**: `paper_trading/inference/pipeline.py` — alpha features → base model → governance → execute (ensemble disabled; regime features still generated for trace logging)
+- **Training**: `paper_trading/inference/training.py` — base model only (regime model skipped when base_weight >= 1.0), scale_pos_weight, meta-labeling
 - **Entry gates**: `entry_service.py` price deviation check (skips if price deviated > max_entry_slippage_pct); `decision_pipeline.py` profit lock (blocks flips when unrealized PnL > profit_lock_threshold_pct)
 - **Position sizing guardrails**: Drawdown taper, per-position equity cap, risk-per-trade cap, portfolio leverage budget (atomic lock), backstop decay multiplier
 - **Independent MT5 sizing**: Paper sized from paper equity ($100K mtm_value); MT5 sized from real broker account balance via `_compute_mt5_qty()` with its own drawdown taper + risk cap
@@ -118,7 +118,7 @@ curl http://127.0.0.1:5000/state.json | python3 -m json.tool
 ## Known Issues
 
 - **GBPNZD**: `DX-Y.NYB` (DXY) data not available on some MT5 brokers. Options: fix DXY source (A), zero-fill DXY features (B), exclude from go-live (C — recommended).
-- **AUDNZD ensemble**: Ensemble degrades signal quality (IC -0.020 in pilot). Monitor during paper trading; disable per-asset if confirmed.
+- **AUDNZD ensemble**: Ensemble degrades signal quality (IC -0.020 in pilot). Confirmed portfolio-wide by walk-forward (p=0.83 pooled); ensemble disabled 2026-06-20 (see ADR-026).
 - **Small MT5 equity ($107 demo)**: 0.01 lot minimum for forex (≈$1,150 notional on EURUSD) far exceeds the MT5 position budget (≈$15.67 at 15% of $104). MT5 positions quantize to 0.01 lots regardless of computed size. Leverage budget is deferred for MT5 — revisit when equity > $10K.
 - **Leverage budget deferred for MT5**: 0.01 lot granularity makes desired-vs-actual notional diverge wildly for small accounts. No leverage cap check on MT5 side until equity supports meaningful multi-position sizing.
 - **SL/TP triple bug (FIXED 2026-06-16)**: Three independent issues (deactivated `atr_mult_tp`, uncalibrated `atr_mult_sl`, TP compiler convexity applied to inflated SL distance) produced TP distances up to 44%. Fixes: (1) `_atr_barriers()` now uses `atr_mult_tp` for TP vol basis, (2) `tp_compiler.py` caps R:R at `MAX_RR=5.0`.

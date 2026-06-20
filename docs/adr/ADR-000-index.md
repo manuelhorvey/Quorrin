@@ -40,6 +40,7 @@ Architecture Decision Records for the QuantForge quantitative trading framework.
 | 023 | [Fast Scale-Out Profit Taking and Dynamic SL/TP Calibration](ADR-023-fast-scale-out-calibration-scale.md) | Accepted | 2026-05 |
 | 024 | [Macro Narrative Governance — Weekly LLM Overlay](ADR-024-macro-narrative-governance.md) | Accepted | 2026-05 |
 | 025 | [Liquidity Regime Model — Volume/Amihud Proxy Governance](ADR-025-liquidity-regime-model.md) | Accepted | 2026-05 |
+| 026 | [Regime-Conditional Ensemble Disabled](ADR-026-ensemble-disabled.md) | Accepted | 2026-06 |
 
 ## By Topic
 

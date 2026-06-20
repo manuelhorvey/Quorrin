@@ -224,6 +224,9 @@ class AssetTrainingPipeline:
         features_df: pd.DataFrame | None = None,
     ) -> None:
         asset = self.asset
+        base_weight = asset.config.get("ensemble", {}).get("base_weight", 1.0)
+        if base_weight >= 1.0:
+            return
         regime_feats = getattr(asset, "regime_feature_names", None)
 
         # Try loading regime model from disk first (regime_feature_names may be
@@ -256,7 +259,7 @@ class AssetTrainingPipeline:
         else:
             return
 
-        base_weight = asset.config.get("ensemble", {}).get("base_weight", 0.6)
+        base_weight = asset.config.get("ensemble", {}).get("base_weight", 1.0)
         ensemble_threshold = asset.config.get("ensemble", {}).get("threshold", 0.15)
         asset._ensemble = EnsembleSignal(
             base_weight=base_weight,

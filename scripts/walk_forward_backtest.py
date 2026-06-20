@@ -47,12 +47,32 @@ OUTPUT_DIR = os.path.join(
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 ASSETS = {
+    # Research / screening candidates
     "AUDJPY": "AUDJPY=X",
-    "EURCAD": "EURCAD=X",
-    "USDCAD": "USDCAD=X",
     "CHFJPY": "CHFJPY=X",
-    "GBPCAD": "GBPCAD=X",
     "USDJPY": "USDJPY=X",
+    # Promoted portfolio (21 assets)
+    "GC": "GC=F",
+    "USDCHF": "USDCHF=X",
+    "AUDCHF": "AUDCHF=X",
+    "USDCAD": "USDCAD=X",
+    "ES": "ES=F",
+    "NQ": "NQ=F",
+    "GBPCAD": "GBPCAD=X",
+    "GBPNZD": "GBPNZD=X",
+    "NZDCAD": "NZDCAD=X",
+    "^DJI": "^DJI",
+    "EURUSD": "EURUSD=X",
+    "NZDUSD": "NZDUSD=X",
+    "GBPAUD": "GBPAUD=X",
+    "NZDCHF": "NZDCHF=X",
+    "CADCHF": "CADCHF=X",
+    "AUDUSD": "AUDUSD=X",
+    "AUDNZD": "AUDNZD=X",
+    "EURCHF": "EURCHF=X",
+    "EURCAD": "EURCAD=X",
+    "EURNZD": "EURNZD=X",
+    "GBPCHF": "GBPCHF=X",
     "EURAUD": "EURAUD=X",
 }
 
@@ -60,6 +80,14 @@ ASSETS = {
 def slugify(ticker: str) -> str:
     """Derive clean asset name from yfinance ticker (strip =X, =F, -)."""
     return ticker.replace("=X", "").replace("=F", "").replace("-", "").replace("=", "")
+
+
+def _tag_path(filename: str, tag: str) -> str:
+    """Insert _tag before the file extension if tag is non-empty."""
+    if not tag:
+        return filename
+    stem, ext = os.path.splitext(filename)
+    return f"{stem}_{tag}{ext}"
 
 
 def compute_labels(
@@ -94,6 +122,7 @@ def run_walk_forward(
     ensemble_threshold: float = 0.15,
     pt_sl: tuple[float, float] = (2.0, 2.0),
     max_depth: int = 2,
+    tag: str = "",
 ) -> pd.DataFrame | None:
     import xgboost as xgb
 
@@ -242,7 +271,7 @@ def run_walk_forward(
         return None
 
     summary = pd.DataFrame(windows)
-    summary_path = os.path.join(OUTPUT_DIR, f"{asset_name}_wf_summary.csv")
+    summary_path = os.path.join(OUTPUT_DIR, _tag_path(f"{asset_name}_wf_summary.csv", tag))
     summary.to_csv(summary_path, index=False)
     logger.info("%s: summary -> %s", asset_name, summary_path)
 
@@ -266,14 +295,14 @@ def run_walk_forward(
         "total_folds": len(windows),
     }
     import json
-    fold_ic_path = os.path.join(OUTPUT_DIR, f"{asset_name}_fold_ic.json")
+    fold_ic_path = os.path.join(OUTPUT_DIR, _tag_path(f"{asset_name}_fold_ic.json", tag))
     with open(fold_ic_path, "w") as f:
         json.dump(ic_record, f, indent=2)
     logger.info("%s: fold IC -> %s", asset_name, fold_ic_path)
 
     if all_oos_signals:
         signals_df = pd.concat(all_oos_signals)
-        signals_path = os.path.join(OUTPUT_DIR, f"{asset_name}_wf_signals.parquet")
+        signals_path = os.path.join(OUTPUT_DIR, _tag_path(f"{asset_name}_wf_signals.parquet", tag))
         signals_df.to_parquet(signals_path)
         logger.info("%s: signals -> %s", asset_name, signals_path)
 
@@ -287,10 +316,11 @@ def main():
     parser.add_argument("--tickers", default=None, help="Comma-separated yfinance tickers (raw)")
     parser.add_argument("--years", type=int, default=3, help="Training window in years")
     parser.add_argument("--step", type=int, default=1, help="Step size in years")
-    parser.add_argument("--ensemble-weight", type=float, default=0.6, help="Base model weight in ensemble")
+    parser.add_argument("--ensemble-weight", type=float, default=1.0, help="Base model weight in ensemble (1.0 = base only)")
     parser.add_argument("--ensemble-threshold", type=float, default=0.15, help="Ensemble signal threshold")
     parser.add_argument("--pt-sl", type=str, default=None,
                         help="Override pt_sl as tp,sl (e.g. --pt-sl 1.0,2.0). Default: per-asset from production config.")
+    parser.add_argument("--tag", type=str, default="", help="Suffix for output filenames (ensemble/base, etc.)")
     args = parser.parse_args()
 
     # Load per-asset pt_sl from production config
@@ -330,7 +360,7 @@ def main():
 
     # Save ticker map for report generation
     import json as _json
-    ticker_map_path = os.path.join(OUTPUT_DIR, "ticker_map.json")
+    ticker_map_path = os.path.join(OUTPUT_DIR, _tag_path("ticker_map.json", args.tag))
     with open(ticker_map_path, "w") as _f:
         _json.dump(assets_to_run, _f, indent=2)
     logger.info("ticker map -> %s", ticker_map_path)
@@ -354,13 +384,14 @@ def main():
             ensemble_threshold=args.ensemble_threshold,
             pt_sl=pt_sl,
             max_depth=_md,
+            tag=args.tag,
         )
         if result is not None:
             all_summaries.append(result)
 
     if all_summaries:
         combined = pd.concat(all_summaries)
-        combined_path = os.path.join(OUTPUT_DIR, "all_assets_wf_summary.csv")
+        combined_path = os.path.join(OUTPUT_DIR, _tag_path("all_assets_wf_summary.csv", args.tag))
         combined.to_csv(combined_path, index=False)
         logger.info("combined summary -> %s", combined_path)
 

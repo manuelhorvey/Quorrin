@@ -409,10 +409,19 @@ def apply_risk_off_suppression(ctx: DecisionContext) -> None:
 
 # ── Sell-only filter stage ────────────────────────────────────────────────
 
-SELL_ONLY_ASSETS: frozenset[str] = frozenset({
-    "CADCHF", "AUDUSD", "ES", "NQ", "NZDCHF",
-    "EURAUD", "^DJI", "USDCHF", "EURCHF",
-})
+SELL_ONLY_ASSETS: frozenset[str] = frozenset(
+    {
+        "CADCHF",
+        "AUDUSD",
+        "ES",
+        "NQ",
+        "NZDCHF",
+        "EURAUD",
+        "^DJI",
+        "USDCHF",
+        "EURCHF",
+    }
+)
 
 
 def apply_sell_only_filter(ctx: DecisionContext) -> None:
@@ -433,7 +442,8 @@ def apply_sell_only_filter(ctx: DecisionContext) -> None:
     if ctx.new_side == PositionSide.LONG:
         logger.info(
             "%s: sell-only filter — suppressing BUY signal (p_long=%.4f), holding flat",
-            engine.name, ctx.decision.prob_long,
+            engine.name,
+            ctx.decision.prob_long,
         )
         ctx.new_side = None
 

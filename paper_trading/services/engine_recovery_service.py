@@ -50,7 +50,10 @@ class EngineRecoveryService:
                 entry = pos.get("entry", 0)
                 logger.warning(
                     "Orphan position for removed/delisted asset '%s': side=%s entry=%.5f mt5_ticket=%s",
-                    name, side, entry, mt5_ticket,
+                    name,
+                    side,
+                    entry,
+                    mt5_ticket,
                 )
                 if mt5_ticket is not None and getattr(engine.execution_bridge, "_is_real_broker", False):
                     try:
@@ -58,10 +61,13 @@ class EngineRecoveryService:
                         engine.broker.close_position(mt5_sym, str(mt5_ticket))
                         logger.info(
                             "Closed orphan MT5 position for removed asset '%s' on %s (ticket=%s)",
-                            name, mt5_sym, mt5_ticket,
+                            name,
+                            mt5_sym,
+                            mt5_ticket,
                         )
                     except Exception:
                         logger.exception(
                             "Failed to close orphan MT5 position for removed asset '%s' (ticket=%s)",
-                            name, mt5_ticket,
+                            name,
+                            mt5_ticket,
                         )

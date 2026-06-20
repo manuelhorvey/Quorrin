@@ -49,6 +49,9 @@ FILTER_MAP: dict[str, int] = {
     "USDCAD": -1,
 }
 
+# These groups are from the original directional-filter diagnostic (2026-06-20).
+# AUDNZD, EURUSD, AUDCHF, GBPNZD have since been removed from trading.
+# Keep the lists intact here for historical reproducibility.
 GROUP_A = ["AUDNZD", "EURUSD", "AUDCHF"]
 GROUP_B = ["ES", "NQ", "AUDUSD", "NZDCHF", "GBPNZD", "USDCAD"]
 

@@ -18,7 +18,7 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 | Depth | Assets |
 |-------|--------|
 | 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, EURAUD |
-| 3 | GBPNZD, GBPAUD, EURCAD, EURNZD |
+| 3 | GBPAUD, EURCAD, EURNZD |
 | 4 | USDCHF, ^DJI, EURCHF |
 | 5 | USDCAD, NZDUSD |
 
@@ -281,19 +281,18 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 **Builder:** `paper_trading/portfolio_builder.py:build_paper_portfolio()`
 **Source:** `configs/paper_trading.yaml`
 
-### Current assets (19 promoted)
+### Current assets (18 promoted)
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
 |---|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| USDCAD | USDCAD=X | 5.0% | 2.50 | 2.03 | 5 |
+| USDCAD | USDCAD=X | 2.5% | 2.50 | 2.03 | 5 |
 | ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
 | NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
 | GBPCAD | GBPCAD=X | 5.0% | 2.50 | 2.50 | 2 |
-| GBPNZD | GBPNZD=X | 5.0% | 3.00 | 1.00 | 3 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 5.0% | 2.50 | 1.50 | 5 |
+| NZDUSD | NZDUSD=X | 2.5% | 2.50 | 1.50 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
@@ -308,6 +307,10 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 
 ### Removed from trading (2026-06-20)
 AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base model directional instability (confident wrong-direction bets during trend periods).
+
+**2026-06-20 (late): GBPNZD** removed — tp/sl=1.0/3.0 (ratio 0.33), breakeven WR 75%, achieved 72.3%. Net-negative — lost -37R total with -71R max drawdown.
+
+**USDCAD/NZDUSD allocation halved** from 5% → 2.5% to limit drawdown impact while keeping diversification.
 
 ### Previously removed (post walk-forward, insufficient edge)
 CHFJPY, CADJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPUSD, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM

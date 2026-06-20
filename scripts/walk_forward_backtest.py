@@ -58,7 +58,7 @@ ASSETS = {
     "ES": "ES=F",
     "NQ": "NQ=F",
     "GBPCAD": "GBPCAD=X",
-    "GBPNZD": "GBPNZD=X",
+    # "GBPNZD": "GBPNZD=X",  # removed 2026-06-20 — tp/sl ratio 0.33
     "NZDCAD": "NZDCAD=X",
     "^DJI": "^DJI",
     "NZDUSD": "NZDUSD=X",

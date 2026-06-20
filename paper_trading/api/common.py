@@ -96,7 +96,7 @@ _FALLBACK_VOL_BASELINES = {
     "NZDUSD": 0.005000,
     "CADCHF": 0.004500,
     "GBPCAD": 0.004500,
-    "GBPNZD": 0.005000,
+    # "GBPNZD": 0.005000,  # removed 2026-06-20
     "NZDCAD": 0.004500,
     "CL": 0.015000,
     "ES": 0.008000,

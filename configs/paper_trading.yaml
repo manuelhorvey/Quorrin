@@ -156,7 +156,7 @@ assets:
   
   USDCAD:
     ticker: USDCAD=X
-    allocation: 0.05
+    allocation: 0.025
     sl_mult: 2.5
     tp_mult: 2.03
     spread_tier: fx_major
@@ -266,34 +266,8 @@ assets:
         trailing_activation_mult: 0.3
         trailing_distance_mult: 1.5
         min_rr_ratio: 1.5
-  GBPNZD:
-    ticker: GBPNZD=X
-    allocation: 0.05
-    sl_mult: 3.0
-    tp_mult: 1.0
-    max_depth: 3
-    regime_geometry:
-      GREEN:
-        sl_mult: 1.0
-        tp_mult: 1.0
-      YELLOW:
-        sl_mult: 0.9
-        tp_mult: 0.9
-      RED:
-        sl_mult: 0.8
-        tp_mult: 0.8
-    config:
-      shadow_sltp:
-        enabled: true
-        method: trailing
-        trailing_activation_mult: 0.3
-        trailing_distance_mult: 1.5
-      dynamic_sltp:
-        enabled: true
-        method: trailing
-        trailing_activation_mult: 0.3
-        trailing_distance_mult: 1.5
-        min_rr_ratio: 1.5
+  # GBPNZD removed 2026-06-20 — tp/sl ratio 0.33 required 75% breakeven WR,
+  # model achieved 72.3% — lost -37R total with -71R max drawdown
   NZDCAD:
     ticker: NZDCAD=X
     allocation: 0.05
@@ -353,7 +327,7 @@ assets:
   
   NZDUSD:
     ticker: NZDUSD=X
-    allocation: 0.05
+    allocation: 0.025
     sl_mult: 2.5
     tp_mult: 1.5
     spread_tier: fx_major

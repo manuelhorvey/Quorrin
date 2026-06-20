@@ -15,7 +15,7 @@ PAPER_PORTFOLIO = [
     "ES",
     "NQ",
     "GBPCAD",
-    "GBPNZD",
+    # "GBPNZD",  # removed 2026-06-20 — tp/sl ratio 0.33
     "NZDCAD",
     "^DJI",
     "NZDUSD",

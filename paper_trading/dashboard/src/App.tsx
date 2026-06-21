@@ -23,6 +23,7 @@ import FillQualityGauge from './components/execution/FillQualityGauge'
 import TradeExecutionTable from './components/execution/TradeExecutionTable'
 import MonitoringDashboard from './components/monitor/MonitoringDashboard'
 import GovernanceRadar from './components/governance/GovernanceRadar'
+import StatisticalMetricsTable from './components/StatisticalMetricsTable'
 import WeeklyReviewModal from './components/WeeklyReviewModal'
 
 import { useAttributionTrades } from './hooks/useAttributionTrades'
@@ -91,6 +92,10 @@ export default function App() {
             <Section id="trades" errorTitle="Trades">
               <TradeOutcomes />
               <TradeFeed />
+            </Section>
+
+            <Section id="statistics" errorTitle="Statistical Metrics">
+              <StatisticalMetricsTable />
             </Section>
 
             <Section id="risk" errorTitle="Risk" className="space-y-6">

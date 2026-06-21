@@ -5,6 +5,7 @@ const NAV_SECTIONS = [
   { id: 'signals', label: 'Signals' },
   { id: 'execution', label: 'Execution' },
   { id: 'trades', label: 'Trades' },
+  { id: 'statistics', label: 'Stats' },
   { id: 'risk', label: 'Risk' },
 ]
 

@@ -11,6 +11,7 @@ import {
   BarChart3,
   Activity,
   Heart,
+  Sigma,
 } from 'lucide-react'
 
 interface NavItem {
@@ -48,6 +49,11 @@ const NAV_GROUPS: NavGroup[] = [
     title: 'Trades',
     icon: Activity,
     items: [{ id: 'trades', label: 'Trades', icon: Activity }],
+  },
+  {
+    title: 'Research',
+    icon: Sigma,
+    items: [{ id: 'statistics', label: 'Statistical Metrics', icon: Sigma }],
   },
   {
     title: 'Governance',

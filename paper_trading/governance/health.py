@@ -5,6 +5,7 @@ import threading
 import numpy as np
 
 from paper_trading.governance.drift import get_shadow_intelligence
+from paper_trading.state_store import StateStore
 
 _lock = threading.Lock()
 _cache: dict = {}
@@ -30,14 +31,21 @@ BASE_DIR = os.path.join(
     "data",
 )
 
+_STATE_STORE: StateStore | None = None
+
+
+def _get_state_store() -> StateStore:
+    global _STATE_STORE
+    if _STATE_STORE is None:
+        _STATE_STORE = StateStore(os.path.dirname(BASE_DIR))
+    return _STATE_STORE
+
 
 def _load_state_assets() -> dict:
-    state_path = os.path.join(BASE_DIR, "live", "state.json")
     try:
-        if os.path.exists(state_path):
-            with open(state_path) as f:
-                state = json.load(f)
-            return state.get("assets", {})
+        snapshot = _get_state_store().load_snapshot()
+        if snapshot is not None and snapshot.assets:
+            return snapshot.assets
     except Exception:
         pass
     return {}

@@ -51,6 +51,9 @@ class BrokerInterface(ABC):
     def place_order(self, order: Order) -> str: ...
 
     @abstractmethod
+    def place_filled_order(self, order: Order, fill_price: float) -> str: ...
+
+    @abstractmethod
     def cancel_order(self, order_id: str) -> bool: ...
 
     @abstractmethod

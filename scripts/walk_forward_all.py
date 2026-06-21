@@ -5,7 +5,7 @@ import xgboost as xgb
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from features.registry import FEATURE_REGISTRY
+from features.registry import FEATURE_REGISTRY, ASSET_LABEL_PARAMS
 from features.builder import build_features, compute_macro_derived
 from labels.triple_barrier import apply_triple_barrier
 from scripts.train_all_assets import fetch_history
@@ -18,8 +18,13 @@ def _slug(ticker: str) -> str:
 
 
 def compute_features(df, ref, macro, ticker):
+    """Build feature DataFrame WITHOUT labels to prevent year-boundary label leakage.
+
+    Labels are computed per-fold inside the walk-forward loop so the
+    triple-barrier lookahead window never crosses the train/test boundary.
+    """
     contract = FEATURE_REGISTRY[ticker]
-    fdf = build_features(df, macro, ref, contract)
+    fdf = build_features(df, macro, ref, contract, compute_labels=False)
     return fdf, list(contract.features)
 
 
@@ -51,6 +56,11 @@ def walk_forward_one(ticker, macro, ref, window_years=3, step_years=1, conf_thre
     start_year = years[0]
     end_year = years[-1]
 
+    contract = FEATURE_REGISTRY[ticker]
+    label_params = contract.label_params
+    pt_sl = label_params.get("pt_sl", [2.0, 2.0])
+    vb = label_params.get("vertical_barrier", 20)
+
     windows = []
     for current_year in range(start_year + window_years, end_year + 1, step_years):
         train_end = current_year - 1
@@ -60,14 +70,43 @@ def walk_forward_one(ticker, macro, ref, window_years=3, step_years=1, conf_thre
         oos_mask = features_df.index.year == oos_year
 
         X_train = features_df.loc[train_mask, feats]
-        y_train = features_df.loc[train_mask, 'label'].astype(int)
         X_oos = features_df.loc[oos_mask, feats]
-        y_oos = features_df.loc[oos_mask, 'label'].astype(int)
 
         if len(X_oos) == 0 or len(X_train) < 200:
             continue
 
-        # XGBoost multi:softprob requires all 3 classes present in training
+        # Compute labels per-fold to avoid year-boundary lookahead leakage.
+        # Expand training close by vertical_barrier rows past train_end so
+        # triple-barrier labels have a complete lookahead window.
+        train_close = closes.loc[train_mask]
+        train_extended_end = min(len(closes), train_mask.sum() + vb)
+        train_close_ext = closes.iloc[:train_extended_end]
+        train_labels = apply_triple_barrier(train_close_ext, pt_sl=pt_sl, vertical_barrier=vb)
+        if train_labels is not None and not train_labels.empty:
+            y_train = train_labels.reindex(train_close.index)['label'].dropna().astype(int)
+        else:
+            y_train = pd.Series(dtype=int)
+        train_valid = y_train.index.intersection(X_train.index)
+        X_train = X_train.loc[train_valid]
+        y_train = y_train.loc[train_valid]
+
+        # OOS labels: extend close by vb rows past OOS for complete lookahead.
+        oos_close = closes.loc[oos_mask]
+        oos_extended_end = min(len(closes), oos_mask.sum() + vb + train_mask.sum())
+        oos_close_ext = closes.iloc[train_mask.sum():oos_extended_end]
+        oos_labels = apply_triple_barrier(oos_close_ext, pt_sl=pt_sl, vertical_barrier=vb)
+        if oos_labels is not None and not oos_labels.empty:
+            y_oos = oos_labels.reindex(oos_close.index)['label'].dropna().astype(int)
+        else:
+            y_oos = pd.Series(dtype=int)
+        oos_valid = y_oos.index.intersection(X_oos.index)
+        X_oos = X_oos.loc[oos_valid]
+        y_oos = y_oos.loc[oos_valid]
+
+        if len(y_oos) == 0 or len(y_train) < 200:
+            continue
+
+        # XGBoost multi:softprob requires all 3 label classes present in training
         if len(np.unique(y_train)) < 3:
             logger.warning('  %s [%d]: not all 3 label classes in train, skipping', ticker, oos_year)
             continue

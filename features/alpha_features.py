@@ -285,10 +285,13 @@ def build_alpha_features(
             features[f"{asset_upper}_cot_z"] = 0.0
             features[f"{asset_upper}_cot_change_4w"] = 0.0
 
-    # Overwrite/add cross-asset COT features from cot_data if available
+    # Overwrite/add cross-asset COT features from cot_data if available.
+    # COT is published Friday 3:30pm ET for Tuesday snapshot — 3-day publication lag.
+    cot_lag_days = 3
     if cot_data is not None and not cot_data.empty:
         for col in cot_data.columns:
-            features[col] = cot_data[col].reindex(features.index, method="ffill")
+            cot_lagged = cot_data[col].shift(cot_lag_days)
+            features[col] = cot_lagged.reindex(features.index, method="ffill")
 
     # Final forward-fill and dropna to handle indicator warmup.
     # We also fill any remaining NaNs in cross-asset/COT features with 0.0

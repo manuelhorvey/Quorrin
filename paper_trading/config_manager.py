@@ -40,7 +40,7 @@ class MT5Config:
     @classmethod
     def from_dict(cls, data: dict) -> "MT5Config":
         # YAML values are defaults; env vars take precedence (security)
-        account = int(os.environ.get("MT5_ACCOUNT", data.get("account", 0)))
+        account = int(os.environ.get("MT5_ACCOUNT") or data.get("account", 0))
         password = os.environ.get("MT5_PASSWORD", data.get("password", ""))
         server = os.environ.get("MT5_SERVER", data.get("server", ""))
 

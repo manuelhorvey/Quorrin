@@ -38,9 +38,7 @@ def _adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) ->
     plus_dm = ((up > down) & (up > 0)).astype(float) * up
     minus_dm = ((down > up) & (down > 0)).astype(float) * down
 
-    tr = pd.concat(
-        [h - lo, (h - c.shift()).abs(), (lo - c.shift()).abs()], axis=1
-    ).max(axis=1)
+    tr = pd.concat([h - lo, (h - c.shift()).abs(), (lo - c.shift()).abs()], axis=1).max(axis=1)
 
     atr = tr.ewm(span=period, adjust=False).mean()
     plus_di = 100 * plus_dm.ewm(span=period, adjust=False).mean() / atr.replace(0, np.nan)
@@ -80,12 +78,12 @@ def trend_adjusted_pt_sl(
     # Uptrend: slope > 0 and ADX > threshold
     mask_up = (slope > 0.0) & (strength > adx_threshold)
     adjusted[mask_up, 0] = base_tp * narrow_factor  # narrow upper barrier
-    adjusted[mask_up, 1] = base_sl * widen_factor    # widen lower barrier
+    adjusted[mask_up, 1] = base_sl * widen_factor  # widen lower barrier
 
     # Downtrend: slope < 0 and ADX > threshold
     mask_down = (slope < 0.0) & (strength > adx_threshold)
-    adjusted[mask_down, 0] = base_tp * widen_factor   # widen upper barrier
-    adjusted[mask_down, 1] = base_sl * narrow_factor   # narrow lower barrier
+    adjusted[mask_down, 0] = base_tp * widen_factor  # widen upper barrier
+    adjusted[mask_down, 1] = base_sl * narrow_factor  # narrow lower barrier
 
     return adjusted
 

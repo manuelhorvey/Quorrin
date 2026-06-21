@@ -39,6 +39,7 @@ class AssetInferencePipeline:
         self.asset = asset
         self._truncation_validated = False
         self._validated_model_id = -1
+        self._truncate_inference = False
 
     def generate_signal(self, threshold=0.45):
         return self._generate_and_apply(threshold)
@@ -53,7 +54,7 @@ class AssetInferencePipeline:
         df = self._fetch_and_prepare_data(asset)
 
         _t_fetch = time.perf_counter()
-        asset._truncate_inference = True
+        self._truncate_inference = True
         alpha_df, features_df, x = self._build_feature_set(asset, df)
 
         _t_features = time.perf_counter()
@@ -152,7 +153,7 @@ class AssetInferencePipeline:
         hist_prices, rate_diffs, dxy, vix, spx, commodities = fetch_asset_data(asset.name, asset.ticker)
         self._detect_bar_jump(asset, len(hist_prices))
         cot_data = fetch_cot_features(hist_prices.index)
-        if getattr(asset, "_truncate_inference", False):
+        if self._truncate_inference:
             _trunc_rows = _MAX_INDICATOR_LOOKBACK + 50
             hist_prices = hist_prices.iloc[-_trunc_rows:]
             if not rate_diffs.empty:
@@ -178,7 +179,7 @@ class AssetInferencePipeline:
 
         ohlcv = fetch_asset_ohlcv(asset.ticker)
         if not ohlcv.empty:
-            if getattr(asset, "_truncate_inference", False):
+            if self._truncate_inference:
                 ohlcv = ohlcv.iloc[-_trunc_rows:]
             ohlcv = ohlcv.reindex(alpha_idx).ffill()
 
@@ -263,12 +264,12 @@ class AssetInferencePipeline:
             self._validate_inference_truncation(asset, x)
             self._truncation_validated = True
             self._validated_model_id = _model_id
-        if getattr(asset, "_truncate_inference", False):
+        if self._truncate_inference:
             return x.iloc[-1:], features_df.iloc[-1:]
         return x, features_df
 
     def _run_inference(self, asset, x, features_df, feature_hash=""):
-        _infer_idx = x.index[-1:] if getattr(asset, "_truncate_inference", False) else x.index
+        _infer_idx = x.index[-1:] if self._truncate_inference else x.index
 
         raw = asset._model_iface.predict(asset.model, x)
         if raw.shape[1] == 2:
@@ -625,7 +626,7 @@ class AssetInferencePipeline:
             infer_time,
             apply_time,
             t_total - t0,
-            getattr(asset, "_truncate_inference", False),
+            self._truncate_inference,
             len(x),
         )
 
@@ -636,7 +637,7 @@ class AssetInferencePipeline:
                 asset.name,
                 len(x),
             )
-            asset._truncate_inference = False
+            self._truncate_inference = False
             return
         x_warm = x.iloc[_MAX_INDICATOR_LOOKBACK:]
         try:
@@ -644,7 +645,7 @@ class AssetInferencePipeline:
             truncated = asset._model_iface.predict(asset.model, x_warm.iloc[-1:])
         except Exception as e:
             logger.warning("%s: truncation validation failed — %s", asset.name, e)
-            asset._truncate_inference = False
+            self._truncate_inference = False
             return
         max_diff = float(np.max(np.abs(full[-1:] - truncated)))
         if max_diff > 1e-6:
@@ -653,7 +654,7 @@ class AssetInferencePipeline:
                 asset.name,
                 max_diff,
             )
-            asset._truncate_inference = False
+            self._truncate_inference = False
         else:
             logger.info(
                 "%s: inference truncation validated (diff=%.2e, rows=%d)",
@@ -661,7 +662,7 @@ class AssetInferencePipeline:
                 max_diff,
                 len(x),
             )
-            asset._truncate_inference = True
+            self._truncate_inference = True
 
     def _record_inference_proxies(self, signal_data, signal: str) -> None:
         asset = self.asset

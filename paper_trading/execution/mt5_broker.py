@@ -138,6 +138,14 @@ class MT5Broker(BrokerInterface):
 
     # ── Orders ─────────────────────────────────────────────────────────
 
+    def place_filled_order(self, order: Order, fill_price: float) -> str:
+        """Place a market order using an externally provided fill price.
+
+        MT5Broker ignores the provided fill_price since execution price
+        is determined by the broker; this is equivalent to a market order.
+        """
+        return self.place_order(order)
+
     def place_order(self, order: Order) -> str:
         self.ensure_connected()
 

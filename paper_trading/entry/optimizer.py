@@ -37,7 +37,7 @@ class EntryOptimizer:
             return policy_func(signal, structure, config or {})
         except Exception as e:
             logger.error(f"Entry policy execution failed for {archetype}: {e}")
-            return EntryAction.ENTER  # Fallback to immediate entry on error
+            return EntryAction.SKIP  # Fail-closed: skip entry on policy error
 
     def _momentum_ignition_policy(self, signal: SignalType, s: MarketStructureState, config: dict) -> EntryAction:
         """

@@ -137,7 +137,7 @@ class _FrameProtocol:
 
     def __init__(self, host: str = "127.0.0.1", port: int | None = None):
         self._host = host
-        self._port = port or int(os.environ.get("MT5_BRIDGE_PORT", "9879"))
+        self._port = port or int(os.environ.get("MT5_BRIDGE_PORT") or 9879)
         self._conns: list[_FrameConnection] = []
         self._lock = threading.RLock()
         self._rr_lock = threading.Lock()

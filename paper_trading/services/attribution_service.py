@@ -23,12 +23,12 @@ class AttributionService:
         try:
             path = os.path.join(attribution_export_dir, f"{name}_attribution.parquet")
             records = list(attribution_buffer)
-            attribution_buffer.clear()
             frame = TradeAttributionRecord.to_frame(records, experiment_id=experiment_id)
             if os.path.exists(path):
                 existing = pd.read_parquet(path)
                 frame = pd.concat([existing, frame], ignore_index=True)
             frame.to_parquet(path, index=False)
+            attribution_buffer.clear()
             logger.debug("attribution: flushed %d records for %s to %s", len(records), name, path)
         except Exception:
             logger.exception("attribution: failed to flush records for %s", name)

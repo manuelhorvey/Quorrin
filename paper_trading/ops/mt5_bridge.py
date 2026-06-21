@@ -46,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger("mt5_bridge")
 
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("MT5_BRIDGE_PORT", "9879"))
+PORT = int(os.environ.get("MT5_BRIDGE_PORT") or 9879)
 
 # Frame format: 4-byte big-endian length prefix + JSON payload
 _HEADER_FMT = "!I"

@@ -267,6 +267,12 @@ def run_one_asset(
     )
     logger.info("  %s CMSS=%.4f class=%s", name, manifold.get("cmss", 0), manifold.get("stability_class", "N/A"))
 
+    # ── Observe-only expectations for statistical sub-checks ──
+    # If results diverge from below, investigate wiring (not asset quality):
+    #   CADCHF, AUDUSD, NZDCHF: should clear all three (PSR≥0.95, n≥MinTRL, CRS≥0.70)
+    #   USDCAD, NZDUSD: should fail PSR (both negative Sharpe per portfolio backtest)
+    #   ^DJI, ES, NQ: should clear PSR due to SELL_ONLY filter (are net-positive)
+    #   EURAUD: weakest evidence asset — pass/fail is informative either way
     logger.info("  Evaluating promotion protocol...")
     promotion = evaluate_promotion(
         asset=name,

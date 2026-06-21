@@ -118,6 +118,13 @@ def evaluate_promotion(
     with open(os.path.join(result_path, fname), "w") as f:
         json.dump(result, f, indent=2, default=str)
 
+    # ── Accumulate observed statistical failures across runs ──
+    obs = result.get("conditions", {}).get("performance", {}).get("observed_failures", [])
+    if obs:
+        obs_path = os.path.join(result_path, "observed_statistical_failures.jsonl")
+        with open(obs_path, "a") as f:
+            f.write(json.dumps({"asset": asset, "timestamp": result["timestamp"], "observed_failures": obs}, default=str) + "\n")
+
     return result
 
 

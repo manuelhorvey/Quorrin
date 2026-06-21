@@ -91,26 +91,31 @@ _macro_cache = _TTLCache(ttl=300)
 
 # Cycle-scoped cache for fetch_asset_data results — keyed by asset name.
 # Each cycle increments _cycle_id; stale entries are evicted on access.
+# Thread-safe via _cycle_lock.
 _cycle_cache: dict[str, tuple[int, Any]] = {}
 _cycle_id: int = 0
+_cycle_lock: threading.Lock = threading.Lock()
 
 
 def bump_cycle_id() -> int:
     """Increment the cycle id to invalidate per-asset caches."""
     global _cycle_id
-    _cycle_id += 1
-    return _cycle_id
+    with _cycle_lock:
+        _cycle_id += 1
+        return _cycle_id
 
 
 def _get_cycle_cached(key: str) -> Any | None:
-    value = _cycle_cache.get(key)
-    if value is not None and value[0] == _cycle_id:
-        return value[1]
+    with _cycle_lock:
+        value = _cycle_cache.get(key)
+        if value is not None and value[0] == _cycle_id:
+            return value[1]
     return None
 
 
 def _set_cycle_cache(key: str, value: Any) -> None:
-    _cycle_cache[key] = (_cycle_id, value)
+    with _cycle_lock:
+        _cycle_cache[key] = (_cycle_id, value)
 
 
 def _normalize_index(idx: pd.Index) -> pd.Index:

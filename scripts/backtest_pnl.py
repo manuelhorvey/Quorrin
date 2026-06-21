@@ -432,6 +432,8 @@ def main():
                     "^DJI",
                     "USDCHF",
                     "EURCHF",
+                    "NZDUSD",
+                    "EURNZD",
                 }
             )
             if asset in SELL_ONLY_ASSETS:

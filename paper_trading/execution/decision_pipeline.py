@@ -423,6 +423,8 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
         "^DJI",
         "USDCHF",
         "EURCHF",
+        "NZDUSD",
+        "EURNZD",
     }
 )
 

@@ -12,9 +12,12 @@ from paper_trading.api.common import (
     LOG_PATH,
     cache_get,
     cache_set,
+    get_mt5_status,
     get_vol_baselines,
+    json_dumps,
 )
 from paper_trading.config_manager import get_config
+from paper_trading.state_store import CONTRACT_VERSION
 from paper_trading.governance.health import compute_all as _compute_health_all
 from paper_trading.governance.health import get_latest as _get_health_latest
 from paper_trading.governance.multipliers import compute_governance_multipliers
@@ -49,12 +52,16 @@ def handle_state(path: str, query: dict) -> str:
             for name in assets:
                 if name not in allocs and name in pf:
                     allocs[name] = pf[name]["alloc"]
-        data = json.dumps(state, indent=2, default=str)
+        data = json_dumps(state)
     else:
         cfg = get_config()
         pf = build_paper_portfolio(cfg.halt)
-        data = json.dumps(
+        data = json_dumps(
             {
+                "contract_version": CONTRACT_VERSION,
+                "sequence_id": 0,
+                "schema_version": "1.0.0",
+                "timestamp": datetime.now(tz=ET).isoformat(),
                 "engine_status": {
                     "initialized": True,
                     "last_update": None,
@@ -128,14 +135,14 @@ def handle_trades(path: str, query: dict) -> str:
                         deduped.append(t)
             deduped.sort(key=lambda x: x.get("exit_date", ""), reverse=True)
 
-    data = json.dumps(deduped[offset : offset + limit], default=str)
+    data = json_dumps(deduped[offset : offset + limit])
     cache_set(path, data)
     return data
 
 
 def handle_equity_history(path: str, query: dict) -> str:
     history = _STORE.read_equity_history()
-    data = json.dumps(history, default=str)
+    data = json_dumps(history)
     cache_set("/equity_history.json", data)
     return data
 
@@ -150,6 +157,9 @@ def handle_confidence(path: str, query: dict) -> str:
         for name, asset in snapshot.assets.items():
             sig = asset.get("last_signal") or {}
             conf = sig.get("confidence", 0)
+            # Normalize 0-1 → 0-100 (confidence can arrive as either scale)
+            if conf <= 1:
+                conf = conf * 100
             bucket_low = min(int(conf // 10) * 10, 90)
             bucket = f"{bucket_low}-{bucket_low + 10}"
             live.setdefault(name, {})
@@ -163,9 +173,9 @@ def handle_confidence(path: str, query: dict) -> str:
                 historical = json.loads(df.to_json(orient="records", default_handler=str))
         except Exception:
             pass
-        data = json.dumps({"live": live, "historical": historical}, indent=2, default=str)
+        data = json_dumps({"live": live, "historical": historical}, indent=2)
     else:
-        data = json.dumps({"live": {}, "historical": []})
+        data = json_dumps({"live": {}, "historical": []})
     cache_set("/confidence.json", data)
     return data
 
@@ -197,7 +207,7 @@ def handle_volatility(path: str, query: dict) -> str:
                         "status": status,
                     }
                 )
-    data = json.dumps(regimes, indent=2, default=str)
+    data = json_dumps(regimes, indent=2)
     cache_set("/volatility.json", data)
     return data
 
@@ -218,7 +228,7 @@ def handle_logs(path: str, query: dict) -> str:
 
 
 def handle_risk(path: str, query: dict) -> str:
-    data = json.dumps(_get_risk_latest(), indent=2, default=str)
+    data = json_dumps(_get_risk_latest(), indent=2)
     cache_set("/risk.json", data)
     return data
 
@@ -227,14 +237,14 @@ def handle_risk_asset(path: str, query: dict) -> tuple[str, int]:
     asset = path[len("/risk/") : -len(".json")]
     signal = _get_risk_latest(asset)
     if signal is not None:
-        return json.dumps(signal, indent=2, default=str), 200
-    return json.dumps({"error": f"No risk signal for {asset}", "asset": asset}), 404
+        return json_dumps(signal, indent=2), 200
+    return json_dumps({"error": f"No risk signal for {asset}", "asset": asset}), 404
 
 
 def handle_shadow_actions(path: str, query: dict) -> str:
     snapshot = _STORE.load_snapshot()
     actions = getattr(snapshot, "shadow_actions", None) if snapshot else None
-    data = json.dumps(actions or {}, indent=2, default=str)
+    data = json_dumps(actions or {}, indent=2)
     cache_set("/shadow-actions", data)
     return data
 
@@ -245,12 +255,12 @@ def handle_shadow_actions_asset(path: str, query: dict) -> tuple[str, int]:
     actions = getattr(snapshot, "shadow_actions", None) if snapshot else None
     action = (actions or {}).get(asset)
     if action is not None:
-        return json.dumps(action, indent=2, default=str), 200
-    return json.dumps({"error": f"No shadow action for {asset}", "asset": asset}), 404
+        return json_dumps(action, indent=2), 200
+    return json_dumps({"error": f"No shadow action for {asset}", "asset": asset}), 404
 
 
 def handle_health(path: str, query: dict) -> str:
-    data = json.dumps(_compute_health_all(), indent=2, default=str)
+    data = json_dumps(_compute_health_all(), indent=2)
     cache_set("/health.json", data)
     return data
 
@@ -259,8 +269,8 @@ def handle_health_asset(path: str, query: dict) -> tuple[str, int]:
     asset = path[len("/health/") : -len(".json")]
     signal = _get_health_latest(asset)
     if signal is not None:
-        return json.dumps(signal, indent=2, default=str), 200
-    return json.dumps({"error": f"No health score for {asset}", "asset": asset}), 404
+        return json_dumps(signal, indent=2), 200
+    return json_dumps({"error": f"No health score for {asset}", "asset": asset}), 404
 
 
 def handle_governance(path: str, query: dict) -> str:
@@ -296,7 +306,7 @@ def handle_governance(path: str, query: dict) -> str:
                 "soft_warnings": asset.get("soft_warnings", []),
                 "crs": metrics.get("crs"),
             }
-    data = json.dumps(governance, indent=2, default=str)
+    data = json_dumps(governance, indent=2)
     cache_set("/governance.json", data)
     return data
 
@@ -316,7 +326,7 @@ def handle_statistical_metrics(path: str, query: dict) -> str:
                 "crs": metrics.get("crs"),
                 "hhi": metrics.get("hhi"),
             }
-    data = json.dumps(result, indent=2, default=str)
+    data = json_dumps(result, indent=2)
     cache_set("/statistical-metrics.json", data)
     return data
 
@@ -324,14 +334,14 @@ def handle_statistical_metrics(path: str, query: dict) -> str:
 def handle_risk_parity(path: str, query: dict) -> str:
     snapshot = _STORE.load_snapshot()
     rp = getattr(snapshot, "risk_parity", None) if snapshot else None
-    data = json.dumps(rp or {}, indent=2, default=str)
+    data = json_dumps(rp or {}, indent=2)
     cache_set("/risk-parity.json", data)
     return data
 
 
 def handle_narrative(path: str, query: dict) -> str:
     status = get_narrative_status()
-    data = json.dumps(status, indent=2, default=str)
+    data = json_dumps(status, indent=2)
     cache_set("/narrative.json", data)
     return data
 
@@ -346,7 +356,7 @@ def handle_liquidity(path: str, query: dict) -> str:
                 "sl_mult": asset.get("liquidity_sl_mult", 1.0),
                 "size_scalar": asset.get("liquidity_size_scalar", 1.0),
             }
-    data = json.dumps(regimes, indent=2, default=str)
+    data = json_dumps(regimes, indent=2)
     cache_set("/liquidity.json", data)
     return data
 
@@ -367,7 +377,7 @@ def handle_psi(path: str, query: dict) -> str:
                     "psi_ok": psi.get("psi_ok", True),
                     "penalty": psi.get("penalty", 0.0),
                 }
-    data = json.dumps(psi_data, indent=2, default=str)
+    data = json_dumps(psi_data, indent=2)
     cache_set("/psi.json", data)
     return data
 
@@ -376,27 +386,27 @@ def handle_trade_outcomes(path: str, query: dict) -> str:
     outcomes = _STORE.read_trade_outcomes()
     if outcomes is None:
         outcomes = {"overall": {}, "by_asset": [], "updated_at": ""}
-    data = json.dumps(outcomes, indent=2, default=str)
+    data = json_dumps(outcomes, indent=2)
     cache_set("/trade-outcomes.json", data)
     return data
 
 
 def handle_weekly_review(path: str, query: dict) -> str:
-    data = json.dumps(compute_weekly_review(_STORE), indent=2, default=str)
+    data = json_dumps(compute_weekly_review(_STORE), indent=2)
     cache_set("/weekly-review.json", data)
     return data
 
 
 def handle_ping(path: str, query: dict) -> str:
-    return json.dumps({"status": "ok"}, indent=2)
+    return json_dumps({"status": "ok"}, indent=2)
 
 
 def handle_narrative_confirm(body: bytes) -> tuple[str, int]:
     ok = confirm_pending_narrative()
     if ok:
-        return json.dumps({"status": "confirmed", "message": "Narrative confirmed"}, indent=2), 200
+        return json_dumps({"status": "confirmed", "message": "Narrative confirmed"}, indent=2), 200
     return (
-        json.dumps({"status": "error", "message": "No pending narrative to confirm"}, indent=2),
+        json_dumps({"status": "error", "message": "No pending narrative to confirm"}, indent=2),
         400,
     )
 
@@ -415,7 +425,7 @@ def handle_weekly_review_acknowledge(body: bytes) -> tuple[str, int]:
     existing.append(entry)
     with open(rlp, "w") as f:
         json.dump(existing, f, indent=2)
-    return json.dumps({"status": "ok", "acknowledged_at": now}, indent=2), 200
+    return json_dumps({"status": "ok", "acknowledged_at": now}, indent=2), 200
 
 
 # ── Phase 2: Analytics Layer Handlers ──────────────────────────────
@@ -439,7 +449,7 @@ def handle_attribution_trades(path: str, query: dict) -> str:
         regime=regime,
         asset=asset,
     )
-    data = json.dumps(records, indent=2, default=str)
+    data = json_dumps(records, indent=2)
     cache_set("/attribution/trades.json", data)
     return data
 
@@ -449,7 +459,7 @@ def handle_attribution_summary(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     all_records = _STORE.read_attribution(limit=limit)
     if not all_records:
-        return json.dumps({"by_archetype": {}, "by_regime": {}, "overall": {}}, indent=2)
+        return json_dumps({"by_archetype": {}, "by_regime": {}, "overall": {}}, indent=2)
 
     from shared.metrics.attribution import compute_aggregate_domain_scores
     from shared.metrics.mae_mfe import compute_mae_mfe_stats
@@ -465,7 +475,7 @@ def handle_attribution_summary(path: str, query: dict) -> str:
         "domain_scores": domain_scores["overall"],
     }
 
-    data = json.dumps(
+    data = json_dumps(
         {
             "overall": overall,
             "by_archetype": mae_mfe.get("by_archetype", {}),
@@ -473,8 +483,6 @@ def handle_attribution_summary(path: str, query: dict) -> str:
             "domain_scores": domain_scores.get("by_archetype", {}),
             "updated_at": datetime.now(tz=ET).isoformat(),
         },
-        indent=2,
-        default=str,
     )
     cache_set("/attribution/summary.json", data)
     return data
@@ -485,7 +493,7 @@ def handle_execution_quality(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_attribution(limit=limit)
     if not records:
-        return json.dumps({"by_asset": {}}, indent=2)
+        return json_dumps({"by_asset": {}}, indent=2)
 
     import pandas as pd
 
@@ -524,7 +532,7 @@ def handle_execution_quality(path: str, query: dict) -> str:
             "avg_fill_ratio": round(float(grp["friction_fill_qty_ratio"].mean()), 4) if has_fill_ratio else 1.0,
         }
 
-    data = json.dumps({"by_asset": by_asset}, indent=2, default=str)
+    data = json_dumps({"by_asset": by_asset}, indent=2)
     cache_set("/execution/quality.json", data)
     return data
 
@@ -534,7 +542,7 @@ def handle_execution_slippage(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_attribution(limit=limit)
     if not records:
-        return json.dumps({"entry_slippage": [], "exit_slippage": []}, indent=2)
+        return json_dumps({"entry_slippage": [], "exit_slippage": []}, indent=2)
 
     entry_slippage = []
     exit_slippage = []
@@ -552,7 +560,7 @@ def handle_execution_slippage(path: str, query: dict) -> str:
         if r.get("friction_partial_fill"):
             partial_count += 1
 
-    data = json.dumps(
+    data = json_dumps(
         {
             "entry_slippage": entry_slippage,
             "exit_slippage": exit_slippage,
@@ -560,8 +568,6 @@ def handle_execution_slippage(path: str, query: dict) -> str:
             "partial_fill_count": partial_count,
             "n": len(records),
         },
-        indent=2,
-        default=str,
     )
     cache_set("/execution/slippage.json", data)
     return data
@@ -577,7 +583,7 @@ def handle_shadow_trades_route(path: str, query: dict) -> str:
     offset = max(0, int(query.get("offset", 0)))
     alt_label = query.get("alt_label") or None
     records = _STORE.read_shadow_trades(limit=limit, offset=offset, alt_label=alt_label)
-    data = json.dumps(records, indent=2, default=str)
+    data = json_dumps(records, indent=2)
     cache_set("/shadow/trades.json", data)
     return data
 
@@ -587,13 +593,13 @@ def handle_shadow_summary(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_shadow_trades(limit=limit)
     if not records:
-        return json.dumps({"overall": {"n": 0}}, indent=2)
+        return json_dumps({"overall": {"n": 0}}, indent=2)
 
     from shared.metrics.shadow import compute_shadow_divergence
 
     result = compute_shadow_divergence(records)
     result["updated_at"] = datetime.now(tz=ET).isoformat()
-    data = json.dumps(result, indent=2, default=str)
+    data = json_dumps(result, indent=2)
     cache_set("/shadow/summary.json", data)
     return data
 
@@ -605,8 +611,8 @@ def handle_analytics_snapshot(path: str, query: dict) -> str:
     """
     snapshot = _STORE.read_analytics_snapshot()
     if snapshot is not None:
-        return json.dumps(snapshot, indent=2, default=str)
-    return json.dumps({"overall": {}, "by_archetype": {}, "by_regime": {}, "shadow": {}}, indent=2)
+        return json_dumps(snapshot, indent=2)
+    return json_dumps({"overall": {}, "by_archetype": {}, "by_regime": {}, "shadow": {}}, indent=2)
 
 
 def handle_attribution_waterfall(path: str, query: dict) -> str:
@@ -614,7 +620,7 @@ def handle_attribution_waterfall(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_attribution(limit=limit)
     if not records:
-        return json.dumps(
+        return json_dumps(
             {
                 "prediction_pnl": 0.0,
                 "execution_cost": 0.0,
@@ -630,7 +636,7 @@ def handle_attribution_waterfall(path: str, query: dict) -> str:
 
     result = compute_waterfall(records)
     result["updated_at"] = datetime.now(tz=ET).isoformat()
-    data = json.dumps(result, indent=2, default=str)
+    data = json_dumps(result, indent=2)
     cache_set("/attribution/waterfall.json", data)
     return data
 
@@ -640,7 +646,7 @@ def handle_archetype_stats(path: str, query: dict) -> str:
     limit = max(1, min(int(query.get("limit", 500)), 2000))
     records = _STORE.read_attribution(limit=limit)
     if not records:
-        return json.dumps({"by_archetype": {}}, indent=2)
+        return json_dumps({"by_archetype": {}}, indent=2)
 
     import pandas as pd
 
@@ -662,7 +668,7 @@ def handle_archetype_stats(path: str, query: dict) -> str:
                 "avg_bars_held": float(grp.get("exit_bars_held", 0).mean()),
             }
 
-    data = json.dumps({"by_archetype": by_archetype}, indent=2, default=str)
+    data = json_dumps({"by_archetype": by_archetype}, indent=2)
     cache_set("/archetype/stats.json", data)
     return data
 
@@ -684,9 +690,15 @@ def handle_live_attribution(path: str, query: dict) -> str:
                 "running_mfe": data.get("running_mfe"),
             }
         )
-    result = json.dumps(live, indent=2, default=str)
+    result = json_dumps(live, indent=2)
     cache_set("/attribution/live.json", result)
     return result
+
+
+def handle_mt5_status(path: str, query: dict) -> str:
+    data = json_dumps(get_mt5_status(), indent=2)
+    cache_set("/mt5/status.json", data)
+    return data
 
 
 GET_ROUTES: dict[str, tuple] = {
@@ -717,6 +729,7 @@ GET_ROUTES: dict[str, tuple] = {
     "/attribution/live.json": (handle_live_attribution, False),
     "/attribution/waterfall.json": (handle_attribution_waterfall, False),
     "/analytics/snapshot.json": (handle_analytics_snapshot, False),
+    "/mt5/status.json": (handle_mt5_status, False),
     "/ping": (handle_ping, False),
 }
 

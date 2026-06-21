@@ -19,10 +19,14 @@ ET = pytz.timezone("US/Eastern")
 SCHEMA_VERSION = "1.0.0"  # JSON snapshot schema
 DB_SCHEMA_VERSION = "2.0.0"  # SQLite DB schema (bumped from implicit v1)
 
+CONTRACT_VERSION = 1  # Increment when state.json contract changes incompatibly
+
 
 @dataclass
 class EngineSnapshot:
     schema_version: str = SCHEMA_VERSION
+    contract_version: int = CONTRACT_VERSION
+    sequence_id: int = 0
     timestamp: str = ""
     portfolio: dict | None = None
     assets: dict | None = None
@@ -37,6 +41,8 @@ class EngineSnapshot:
     def from_dict(cls, d: dict) -> "EngineSnapshot":
         return cls(
             schema_version=d.get("schema_version", "0.0.0"),
+            contract_version=d.get("contract_version", 0),
+            sequence_id=d.get("sequence_id", 0),
             timestamp=d.get("timestamp", ""),
             portfolio=d.get("portfolio"),
             assets=d.get("assets"),
@@ -56,6 +62,8 @@ def sanitize(obj):
     if isinstance(obj, dict):
         return {k: sanitize(v) for k, v in obj.items()}
     elif isinstance(obj, list):
+        return [sanitize(v) for v in obj]
+    elif isinstance(obj, tuple):
         return [sanitize(v) for v in obj]
     elif isinstance(obj, (float, np.floating)) and (math.isinf(obj) or math.isnan(obj)):
         return None
@@ -625,12 +633,17 @@ class _DatabaseStore:
 class _SnapshotManager:
     """JSON state snapshot save/load with monotonic-time TTL cache."""
 
+    _sequence_counter: int = 0
+
     def __init__(self, state_path: str, cache_ttl: float = 1.0):
         self._state_path = state_path
         self._cache_ttl = cache_ttl
         self._cache: tuple[EngineSnapshot, float] | None = None
 
     def save(self, snapshot: EngineSnapshot) -> None:
+        _SnapshotManager._sequence_counter += 1
+        snapshot.sequence_id = _SnapshotManager._sequence_counter
+        snapshot.contract_version = CONTRACT_VERSION
         self._cache = (snapshot, time.monotonic())
         os.makedirs(os.path.dirname(self._state_path), exist_ok=True)
         data = sanitize(asdict(snapshot))

@@ -1,6 +1,64 @@
+import json
 import os
+import threading
 import time
 from urllib.parse import unquote
+
+class _StrictJSONEncoder(json.JSONEncoder):
+    """Fails loud on non-serializable types instead of silently converting via default=str."""
+    def default(self, o):
+        raise TypeError(
+            f"Object of type {type(o).__name__} is not JSON serializable: {o!r}. "
+            "Fix the type or add an explicit serializer."
+        )
+
+
+def json_dumps(obj, **kwargs):
+    kwargs.setdefault("indent", 2)
+    kwargs.setdefault("ensure_ascii", False)
+    return json.dumps(obj, cls=_StrictJSONEncoder, **kwargs)
+
+
+_mt5_status: dict | None = None
+_mt5_status_lock = threading.Lock()
+
+
+def set_mt5_status(status: dict) -> None:
+    global _mt5_status
+    with _mt5_status_lock:
+        _mt5_status = status
+
+
+def get_mt5_status() -> dict:
+    with _mt5_status_lock:
+        if _mt5_status is not None:
+            return dict(_mt5_status)
+    return {"connected": False, "status": "UNKNOWN", "last_heartbeat": None, "account": None}
+
+
+def _get_state_meta() -> tuple[str, int]:
+    """Return (state_timestamp, sequence_id) from latest snapshot."""
+    from paper_trading.state_store import EngineSnapshot
+
+    snapshot: EngineSnapshot | None = _STORE.load_snapshot()
+    if snapshot is not None:
+        return snapshot.timestamp, snapshot.sequence_id
+    return "", 0
+
+
+def _with_state_meta(data) -> dict:
+    """Wrap response data in a standard envelope with state metadata.
+
+    Returns {"data": <original>, "state_timestamp": "...", "sequence_id": N}.
+    Keeps backward compat: fetchApi auto-unwraps on the frontend.
+    """
+    ts, seq = _get_state_meta()
+    return {
+        "data": data,
+        "state_timestamp": ts,
+        "sequence_id": seq,
+    }
+
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

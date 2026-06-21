@@ -5,7 +5,12 @@ import type { z } from 'zod'
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(endpoint, options)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json() as Promise<T>
+  const json = await res.json()
+  // Auto-unwrap state metadata envelope if present
+  if (json && typeof json === 'object' && 'data' in json && 'state_timestamp' in json) {
+    return json.data as T
+  }
+  return json as T
 }
 
 export function createApiQuery<T>(

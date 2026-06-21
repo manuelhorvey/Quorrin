@@ -571,8 +571,14 @@ def run_decision_pipeline(
     decision: TradeDecision,
     df: pd.DataFrame,
     stages: list[StageFn] | None = None,
-) -> None:
-    """Execute the decision pipeline for a single asset cycle."""
+) -> str | None:
+    """Execute the decision pipeline for a single asset cycle.
+
+    Returns the final signal direction after all governance stages:
+      - "BUY"  (ctx.new_side == PositionSide.LONG)
+      - "SELL" (ctx.new_side == PositionSide.SHORT)
+      - None   (FLAT — ctx.new_side is None or aborted)
+    """
     if stages is None:
         stages = DEFAULT_STAGES
 
@@ -604,3 +610,11 @@ def run_decision_pipeline(
                 "model_hash": getattr(engine, "_model_hash", "unknown"),
             },
         )
+
+    if ctx.abort:
+        return None
+    if ctx.new_side == PositionSide.LONG:
+        return "BUY"
+    if ctx.new_side == PositionSide.SHORT:
+        return "SELL"
+    return None

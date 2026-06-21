@@ -552,17 +552,18 @@ class AssetEngine:
 
     def _apply_decision(self, decision: TradeDecision, df):
         self._cycle_counter += 1
-        run_decision_pipeline(self, decision, df)
+        self._last_final_signal = run_decision_pipeline(self, decision, df)
 
     def _poll_pending_entries(self, df: pd.DataFrame) -> None:
         self._entry.poll_pending_entries(df, self)
 
-    def _decision_to_dict(self, decision: TradeDecision):
+    def _decision_to_dict(self, decision: TradeDecision, final_signal: str | None = None):
         return MetricsService.decision_to_dict(
             decision,
             pos_mgr=self.pos_mgr,
             model=self.model,
             name=self.name,
+            final_signal=final_signal,
         )
 
     def _ensure_position_synced(self):

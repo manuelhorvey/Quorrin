@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import { useSelectedAsset } from '../hooks/useSelectedAsset'
+import { getFlag } from '../lib/featureFlags'
 import { confidenceToPercent, formatAssetPrice } from '../utils/format'
 import {
   confToState,
@@ -18,6 +20,8 @@ interface Props {
 
 const AssetCard: React.FC<Props> = React.memo(({ name }) => {
   const { data } = usePortfolioState()
+  const { setSelectedAsset } = useSelectedAsset()
+  const enableDetailPanel = getFlag('ENABLE_DETAIL_PANEL')
   const asset = data?.assets?.[name]
 
   const prevEntryRef = useRef<number | null>(null)
@@ -32,7 +36,7 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
     const hist = open?.prob_history ?? []
     const isNew = hist.length >= 2 && hist[hist.length - 1].signal !== hist[hist.length - 2].signal
     return {
-      signal: sig?.signal ?? 'FLAT',
+      signal: asset.final_signal ?? sig?.signal ?? 'FLAT',
       confidence: confidenceToPercent(sig?.confidence),
       price: sig?.close_price,
       totalReturn: m.mtm_return ?? m.total_return ?? 0,
@@ -81,7 +85,12 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
   const cardState: GovernanceState = info.signal === 'BUY' ? 'GREEN' : info.signal === 'SELL' ? 'RED' : 'INIT'
 
   return (
-    <div className={`relative bg-panel border border-default rounded-lg px-4 py-3 overflow-hidden group shadow-panel transition-all duration-200 hover:border-strong hover:shadow-card border-l-2 ${governanceBorder[cardState]} ${governanceBgMuted[cardState]}`}>
+    <div
+      role={enableDetailPanel ? 'button' : undefined}
+      tabIndex={enableDetailPanel ? 0 : undefined}
+      onClick={enableDetailPanel ? () => setSelectedAsset(name) : undefined}
+      onKeyDown={enableDetailPanel ? (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedAsset(name) } } : undefined}
+      className={`relative bg-panel border border-default rounded-lg px-4 py-3 overflow-hidden group shadow-panel transition-all duration-200 hover:border-strong hover:shadow-card border-l-2 ${enableDetailPanel ? 'cursor-pointer' : ''} ${governanceBorder[cardState]} ${governanceBgMuted[cardState]}`}>
       <div className="flex items-center gap-2 mb-2">
         <span className="font-semibold text-sm text-primary">{name}</span>
         {info.sellOnly && (

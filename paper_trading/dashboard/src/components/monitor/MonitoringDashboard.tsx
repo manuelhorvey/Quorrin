@@ -50,8 +50,8 @@ export default function MonitoringDashboard() {
   const governanceLayers = [
     {
       name: 'Exposure',
-      status: (portfolio?.average_validity_exposure ?? 0) > 0.95 ? 'critical' as const
-        : (portfolio?.average_validity_exposure ?? 0) > 0.9 ? 'warning' as const
+      status: (portfolio?.average_validity_exposure ?? 1) < 0.3 ? 'critical' as const
+        : (portfolio?.average_validity_exposure ?? 1) < 0.7 ? 'warning' as const
         : 'healthy' as const,
       detail: `Avg exposure ${((portfolio?.average_validity_exposure ?? 0) * 100).toFixed(0)}%`,
       metric: portfolio?.deployment_cleared ? 'Cleared' : 'Pending',

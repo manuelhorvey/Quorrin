@@ -3,6 +3,8 @@ import { fetchApi } from '../lib/api'
 import { EngineSnapshotSchema } from '../lib/schemas'
 import type { EngineSnapshot } from '../types/portfolio'
 
+const EXPECTED_CONTRACT_VERSION = 1
+
 export function usePortfolioState() {
   return useQuery({
     queryKey: ['portfolioState'],
@@ -13,7 +15,13 @@ export function usePortfolioState() {
         console.error('[State] validation failed:', parsed.error.issues)
         throw new Error('Invalid state data from server')
       }
-      return parsed.data as EngineSnapshot
+      const data = parsed.data as unknown as EngineSnapshot
+      if (data.contract_version !== EXPECTED_CONTRACT_VERSION) {
+        throw new Error(
+          `State contract version mismatch: got ${data.contract_version}, expected ${EXPECTED_CONTRACT_VERSION}`
+        )
+      }
+      return data
     },
     refetchInterval: (q) => {
       const d = q.state.data

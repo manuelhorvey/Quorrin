@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import { useSelectedAsset } from '../hooks/useSelectedAsset'
+import { getFlag } from '../lib/featureFlags'
 import { confidenceToPercent, formatAssetPrice } from '../utils/format'
 import DataTable, { type ColumnDef } from './ui/DataTable'
 import Panel from './ui/Panel'
@@ -36,6 +38,8 @@ interface SignalRow {
 export default function SignalsTable() {
   const [search, setSearch] = useState('')
   const { data, isPending } = usePortfolioState()
+  const { setSelectedAsset } = useSelectedAsset()
+  const enableDetailPanel = getFlag('ENABLE_DETAIL_PANEL')
 
   const rows = useMemo(() => {
     if (!data?.assets) return []
@@ -49,7 +53,7 @@ export default function SignalsTable() {
         const alloc = data.portfolio?.allocations?.[name] ?? 0
         return {
           name,
-          signal: sig?.signal ?? 'FLAT',
+          signal: asset.final_signal ?? sig?.signal ?? 'FLAT',
           confidence: confidenceToPercent(sig?.confidence),
           price: sig?.close_price ?? m?.current_price ?? 0,
           alloc,
@@ -195,6 +199,7 @@ export default function SignalsTable() {
           defaultSortKey="confidence"
           defaultSortDir="desc"
           storageKey="signals"
+          onRowClick={enableDetailPanel ? r => setSelectedAsset(r.name) : undefined}
         />
       )}
     </Panel>

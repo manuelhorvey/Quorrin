@@ -15,7 +15,44 @@ export interface OpenPositionState {
   prob_history: ProbHistoryEntry[]
 }
 
+export interface RiskSignal {
+  asset: string
+  timestamp: string
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
+  risk_score: number
+  confidence: number
+  exposure_multiplier: number
+  risk_flags: string[]
+  recommended_action: 'PAUSE' | 'REDUCE_RISK' | 'MONITOR' | 'NORMAL'
+  explanations: string[]
+  component_scores: Record<string, number>
+  drift_details: Record<string, unknown>
+}
+
+export interface ShadowAction {
+  asset: string
+  timestamp: string
+  action_type: 'PAUSE_TRADING' | 'REDUCE_EXPOSURE' | 'INCREASE_MONITORING' | 'NONE'
+  exposure_adjustment: number
+  confidence: number
+  reason_codes: string[]
+  drift_summary: {
+    model: number
+    signal: number
+    pnl: number
+    feature: number
+    regime: number
+  }
+  recommended_guardrails: {
+    max_position_size: number
+    min_hold_time: number
+    entry_block: boolean
+  }
+}
+
 export interface EngineSnapshot {
+  contract_version: number
+  sequence_id: number
   schema_version: string
   timestamp: string
   portfolio: Portfolio
@@ -23,8 +60,8 @@ export interface EngineSnapshot {
   open_positions?: Record<string, OpenPositionState>
   engine_status: EngineStatus
   halt_conditions: HaltConditions
-  risk_signals?: Record<string, unknown>
-  shadow_actions?: Record<string, unknown>
+  risk_signals?: Record<string, RiskSignal> | null
+  shadow_actions?: Record<string, ShadowAction> | null
 }
 
 export interface Portfolio {
@@ -48,27 +85,84 @@ export interface Portfolio {
   average_validity_exposure?: number
 }
 
+export interface FeatureStability {
+  jaccard_top_10: number | null
+  spearman_rank_corr: number | null
+  penalty: number
+  window_id: string | null
+}
+
+export interface MetaInference {
+  meta_confidence: number
+  meta_decision: 'ENTER' | 'BLOCK'
+}
+
+export interface PsiDrift {
+  per_feature: PsiDriftFeature[]
+  worst_classification: string
+  moderate_count: number
+  severe_count: number
+  psi_ok: boolean
+  penalty: number
+}
+
+export interface PsiDriftFeature {
+  feature: string
+  psi: number
+  classification: string
+  trend: string
+  importance_score: number
+}
+
+export interface ArchetypeStatsEntry {
+  n: number
+  win_rate: number
+  avg_r: number
+  sl_rate: number
+  tp_rate: number
+}
+
 export interface AssetState {
   metrics: AssetMetrics
   halt: AssetHaltConfig
   validity_state: string
-  validity_exposure?: number
-  last_signal: LastSignal
-  execution_state?: string
-  sl_mult?: number
-  tp_mult?: number
-  meta_confidence?: number
-  meta_decision?: string
-  feature_stability_jaccard?: number
-  feature_stability_spearman?: number
-  sell_only?: boolean
-  tripwire_active?: boolean
+  validity_exposure: number
+  last_signal: LastSignal | null
+  gate_override: boolean
+  signal_flip: boolean
+  final_signal: 'BUY' | 'SELL' | null
+  execution_state: string
+  sl_mult: number
+  tp_mult: number
+  meta_confidence: number | null
+  meta_decision: string | null
+  feature_stability_jaccard: number | null
+  feature_stability_spearman: number | null
+  sell_only: boolean
+  tripwire_active: boolean
+  liquidity_regime: string
+  liquidity_sl_mult: number
+  liquidity_size_scalar: number
+  narrative_sl_mult: number
+  narrative_size_scalar: number
+  narrative_regime: string | null
+  narrative_stale: boolean
+  regime_geometry: Record<string, { sl_mult: number; tp_mult: number }>
+  soft_warnings: string[]
+  stop_out_last_side: string | null
+  stop_out_last_cycle: number | null
+  last_regime_long_prob: number | null
+  last_regime_raw_probas: [number, number] | null
+  last_regime_label: string | null
+  last_regime_features: Record<string, number> | null
 }
 
 export interface ExitReasons {
   tp_rate: number
   sl_rate: number
-  signal_flip_rate: number
+  breakeven_rate: number
+  flip_rate: number
+  expiry_rate: number
   avg_r: number
 }
 
@@ -82,11 +176,13 @@ export interface ScaleOutTierInfo {
 export interface AssetMetrics {
   asset: string
   current_value: number
+  settled_value: number
   mtm_value: number
   total_return: number
+  settled_return: number
   mtm_return: number
   drawdown: number
-  profit_factor: number | null
+  profit_factor: number
   win_rate: number
   n_trades: number
   n_signals: number
@@ -94,17 +190,27 @@ export interface AssetMetrics {
   mean_confidence: number
   mean_prob_long: number
   mean_prob_short: number
-  current_price: number
-  last_signal_date: string
+  current_price: number | null
+  last_signal_date: string | null
   monthly_pf: number | null
   position: Position | null
-  current_sl_mult?: number
-  current_tp_mult?: number
+  current_sl_mult: number
+  current_tp_mult: number
   trade_log: TradeEntry[]
-  exit_reasons?: ExitReasons
-  scale_out_active?: boolean
-  remaining_fraction?: number
-  scale_out_tiers?: ScaleOutTierInfo[] | null
+  feature_stability: FeatureStability
+  exit_reasons: ExitReasons
+  archetype_stats: Record<string, ArchetypeStatsEntry>
+  meta_inference: MetaInference | null
+  scale_out_active: boolean
+  remaining_fraction: number
+  scale_out_tiers: ScaleOutTierInfo[] | null
+  psi_drift: PsiDrift
+  sharpe_ratio: number | null
+  psr_gt_0: number | null
+  psr_gt_1: number | null
+  min_trl: number | null
+  crs: number | null
+  hhi: number | null
 }
 
 export interface SignalDistribution {
@@ -134,12 +240,17 @@ export interface Position {
 }
 
 export interface AssetHaltConfig {
-  drawdown: number
-  monthly_pf: number
-  signal_drought: number
-  prob_drift: number
-  halted?: boolean
-  reasons?: string[]
+  halted: boolean
+  reasons: string[]
+  hard_reasons: string[]
+  soft_warnings: string[]
+  drawdown_ok: boolean
+  monthly_pf_ok: boolean
+  drought_ok: boolean
+  drift_ok: boolean
+  narrative_ok: boolean
+  liquidity_ok: boolean
+  psi_ok: boolean
 }
 
 export interface HaltConditions {

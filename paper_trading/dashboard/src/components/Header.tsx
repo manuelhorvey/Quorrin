@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Menu, RefreshCw, TrendingUp } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioState } from '../hooks/usePortfolioState'
+import { useMT5Status } from '../hooks/useMT5Status'
 import ThemeToggle from './ui/ThemeToggle'
 import { formatTimeAgo } from '../utils/format'
 
@@ -12,6 +13,7 @@ interface HeaderProps {
 export default function Header({ onMenuClick }: HeaderProps) {
   const { data, isError, dataUpdatedAt } = usePortfolioState()
   const queryClient = useQueryClient()
+  const { data: mt5 } = useMT5Status()
   const [refreshing, setRefreshing] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const lastServerUpdate = data?.portfolio?.last_update ?? data?.engine_status?.last_update ?? data?.timestamp
@@ -78,6 +80,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
           />
 
           <ThemeToggle />
+
+          <span
+            className="relative inline-flex w-2 h-2 rounded-full shrink-0"
+            title={`MT5: ${mt5?.status ?? '...'}`}
+            aria-label={`MT5: ${mt5?.status ?? '...'}`}
+            style={{
+              backgroundColor:
+                mt5?.status === 'CONNECTED' ? 'var(--color-gov-green, #22c55e)' :
+                mt5?.status === 'DISCONNECTED' ? 'var(--color-gov-yellow, #eab308)' :
+                mt5?.status === 'ERROR' ? 'var(--color-gov-red, #ef4444)' :
+                'var(--color-tertiary, #6b7280)',
+            }}
+          />
 
           <button
             type="button"

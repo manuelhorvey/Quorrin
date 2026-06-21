@@ -2,12 +2,22 @@ import gzip
 import json
 import os
 
-from paper_trading.api.common import MIME_TYPES, cache_get, get_index_html, try_serve_file
+from paper_trading.api.common import (
+    MIME_TYPES,
+    _with_state_meta,
+    cache_get,
+    get_index_html,
+    json_dumps,
+    try_serve_file,
+)
 from paper_trading.api.routes import GET_ROUTES, GET_ROUTES_PREFIX, POST_ROUTES
 
 
 class Handler:
     def _send_json(self, data: str, status: int = 200) -> None:
+        # Wrap in state metadata envelope so every JSON endpoint has state_timestamp + sequence_id
+        payload = json.loads(data)
+        data = json_dumps(_with_state_meta(payload))
         body = data.encode("utf-8")
         accept_gzip = self.headers.get("Accept-Encoding", "")
         if "gzip" in accept_gzip and len(body) > 512:

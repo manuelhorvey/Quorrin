@@ -235,12 +235,252 @@ export const HaltConditionsSchema = z.object({
   prob_drift: z.number().optional().default(0),
 }).passthrough()
 
+// ── Per-asset state sub-structures ────────────────────────────────
+
+export const PositionSchema = z.object({
+  side: z.enum(['long', 'short']),
+  entry: z.number(),
+  sl: z.number(),
+  tp: z.number(),
+  current_vol: z.number(),
+  unrealized_pnl: z.number(),
+  sl_mult: z.number().nullable().optional(),
+  tp_mult: z.number().nullable().optional(),
+})
+
+export const ProbHistoryEntrySchema = z.object({
+  date: z.string(),
+  prob_long: z.number(),
+  prob_short: z.number(),
+  signal: z.enum(['BUY', 'SELL', 'FLAT']),
+  confidence: z.number(),
+  close_price: z.number(),
+})
+
+export const ScaleOutTierSchema = z.object({
+  fraction: z.number(),
+  price: z.number(),
+  filled: z.boolean(),
+  fill_price: z.number().nullable(),
+})
+
+export const MetaInferenceSchema = z.object({
+  meta_confidence: z.number(),
+  meta_decision: z.enum(['ENTER', 'BLOCK']),
+})
+
+export const FeatureStabilitySchema = z.object({
+  jaccard_top_10: z.number().nullable(),
+  spearman_rank_corr: z.number().nullable(),
+  penalty: z.number(),
+  window_id: z.string().nullable(),
+})
+
+export const AssetExitReasonsSchema = z.object({
+  tp_rate: z.number(),
+  sl_rate: z.number(),
+  breakeven_rate: z.number(),
+  flip_rate: z.number(),
+  expiry_rate: z.number(),
+  avg_r: z.number(),
+})
+
+export const ArchetypeStatsEntrySchema = z.object({
+  n: z.number().int(),
+  win_rate: z.number(),
+  avg_r: z.number(),
+  sl_rate: z.number(),
+  tp_rate: z.number(),
+})
+
+export const PsiDriftFeatureSchema = z.object({
+  feature: z.string(),
+  psi: z.number(),
+  classification: z.string(),
+  trend: z.string(),
+  importance_score: z.number(),
+})
+
+export const PsiDriftSchema = z.object({
+  per_feature: z.array(PsiDriftFeatureSchema),
+  worst_classification: z.string(),
+  moderate_count: z.number().int(),
+  severe_count: z.number().int(),
+  psi_ok: z.boolean(),
+  penalty: z.number(),
+})
+
+export const AssetMetricsSchema = z.object({
+  asset: z.string(),
+  current_value: z.number(),
+  settled_value: z.number(),
+  mtm_value: z.number(),
+  total_return: z.number(),
+  settled_return: z.number(),
+  mtm_return: z.number(),
+  drawdown: z.number(),
+  profit_factor: z.number(),
+  win_rate: z.number(),
+  n_trades: z.number().int(),
+  n_signals: z.number().int(),
+  signal_distribution: z.object({
+    BUY: z.number().int(),
+    SELL: z.number().int(),
+    FLAT: z.number().int(),
+  }),
+  mean_confidence: z.number(),
+  mean_prob_long: z.number(),
+  mean_prob_short: z.number(),
+  current_price: z.number().nullable(),
+  last_signal_date: z.string().nullable(),
+  monthly_pf: z.number().nullable(),
+  position: PositionSchema.nullable(),
+  current_sl_mult: z.number(),
+  current_tp_mult: z.number(),
+  trade_log: z.array(z.unknown()),
+  feature_stability: FeatureStabilitySchema,
+  exit_reasons: AssetExitReasonsSchema,
+  archetype_stats: z.record(z.string(), ArchetypeStatsEntrySchema),
+  meta_inference: MetaInferenceSchema.nullable(),
+  scale_out_active: z.boolean(),
+  remaining_fraction: z.number(),
+  scale_out_tiers: z.array(ScaleOutTierSchema).nullable(),
+  psi_drift: PsiDriftSchema,
+  sharpe_ratio: z.number().nullable(),
+  psr_gt_0: z.number().nullable(),
+  psr_gt_1: z.number().nullable(),
+  min_trl: z.number().nullable(),
+  crs: z.number().nullable(),
+  hhi: z.number().nullable(),
+})
+
+export const AssetHaltSchema = z.object({
+  halted: z.boolean(),
+  reasons: z.array(z.string()),
+  hard_reasons: z.array(z.string()),
+  soft_warnings: z.array(z.string()),
+  drawdown_ok: z.boolean(),
+  monthly_pf_ok: z.boolean(),
+  drought_ok: z.boolean(),
+  drift_ok: z.boolean(),
+  narrative_ok: z.boolean(),
+  liquidity_ok: z.boolean(),
+  psi_ok: z.boolean(),
+})
+
+export const RegimeGeometrySchema = z.record(
+  z.string(),
+  z.object({ sl_mult: z.number(), tp_mult: z.number() }),
+)
+
+export const AssetStateSchema = z.object({
+  metrics: AssetMetricsSchema,
+  halt: AssetHaltSchema,
+  validity_state: z.string(),
+  validity_exposure: z.number(),
+  last_signal: ProbHistoryEntrySchema.nullable(),
+  gate_override: z.boolean(),
+  signal_flip: z.boolean(),
+  final_signal: z.enum(['BUY', 'SELL']).nullable(),
+  execution_state: z.string(),
+  sl_mult: z.number(),
+  tp_mult: z.number(),
+  meta_confidence: z.number().nullable(),
+  meta_decision: z.string().nullable(),
+  feature_stability_jaccard: z.number().nullable(),
+  feature_stability_spearman: z.number().nullable(),
+  sell_only: z.boolean(),
+  tripwire_active: z.boolean(),
+  liquidity_regime: z.string(),
+  liquidity_sl_mult: z.number(),
+  liquidity_size_scalar: z.number(),
+  narrative_sl_mult: z.number(),
+  narrative_size_scalar: z.number(),
+  narrative_regime: z.string().nullable(),
+  narrative_stale: z.boolean(),
+  regime_geometry: RegimeGeometrySchema,
+  soft_warnings: z.array(z.string()),
+  stop_out_last_side: z.string().nullable(),
+  stop_out_last_cycle: z.number().int().nullable(),
+  last_regime_long_prob: z.number().nullable(),
+  last_regime_raw_probas: z.array(z.number()).length(2).nullable(),
+  last_regime_label: z.string().nullable(),
+  last_regime_features: z.record(z.string(), z.number()).nullable(),
+})
+
+// ── Open position (per-asset with metadata) ───────────────────────
+
+export const OpenPositionStateSchema = z.object({
+  position: z.object({
+    side: z.enum(['long', 'short']),
+    entry: z.number(),
+    sl: z.number(),
+    tp: z.number(),
+    entry_date: z.string(),
+    vol: z.number(),
+    mt5_ticket: z.union([z.string(), z.number()]).nullable(),
+  }),
+  current_value: z.number(),
+  peak_value: z.number(),
+  running_mae: z.number().nullable(),
+  running_mfe: z.number().nullable(),
+  trade_log: z.array(z.unknown()),
+  prob_history: z.array(ProbHistoryEntrySchema),
+})
+
+// ── Risk signals ──────────────────────────────────────────────────
+
+export const RiskSignalSchema = z.object({
+  asset: z.string(),
+  timestamp: z.string(),
+  risk_level: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  risk_score: z.number(),
+  confidence: z.number(),
+  exposure_multiplier: z.number(),
+  risk_flags: z.array(z.string()),
+  recommended_action: z.enum(['PAUSE', 'REDUCE_RISK', 'MONITOR', 'NORMAL']),
+  explanations: z.array(z.string()),
+  component_scores: z.record(z.string(), z.number()),
+  drift_details: z.record(z.string(), z.unknown()),
+})
+
+// ── Shadow actions ────────────────────────────────────────────────
+
+export const ShadowGuardrailsSchema = z.object({
+  max_position_size: z.number(),
+  min_hold_time: z.number().int(),
+  entry_block: z.boolean(),
+})
+
+export const ShadowDriftSummarySchema = z.object({
+  model: z.number(),
+  signal: z.number(),
+  pnl: z.number(),
+  feature: z.number(),
+  regime: z.number(),
+})
+
+export const ShadowActionSchema = z.object({
+  asset: z.string(),
+  timestamp: z.string(),
+  action_type: z.enum(['PAUSE_TRADING', 'REDUCE_EXPOSURE', 'INCREASE_MONITORING', 'NONE']),
+  exposure_adjustment: z.number(),
+  confidence: z.number(),
+  reason_codes: z.array(z.string()),
+  drift_summary: ShadowDriftSummarySchema,
+  recommended_guardrails: ShadowGuardrailsSchema,
+})
+
+// ── Engine snapshot ───────────────────────────────────────────────
+
 export const EngineSnapshotSchema = z.object({
+  contract_version: z.number().int().positive(),
+  sequence_id: z.number().int().nonnegative(),
   schema_version: z.string().optional().default('unknown'),
   timestamp: z.string(),
   portfolio: PortfolioSummarySchema,
-  assets: z.record(z.string(), z.unknown()),
-  open_positions: z.record(z.string(), z.unknown()).optional(),
+  assets: z.record(z.string(), AssetStateSchema),
+  open_positions: z.record(z.string(), OpenPositionStateSchema).optional(),
   engine_status: EngineStatusSchema,
   halt_conditions: HaltConditionsSchema.optional().default({
     drawdown: 0,
@@ -248,6 +488,6 @@ export const EngineSnapshotSchema = z.object({
     signal_drought: 0,
     prob_drift: 0,
   }),
-  risk_signals: z.record(z.string(), z.unknown()).nullable().optional(),
-  shadow_actions: z.record(z.string(), z.unknown()).nullable().optional(),
-}).passthrough()
+  risk_signals: z.record(z.string(), RiskSignalSchema).nullable().optional(),
+  shadow_actions: z.record(z.string(), ShadowActionSchema).nullable().optional(),
+})

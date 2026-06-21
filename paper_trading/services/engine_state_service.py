@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 import pytz
 
+from paper_trading.api.common import set_mt5_status
 from paper_trading.config_manager import get_config
 from paper_trading.execution.decision_pipeline import SELL_ONLY_ASSETS
 from paper_trading.governance.risk import get_sell_tripwire_state
@@ -71,6 +72,7 @@ class EngineStateService:
                 "last_signal": signal,
                 "gate_override": halt.get("halted", False),
                 "signal_flip": sig_flip,
+                "final_signal": getattr(asset, "_last_final_signal", None),
                 "execution_state": "HALTED" if halt["halted"] else "ACTIVE",
                 "sl_mult": asset.sl_mult,
                 "tp_mult": asset.tp_mult,
@@ -181,6 +183,34 @@ class EngineStateService:
     def save_state(self):
         engine = self.engine
         state = self.get_state()
+
+        # Capture MT5 connection status for the API endpoint
+        try:
+            broker = getattr(engine, "broker", None)
+            if broker is not None and hasattr(broker, "_client"):
+                client = broker._client
+                is_connected = bool(client.connected)
+                last_hb = getattr(client, "_last_heartbeat", None)
+                if last_hb is not None:
+                    last_hb_iso = datetime.fromtimestamp(last_hb, tz=ET).isoformat()
+                else:
+                    last_hb_iso = None
+                account = None
+                try:
+                    if is_connected:
+                        account = broker.get_account_summary()
+                except Exception:
+                    pass
+                set_mt5_status({
+                    "connected": is_connected,
+                    "status": "CONNECTED" if is_connected else "DISCONNECTED",
+                    "last_heartbeat": last_hb_iso,
+                    "account": account,
+                })
+            else:
+                set_mt5_status({"connected": False, "status": "DISCONNECTED", "last_heartbeat": None, "account": None})
+        except Exception:
+            set_mt5_status({"connected": False, "status": "ERROR", "last_heartbeat": None, "account": None})
         snapshot = EngineSnapshot(
             schema_version=EngineSnapshot.__dataclass_fields__["schema_version"].default,
             timestamp=datetime.now(tz=ET).isoformat(),

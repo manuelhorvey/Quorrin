@@ -93,7 +93,7 @@ class AssetInferencePipeline:
                 "_feature_pipeline": asset._feature_pipeline,
             },
         )
-        return asset._decision_to_dict(decision)
+        return asset._decision_to_dict(decision, final_signal=getattr(asset, "_last_final_signal", None))
 
     # ── Focused pipeline stages ────────────────────────────────────
 

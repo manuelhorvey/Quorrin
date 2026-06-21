@@ -22,7 +22,7 @@ ET = pytz.timezone("US/Eastern")
 
 class MetricsService:
     @staticmethod
-    def decision_to_dict(decision, *, pos_mgr, model, name):
+    def decision_to_dict(decision, *, pos_mgr, model, name, final_signal=None):
         pos = pos_mgr.position if pos_mgr else None
         macro_weight = None
         macro_head = getattr(model, "macro_head", None) if model else None
@@ -32,6 +32,7 @@ class MetricsService:
         return {
             "asset": name,
             "signal": decision.signal,
+            "final_signal": final_signal,
             "confidence": decision.confidence,
             "archetype": decision.archetype,
             "macro_weight": macro_weight,

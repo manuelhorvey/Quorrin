@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { usePortfolioState } from './hooks/usePortfolioState'
+import { SelectedAssetContext } from './hooks/useSelectedAsset'
+import { getFlag } from './lib/featureFlags'
 import Header from './components/Header'
 import PortfolioSummary from './components/PortfolioSummary'
 import AssetGrid from './components/AssetGrid'
@@ -25,87 +27,101 @@ import MonitoringDashboard from './components/monitor/MonitoringDashboard'
 import GovernanceRadar from './components/governance/GovernanceRadar'
 import StatisticalMetricsTable from './components/StatisticalMetricsTable'
 import WeeklyReviewModal from './components/WeeklyReviewModal'
+import AssetDetailPanel from './components/AssetDetailPanel'
 
 import { useAttributionTrades } from './hooks/useAttributionTrades'
 import Sidebar from './components/layout/Sidebar'
 import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
-  const { isPending, isError } = usePortfolioState()
+  const { data: state, isPending, isError } = usePortfolioState()
   const [filters, setFilters] = useState<FilterState>({ archetype: '', regime: '', asset: '' })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null)
+  const enableDetailPanel = getFlag('ENABLE_DETAIL_PANEL')
   const { data: allTrades } = useAttributionTrades(200)
   const uniqueAssets = [...new Set(allTrades?.map(t => t.asset) ?? [])]
 
   if (isPending) return <LoadingScreen />
   if (isError) return <ErrorScreen />
 
+  const detailAsset = selectedAsset && state?.assets?.[selectedAsset]
+
   return (
     <ErrorBoundary title="Application">
-      <div className="min-h-screen bg-app text-secondary flex flex-col">
-        <Header onMenuClick={() => setSidebarOpen(prev => !prev)} />
+      <SelectedAssetContext.Provider value={{ selectedAsset, setSelectedAsset }}>
+        <div className="min-h-screen bg-app text-secondary flex flex-col">
+          <Header onMenuClick={() => setSidebarOpen(prev => !prev)} />
 
-        <div className="flex-1 flex relative max-w-[90rem] mx-auto w-full">
-          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          <div className="flex-1 flex relative max-w-[90rem] mx-auto w-full">
+            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-          <main className="flex-1 min-w-0 px-4 sm:px-7 py-5 sm:py-7 space-y-6 sm:space-y-8 animate-fade-in">
-            <Section id="monitor" errorTitle="Monitor">
-              <MonitoringDashboard />
-            </Section>
+            <main className="flex-1 min-w-0 px-4 sm:px-7 py-5 sm:py-7 space-y-6 sm:space-y-8 animate-fade-in">
+              <Section id="monitor" errorTitle="Monitor">
+                <MonitoringDashboard />
+              </Section>
 
-            <Section id="portfolio" errorTitle="Portfolio">
-              <PortfolioSummary />
-              <AssetGrid />
-              <HaltConditions />
-            </Section>
+              <Section id="portfolio" errorTitle="Portfolio">
+                <PortfolioSummary />
+                <AssetGrid />
+                <HaltConditions />
+              </Section>
 
-            <Section id="signals" errorTitle="Signals">
-              <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 sm:gap-6">
-                <div className="xl:col-span-3 min-w-0">
-                  <SignalsTable />
+              <Section id="signals" errorTitle="Signals">
+                <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 sm:gap-6">
+                  <div className="xl:col-span-3 min-w-0">
+                    <SignalsTable />
+                  </div>
+                  <div className="xl:col-span-2 min-w-0">
+                    <EquityChart />
+                  </div>
                 </div>
-                <div className="xl:col-span-2 min-w-0">
-                  <EquityChart />
+              </Section>
+
+              <Section id="execution" errorTitle="Execution" className="space-y-5 sm:space-y-6">
+                <FilterBar assets={uniqueAssets} onChange={setFilters} />
+                <ExecutionQualityStrip />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+                  <AttributionBreakdownCard />
+                  <PnLWaterfall />
                 </div>
-              </div>
-            </Section>
-
-            <Section id="execution" errorTitle="Execution" className="space-y-5 sm:space-y-6">
-              <FilterBar assets={uniqueAssets} onChange={setFilters} />
-              <ExecutionQualityStrip />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-                <AttributionBreakdownCard />
-                <PnLWaterfall />
-              </div>
-              <MaeMfeScatter />
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-                <div className="lg:col-span-2 min-w-0">
-                  <SlippageHistogram />
+                <MaeMfeScatter />
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+                  <div className="lg:col-span-2 min-w-0">
+                    <SlippageHistogram />
+                  </div>
+                  <div className="lg:col-span-1 min-w-0">
+                    <FillQualityGauge />
+                  </div>
                 </div>
-                <div className="lg:col-span-1 min-w-0">
-                  <FillQualityGauge />
-                </div>
-              </div>
-              <TradeExecutionTable />
-            </Section>
+                <TradeExecutionTable />
+              </Section>
 
-            <Section id="trades" errorTitle="Trades">
-              <TradeOutcomes />
-              <TradeFeed />
-            </Section>
+              <Section id="trades" errorTitle="Trades">
+                <TradeOutcomes />
+                <TradeFeed />
+              </Section>
 
-            <Section id="statistics" errorTitle="Statistical Metrics">
-              <StatisticalMetricsTable />
-            </Section>
+              <Section id="statistics" errorTitle="Statistical Metrics">
+                <StatisticalMetricsTable />
+              </Section>
 
-            <Section id="risk" errorTitle="Risk" className="space-y-6">
-              <HealthScores />
-              <GovernanceRadar />
-            </Section>
-          </main>
+              <Section id="risk" errorTitle="Risk" className="space-y-6">
+                <HealthScores />
+                <GovernanceRadar />
+              </Section>
+            </main>
+          </div>
         </div>
-      </div>
-      <WeeklyReviewModal />
+        {enableDetailPanel && detailAsset && (
+          <AssetDetailPanel
+            asset={detailAsset}
+            name={selectedAsset!}
+            onClose={() => setSelectedAsset(null)}
+          />
+        )}
+        <WeeklyReviewModal />
+      </SelectedAssetContext.Provider>
     </ErrorBoundary>
   )
 }

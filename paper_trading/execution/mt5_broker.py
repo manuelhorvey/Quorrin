@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 
+import pandas as pd
 import pytz
 
 from paper_trading.execution.broker_interface import AccountSummary, BrokerInterface, Order, Position
@@ -163,8 +164,8 @@ class MT5Broker(BrokerInterface):
                 ticker=order.asset,
                 side=order.side,
                 volume=volume,
-                sl=order.sl or 0.0,
-                tp=order.tp or 0.0,
+                sl=0.0 if (order.sl is None or pd.isna(order.sl)) else order.sl,
+                tp=0.0 if (order.tp is None or pd.isna(order.tp)) else order.tp,
                 comment="QuantForge",
             )
         except Exception as e:

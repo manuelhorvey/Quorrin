@@ -156,6 +156,9 @@ class PositionManager:
         """Update the stop-loss level. Returns True if accepted."""
         if self.position is None:
             return False
+        if pd.isna(new_sl):
+            logger.error("Cannot update stop loss to NaN")
+            return False
         self.position = deepcopy(self.position)
         self.position.stop_loss = new_sl
         return True
@@ -163,6 +166,9 @@ class PositionManager:
     def update_take_profit(self, new_tp: float) -> bool:
         """Update the take-profit level. Returns True if accepted."""
         if self.position is None:
+            return False
+        if pd.isna(new_tp):
+            logger.error("Cannot update take profit to NaN")
             return False
         self.position = deepcopy(self.position)
         self.position.take_profit = new_tp

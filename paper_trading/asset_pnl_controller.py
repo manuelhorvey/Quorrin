@@ -30,6 +30,9 @@ def _sync_broker_sltp(asset) -> None:
     pos = asset.pos_mgr.position
     if pos is None:
         return
+    if pd.isna(pos.stop_loss) or pd.isna(pos.take_profit):
+        logger.error("%s: cannot sync NaN SL=%.4f or TP=%.4f to broker", asset.name, pos.stop_loss, pos.take_profit)
+        return
     try:
         bridge.broker.modify_position(asset.ticker, str(mt5_ticket), sl=float(pos.stop_loss), tp=float(pos.take_profit))
     except Exception as e:
@@ -125,7 +128,7 @@ class AssetPnlController:
         )
 
         current_tp = asset.pos_mgr.position.take_profit
-        if abs(correct_tp - current_tp) > 1e-6:
+        if not pd.isna(correct_tp) and abs(correct_tp - current_tp) > 1e-6:
             asset.pos_mgr.update_take_profit(float(correct_tp))
             _sync_broker_sltp(asset)
             logger.info(
@@ -228,7 +231,7 @@ class AssetPnlController:
             take_profit=asset.pos_mgr.position.take_profit,
             df=data,
         )
-        if trailing.trailing_sl is not None:
+        if trailing.trailing_sl is not None and not pd.isna(trailing.trailing_sl):
             asset.pos_mgr.update_stop_loss(float(trailing.trailing_sl))
             _sync_broker_sltp(asset)
             logger.info(
@@ -260,7 +263,7 @@ class AssetPnlController:
             vol=asset._entry_vol,
             bars_since_entry=asset._bars_at_entry,
         )
-        if adjust.new_sl is not None:
+        if adjust.new_sl is not None and not pd.isna(adjust.new_sl):
             asset.pos_mgr.update_stop_loss(float(adjust.new_sl))
             _sync_broker_sltp(asset)
             logger.info(
@@ -278,7 +281,7 @@ class AssetPnlController:
                 entry_price=asset.pos_mgr.position.entry_price,
                 reason=adjust.reason or "post_entry_sl",
             )
-        if adjust.new_tp is not None:
+        if adjust.new_tp is not None and not pd.isna(adjust.new_tp):
             asset.pos_mgr.update_take_profit(float(adjust.new_tp))
             _sync_broker_sltp(asset)
             logger.info(

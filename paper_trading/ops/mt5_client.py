@@ -456,9 +456,9 @@ class MT5Client:
 
     def modify_position(self, ticket: int, sl: float | None = None, tp: float | None = None) -> dict:
         params: dict[str, Any] = {"ticket": ticket}
-        if sl is not None:
+        if sl is not None and not pd.isna(sl):
             params["sl"] = sl
-        if tp is not None:
+        if tp is not None and not pd.isna(tp):
             params["tp"] = tp
         return self._proto.send_request("modify_position", params)
 

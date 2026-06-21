@@ -354,6 +354,10 @@ class DynamicSLTPEngine:
             sl = entry_price + sl_dist
             tp = entry_price - tp_dist
 
+        if pd.isna(sl):
+            sl = entry_price * (0.99 if side == "long" else 1.01)
+        if pd.isna(tp):
+            tp = entry_price * (1.01 if side == "long" else 0.99)
         return SLTPResult(
             stop_loss=max(sl, 0.0) if side == "long" else sl,
             take_profit=tp if side == "long" else max(tp, 0.0),

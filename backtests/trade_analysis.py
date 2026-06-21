@@ -13,8 +13,8 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from features.builder import build_features
-from backtests import compute_macro_derived, compute_per_fold_labels
+from features.builder import build_features, compute_macro_derived
+from backtests import compute_per_fold_labels
 from features.registry import FEATURE_REGISTRY
 from shared.volatility import compute_atr_pct
 

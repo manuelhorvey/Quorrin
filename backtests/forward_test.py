@@ -85,6 +85,36 @@ def _forward_metrics(
     n_trades = int((signals[1:] != signals[:-1]).sum())
     pnl_std = float(trade_returns.std()) if len(trade_returns) > 1 else 0.0
 
+    # ── Statistical metrics ──
+    n_obs = len(trade_returns)
+    skew_val, exkurt_val = (0.0, 0.0)
+    if n_obs >= 3:
+        from quantforge.domain.value_objects.statistical_metrics import _moments as _stats_moments
+        skew_val, exkurt_val = _stats_moments(trade_returns)
+
+    from quantforge.domain.value_objects.statistical_metrics import (
+        probabilistic_sharpe_ratio,
+        minimum_track_record_length,
+        expected_calibration_error,
+    )
+
+    psr_gt_0 = probabilistic_sharpe_ratio(float(sharpe), n_obs, skew_val, exkurt_val, 0.0)
+    min_trl = minimum_track_record_length(float(sharpe), skew_val, exkurt_val, 0.05)
+
+    # CRS: per-prediction confidence vs correctness for directional signals only
+    pred_confs: list[float] = []
+    pred_correct: list[bool] = []
+    for i in range(n):
+        if signals[i] == 2:
+            pred_confs.append(float(proba[i, 2]))
+            pred_correct.append(forward_ret[i] > 0)
+        elif signals[i] == 0:
+            pred_confs.append(float(proba[i, 0]))
+            pred_correct.append(forward_ret[i] < 0)
+    crs = 1.0 - expected_calibration_error(
+        np.array(pred_confs), np.array(pred_correct, dtype=int)
+    ) if len(pred_confs) >= 10 else 0.0
+
     return {
         "sharpe": round(float(sharpe), 4),
         "hit_rate": round(float(hit), 4),
@@ -92,6 +122,10 @@ def _forward_metrics(
         "total_trades": n_trades,
         "pnl_std": round(pnl_std, 6),
         "stability": 1.0 - min(pnl_std / 0.05, 1.0) if pnl_std > 0 else 1.0,
+        "psr_gt_0": round(float(psr_gt_0), 4),
+        "min_trl": int(min_trl),
+        "n_obs": n_obs,
+        "crs": round(float(crs), 4),
     }
 
 

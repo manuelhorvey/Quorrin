@@ -2,7 +2,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger("quantforge.model_promotion")
 
@@ -20,14 +19,15 @@ def evaluate_promotion(
     portfolio_result: dict,
     shadow_result: dict,
     trajectory: list[dict],
-    drift_score: Optional[float] = None,
+    drift_score: float | None = None,
+    observe_only: bool = True,
 ) -> dict:
     conditions = {}
     failure_modes = []
     met_count = 0
     total = 4
 
-    perf = _check_performance(forward_result)
+    perf = _check_performance(forward_result, observe_only=observe_only)
     conditions["performance"] = perf
     if perf["met"]:
         met_count += 1
@@ -79,10 +79,15 @@ def evaluate_promotion(
         confidence = min(confidence, 0.3)
 
     if not failure_modes:
-        recommended = "deploy_shadow_live_test_30d" if decision == "LIVE_CANDIDATE" else \
-                     "deploy_paper_trading_60d" if decision == "PAPER_TRADING_ONLY" else \
-                     "retain_shadow_monitoring" if decision == "SHADOW_ONLY" else \
-                     "no_action_required"
+        recommended = (
+            "deploy_shadow_live_test_30d"
+            if decision == "LIVE_CANDIDATE"
+            else "deploy_paper_trading_60d"
+            if decision == "PAPER_TRADING_ONLY"
+            else "retain_shadow_monitoring"
+            if decision == "SHADOW_ONLY"
+            else "no_action_required"
+        )
     else:
         recommended = "blocked_by_" + failure_modes[0].split(":")[0].strip().lower().replace(" ", "_")
 
@@ -95,7 +100,8 @@ def evaluate_promotion(
         "conditions": {
             k: {
                 "met": v["met"],
-                "details": {dk: dv for dk, dv in v.items() if dk != "met" and dk != "failures"},
+                "details": {dk: dv for dk, dv in v.items() if dk not in ("met", "failures", "observed_failures")},
+                "observed_failures": v.get("observed_failures", []),
             }
             for k, v in conditions.items()
         },
@@ -105,7 +111,8 @@ def evaluate_promotion(
 
     result_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "sandbox",
+        "data",
+        "sandbox",
     )
     fname = f"{asset}_promotion.json" if asset != "all" else "promotion_summary.json"
     with open(os.path.join(result_path, fname), "w") as f:
@@ -114,7 +121,7 @@ def evaluate_promotion(
     return result
 
 
-def _check_performance(forward_result: dict) -> dict:
+def _check_performance(forward_result: dict, observe_only: bool = True) -> dict:
     if "error" in forward_result:
         return {"met": False, "detail": "forward_test_failed", "failures": ["Performance: forward test error"]}
     bl = forward_result.get("baseline", {})
@@ -136,6 +143,44 @@ def _check_performance(forward_result: dict) -> dict:
     hit_ok = fw_hit >= max(0.25, bl_hit - 0.10)
     if not hit_ok:
         failures.append(f"Performance: hit rate {fw_hit:.4f} too low (baseline={bl_hit:.4f})")
+
+    # ── Statistical significance sub-checks (observe-only by default) ──
+    fw_psr = _safe(nw.get("psr_gt_0"))
+    fw_min_trl = _safe(nw.get("min_trl"))
+    fw_n_obs = _safe(nw.get("n_obs"))
+    fw_crs = _safe(nw.get("crs"))
+
+    observed_failures: list[str] = []
+    psr_ok = True
+    if fw_psr > 0 and fw_psr < 0.95:
+        msg = f"Performance: PSR(>0) {fw_psr:.4f} < 0.95"
+        if observe_only:
+            logger.warning("OBSERVE [statistical]: %s — would block if gate were active", msg)
+            observed_failures.append(msg)
+        else:
+            psr_ok = False
+            failures.append(msg)
+
+    min_trl_ok = True
+    if fw_min_trl > 0 and fw_n_obs > 0 and fw_n_obs < fw_min_trl:
+        msg = f"Performance: trades {int(fw_n_obs)} < MinTRL {int(fw_min_trl)}"
+        if observe_only:
+            logger.warning("OBSERVE [statistical]: %s — would block if gate were active", msg)
+            observed_failures.append(msg)
+        else:
+            min_trl_ok = False
+            failures.append(msg)
+
+    crs_ok = True
+    if fw_crs > 0 and fw_crs < 0.70:
+        msg = f"Performance: CRS {fw_crs:.4f} < 0.70"
+        if observe_only:
+            logger.warning("OBSERVE [statistical]: %s — would block if gate were active", msg)
+            observed_failures.append(msg)
+        else:
+            crs_ok = False
+            failures.append(msg)
+
     met = len(failures) == 0
     return {
         "met": met,
@@ -144,11 +189,18 @@ def _check_performance(forward_result: dict) -> dict:
         "forward_drawdown": fw_dd,
         "baseline_drawdown": bl_dd,
         "forward_hit_rate": fw_hit,
+        "psr_gt_0": fw_psr if fw_psr > 0 else None,
+        "min_trl": int(fw_min_trl) if fw_min_trl > 0 else None,
+        "n_obs": int(fw_n_obs) if fw_n_obs > 0 else None,
+        "crs": fw_crs if fw_crs > 0 else None,
+        "statistical_ok": psr_ok and min_trl_ok and crs_ok,
+        "observe_only": observe_only,
+        "observed_failures": observed_failures,
         "failures": failures,
     }
 
 
-def _check_stability(mas_result: dict, forward_result: dict, drift_score: Optional[float] = None) -> dict:
+def _check_stability(mas_result: dict, forward_result: dict, drift_score: float | None = None) -> dict:
     failures = []
     m_stress = _safe(mas_result.get("sub_scores", {}).get("stress"))
     stress_ok = m_stress >= 0.60
@@ -169,7 +221,7 @@ def _check_consistency(trajectory: list[dict], mas_result: dict) -> dict:
     mas_slope = None
     mas_std = None
     if len(trajectory) >= 2:
-        recent = trajectory[-min(5, len(trajectory)):]
+        recent = trajectory[-min(5, len(trajectory)) :]
         mas_vals = [e["mas"] for e in recent]
         if len(mas_vals) >= 2:
             mas_slope = round((mas_vals[-1] - mas_vals[0]) / max(len(mas_vals) - 1, 1), 4)

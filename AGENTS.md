@@ -350,6 +350,26 @@ The 2.7% total_R improvement is modest because 3 flagged assets (^DJI, EURCHF, U
 
 **Epistemic status (2026-06-20)**: The SELL_ONLY filter is no longer a "temporary stopgap pending a feature-level fix." The two leading causal hypotheses (carry for CHF+OTHER, DXY for equities) were both falsified by walk-forward counterfactual ablation. The BUY inversion root cause remains unknown. SELL_ONLY is the empirically-grounded answer — removing it requires discovering a causal mechanism that does not currently exist in any tested hypothesis.
 
+## Statistical Metrics — Known Behaviors & Caveats
+
+### PSR/DSR Float64 Saturation Zone
+
+`scipy.stats.norm.cdf(z)` saturates at exactly **1.0 in float64** for z > ~8.2 and at **0.0** for z < ~-8.2. This means PSR and DSR cannot discriminate between "strongly significant" and "overwhelmingly significant" once the z-score exceeds ~8.2.
+
+**Practical implication for QuantForge**: With n ≈ 300 observations (typical walk-forward test window), PSR(>0) saturates at 1.0 for any Sharpe > ~0.3. The "mediocre" scenario (Sharpe=0.7, n=252) produces z ≈ 11, well into the saturation zone. PSR(>0) = 1.0000 for 16 of 18 assets in the portfolio backtest — this doesn't mean those assets are equally significant; it means they all exceed the float64 ceiling.
+
+**Where DSR is discriminative**: DSR's useful range is Sharpe in approximately [0.0, 0.8] for n ≈ 250, and narrower for larger n. Outside this range, DSR is a binary pass/fail indicator (1.0 for strong signals, 0.0 for negative). At the current portfolio Sharpe of 29, DSR(18) being 1.0 is correct but provides zero selective information — it will say "PASS" regardless of whether num_trials is 18 or 1800. This is a ceiling effect of float64, not a calculation error. DSR will only become a meaningful gate when portfolio Sharpe drops into the 0.5–2.5 range.
+
+**Where PSR is discriminative**: PSR(>0) for Sharpe values in [-0.3, 0.3] with n=252 produces smooth, non-saturated values. For Sharpe < -0.3, PSR floors at 0.0. For Sharpe > 0.3, PSR saturates at 1.0. PSR(>1) has a wider discriminative range — Sharpe values of 0.5–1.5 produce non-saturated probabilities. Prefer PSR(>1) over PSR(>0) for evaluating marginal improvements.
+
+### MinTRL Floor at 2
+
+`minimum_track_record_length()` returns a floor of 2 for extreme Sharpe values. This is correct — it means "you need at least 2 observations to be 95% confident this Sharpe is positive" — but it's not informative. MinTRL's useful range is Sharpe in approximately [0.1, 2.0].
+
+### Validation Note: Single-Draw Fragility
+
+The synthetic validation script (run during 2026-06-20 build) uses `np.random.normal()` to generate test data. A single random draw is unreliable for verifying expected behavior — a comment like `# Sharpe ≈ 0.3` on `np.random.normal(0.0003, 0.015, 252)` is misleading because a single draw can produce Sharpe anywhere in ~[0.0, 0.7]. For permanent regression tests, use either (a) a fixed large number of draws averaged, or (b) distributional assertions (e.g., "Sharpe falls within 95% CI of parametrized distribution"), not point comparisons against one realization.
+
 ## SHAP Audit (2026-06-20)
 
 ### Loaded Models

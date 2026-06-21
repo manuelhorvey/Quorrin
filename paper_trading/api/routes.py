@@ -277,6 +277,7 @@ def handle_governance(path: str, query: dict) -> str:
                 narrative_size_scalar=asset.get("narrative_size_scalar", 1.0),
                 liquidity_size_scalar=asset.get("liquidity_size_scalar", 1.0),
             )
+            metrics = asset.get("metrics") or {}
             governance[name] = {
                 "regime_sl_mult": regime_sl,
                 "regime_size_scalar": regime_size,
@@ -293,9 +294,30 @@ def handle_governance(path: str, query: dict) -> str:
                 "liquidity_regime": asset.get("liquidity_regime", "NORMAL"),
                 "halted": asset.get("halt", {}).get("halted", False),
                 "soft_warnings": asset.get("soft_warnings", []),
+                "crs": metrics.get("crs"),
             }
     data = json.dumps(governance, indent=2, default=str)
     cache_set("/governance.json", data)
+    return data
+
+
+def handle_statistical_metrics(path: str, query: dict) -> str:
+    """Per-asset PSR, MinTRL, CRS, HHI for the dashboard."""
+    snapshot = _STORE.load_snapshot()
+    result: dict[str, dict] = {}
+    if snapshot and snapshot.assets:
+        for name, asset in sorted(snapshot.assets.items()):
+            metrics = asset.get("metrics") or {}
+            result[name] = {
+                "sharpe_ratio": metrics.get("sharpe_ratio"),
+                "psr_gt_0": metrics.get("psr_gt_0"),
+                "psr_gt_1": metrics.get("psr_gt_1"),
+                "min_trl": metrics.get("min_trl"),
+                "crs": metrics.get("crs"),
+                "hhi": metrics.get("hhi"),
+            }
+    data = json.dumps(result, indent=2, default=str)
+    cache_set("/statistical-metrics.json", data)
     return data
 
 
@@ -678,6 +700,7 @@ GET_ROUTES: dict[str, tuple] = {
     "/shadow-actions": (handle_shadow_actions, False),
     "/health.json": (handle_health, False),
     "/governance.json": (handle_governance, False),
+    "/statistical-metrics.json": (handle_statistical_metrics, False),
     "/risk-parity.json": (handle_risk_parity, False),
     "/narrative.json": (handle_narrative, False),
     "/liquidity.json": (handle_liquidity, False),

@@ -6,6 +6,14 @@ import pandas as pd
 import pytz
 
 from paper_trading.governance.multipliers import compute_effective_multipliers
+from quantforge.domain.value_objects.statistical_metrics import (
+    _moments,
+    confidence_reliability_score,
+    herfindahl_index,
+    minimum_track_record_length,
+    probabilistic_sharpe_ratio,
+    sharpe_ratio,
+)
 
 logger = logging.getLogger("quantforge.metrics_service")
 
@@ -187,6 +195,42 @@ class MetricsService:
             liquidity_size_scalar=governance._liquidity_size_scalar,
         )
 
+        # ── Statistical significance metrics (PSR, MinTRL, CRS, HHI) ──
+        stat_metrics = {
+            "sharpe_ratio": None,
+            "psr_gt_0": None,
+            "psr_gt_1": None,
+            "min_trl": None,
+            "crs": None,
+            "hhi": None,
+        }
+        if len(trade_log) >= 5:
+            r_vals = np.array([t.get("realized_r", 0) for t in trade_log], dtype=float)
+            r_trades = r_vals[r_vals != 0]
+            sr = sharpe_ratio(r_vals)
+            skew, ex_kurt = _moments(r_trades) if len(r_trades) > 2 else (0.0, 0.0)
+            n_obs = len(r_vals)
+            stat_metrics["sharpe_ratio"] = round(sr, 4)
+            stat_metrics["psr_gt_0"] = round(probabilistic_sharpe_ratio(sr, n_obs, skew, ex_kurt, 0.0), 4)
+            stat_metrics["psr_gt_1"] = round(probabilistic_sharpe_ratio(sr, n_obs, skew, ex_kurt, 1.0), 4)
+            stat_metrics["min_trl"] = minimum_track_record_length(sr, skew, ex_kurt, 0.05)
+            # HHI from per-trade returns
+            if len(r_trades) > 0:
+                stat_metrics["hhi"] = round(herfindahl_index(r_trades), 4)
+            # CRS from pred_confidence vs outcome
+            probs_list = []
+            outcomes_list = []
+            for t in trade_log:
+                conf = t.get("pred_confidence") or t.get("conf_at_entry")
+                r_trade = t.get("realized_r", 0)
+                if conf is not None and conf > 0 and r_trade != 0:
+                    probs_list.append(float(conf))
+                    outcomes_list.append(1 if r_trade > 0 else 0)
+            if len(set(outcomes_list)) > 1 and len(probs_list) >= 20:
+                stat_metrics["crs"] = round(
+                    confidence_reliability_score(np.array(probs_list), np.array(outcomes_list)), 4
+                )
+
         meta_inference = None
         if _meta_label_model is not None and _last_meta_proba is not None:
             meta_inference = {
@@ -265,4 +309,5 @@ class MetricsService:
                 "psi_ok": _psi.psi_ok if _psi else True,
                 "penalty": _psi.penalty if _psi else 0.0,
             },
+            **stat_metrics,
         }

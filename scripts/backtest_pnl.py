@@ -32,6 +32,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from quantforge.domain.value_objects.statistical_metrics import (
+    _moments,
+    deflated_sharpe_ratio,
+    herfindahl_index,
+    minimum_track_record_length,
+    probabilistic_sharpe_ratio,
+)
+
 logger = logging.getLogger("backtest_pnl")
 
 WALKDIR = Path(__file__).resolve().parent.parent / "walkforward"
@@ -126,9 +134,20 @@ def asset_metrics(daily_r: pd.Series) -> dict:
     """
     n_trades = int((daily_r != 0).sum())
     if n_trades == 0:
-        return {k: 0.0 for k in ("n_trades", "win_rate", "total_R", "avg_R",
-                                 "profit_factor", "sharpe", "sharpe_adj",
-                                 "max_dd_R", "calmar")}
+        return {
+            k: 0.0
+            for k in (
+                "n_trades",
+                "win_rate",
+                "total_R",
+                "avg_R",
+                "profit_factor",
+                "sharpe",
+                "sharpe_adj",
+                "max_dd_R",
+                "calmar",
+            )
+        }
 
     wins = daily_r[daily_r > 0]
     losses = daily_r[daily_r < 0]
@@ -138,11 +157,23 @@ def asset_metrics(daily_r: pd.Series) -> dict:
     profit_factor = abs(wins.sum() / losses.sum()) if len(losses) > 0 else float("inf")
 
     # Sharpe from daily R (annualised, 252 trading days)
+    daily_r_arr = daily_r.values
+    n_days = len(daily_r_arr)
     sharpe = float(daily_r.mean() / daily_r.std() * np.sqrt(252)) if daily_r.std() > 0 else 0.0
 
     # Autocorrelation-adjusted Sharpe (Lo, 2002)
     rho = daily_r.autocorr() if len(daily_r) > 1 else 0.0
     sharpe_adj = sharpe * np.sqrt((1.0 - rho) / (1.0 + rho)) if abs(rho) < 1.0 else sharpe
+
+    # Statistical moments
+    skew, ex_kurt = _moments(daily_r_arr)
+    psr_gt_0 = probabilistic_sharpe_ratio(sharpe, n_days, skew, ex_kurt, 0.0)
+    psr_gt_1 = probabilistic_sharpe_ratio(sharpe, n_days, skew, ex_kurt, 1.0)
+    min_trl = minimum_track_record_length(sharpe, skew, ex_kurt, alpha=0.05)
+
+    # Return concentration (HHI) from non-zero trade days
+    nonzero_r = daily_r_arr[daily_r_arr != 0]
+    hhi = herfindahl_index(nonzero_r) if len(nonzero_r) > 0 else 0.0
 
     # Drawdown in R-units (peak-to-trough from cumulative R)
     cum = daily_r.cumsum()
@@ -157,6 +188,7 @@ def asset_metrics(daily_r: pd.Series) -> dict:
 
     return {
         "n_trades": n_trades,
+        "n_days": n_days,
         "win_rate": round(win_rate, 4),
         "total_R": round(total_R, 2),
         "avg_R": round(avg_R, 4),
@@ -166,6 +198,12 @@ def asset_metrics(daily_r: pd.Series) -> dict:
         "max_dd_R": round(max_dd_r, 2),
         "calmar": round(calmar, 2),
         "loss_ratio": round(loss_cluster_pct, 4),
+        "skew": round(skew, 4),
+        "ex_kurt": round(ex_kurt, 4),
+        "psr_gt_0": round(psr_gt_0, 4),
+        "psr_gt_1": round(psr_gt_1, 4),
+        "min_trl": min_trl,
+        "hhi": round(hhi, 4),
     }
 
 
@@ -196,11 +234,13 @@ def build_portfolio_daily_r(
 
     portfolio_r = combined.mean(axis=1)  # equal-weight across available assets
 
-    result = pd.DataFrame({
-        "portfolio_r": portfolio_r,
-        "n_assets": n_assets,
-        "frac_red": frac_red,
-    })
+    result = pd.DataFrame(
+        {
+            "portfolio_r": portfolio_r,
+            "n_assets": n_assets,
+            "frac_red": frac_red,
+        }
+    )
     # Apply minimum-asset floor
     result = result[result["n_assets"] >= min_assets].copy()
     return result
@@ -226,11 +266,23 @@ def portfolio_metrics(
     r = pf_df["portfolio_r"]
     n_days = len(r)
     if n_days == 0:
-        return {k: 0.0 for k in ("n_days", "total_R", "avg_R", "sharpe",
-                                 "sharpe_adj", "max_dd_R", "calmar",
-                                 "n_loss_cluster_days", "n_weekly_clusters",
-                                 "median_n_assets")}
+        return {
+            k: 0.0
+            for k in (
+                "n_days",
+                "total_R",
+                "avg_R",
+                "sharpe",
+                "sharpe_adj",
+                "max_dd_R",
+                "calmar",
+                "n_loss_cluster_days",
+                "n_weekly_clusters",
+                "median_n_assets",
+            )
+        }
 
+    r_arr = r.values
     total_R = float(r.sum())
     avg_R = float(r.mean())
     sharpe = float(r.mean() / r.std() * np.sqrt(252)) if r.std() > 0 else 0.0
@@ -245,15 +297,17 @@ def portfolio_metrics(
     rho = r.autocorr() if len(r) > 1 else 0.0
     sharpe_adj = sharpe * np.sqrt((1.0 - rho) / (1.0 + rho)) if abs(rho) < 1.0 else sharpe
 
+    # Statistical moments (portfolio level)
+    skew, ex_kurt = _moments(r_arr)
+    psr_gt_0 = probabilistic_sharpe_ratio(sharpe, n_days, skew, ex_kurt, 0.0)
+    # Portfolio DSR: 18 assets tested simultaneously
+    dsr = deflated_sharpe_ratio(sharpe, n_days, skew, ex_kurt, num_trials=18)
+
     # Loss cluster days: >threshold fraction of active assets red
     cluster_days = (pf_df["frac_red"] > loss_cluster_threshold).sum()
 
     # Weekly cluster: weeks with >= 2 cluster days
-    weekly_clusters = (
-        pf_df[pf_df["frac_red"] > loss_cluster_threshold]
-        .resample("W")["frac_red"]
-        .count()
-    )
+    weekly_clusters = pf_df[pf_df["frac_red"] > loss_cluster_threshold].resample("W")["frac_red"].count()
     n_weekly_clusters = int((weekly_clusters >= 2).sum())
 
     return {
@@ -267,6 +321,10 @@ def portfolio_metrics(
         "n_loss_cluster_days": int(cluster_days),
         "n_weekly_clusters": n_weekly_clusters,
         "median_n_assets": int(pf_df["n_assets"].median()),
+        "skew": round(skew, 4),
+        "ex_kurt": round(ex_kurt, 4),
+        "psr_gt_0": round(psr_gt_0, 4),
+        "dsr": round(dsr, 4),
     }
 
 
@@ -274,9 +332,7 @@ def portfolio_metrics(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Walk-forward PnL backtest from OOS signal parquets"
-    )
+    parser = argparse.ArgumentParser(description="Walk-forward PnL backtest from OOS signal parquets")
     parser.add_argument(
         "--tag",
         default="base",
@@ -334,8 +390,14 @@ def main():
     # Discover signal parquets
     pattern = f"*_wf_signals_{tag}.parquet"
     parquets = sorted(WALKDIR.glob(pattern))
+    # Fallback to tag-less pattern (walk_forward_backtest.py default output)
     if not parquets:
-        logger.error("No parquets matching %s in %s", pattern, WALKDIR)
+        fallback_pattern = "*_wf_signals.parquet"
+        parquets = sorted(WALKDIR.glob(fallback_pattern))
+        if parquets:
+            logger.info("No tagged parquets — using tag-less fallback (%s)", fallback_pattern)
+    if not parquets:
+        logger.error("No parquets matching '%s' or '%s' in %s", pattern, "*_wf_signals.parquet", WALKDIR)
         sys.exit(1)
     logger.info("Found %d signal parquets for tag '%s'", len(parquets), tag)
 
@@ -359,10 +421,19 @@ def main():
 
         # SELL-only filter for 9 assets with inverted BUY calibration
         if args.sell_only:
-            SELL_ONLY_ASSETS = frozenset({
-                "CADCHF", "AUDUSD", "ES", "NQ", "NZDCHF",
-                "EURAUD", "^DJI", "USDCHF", "EURCHF",
-            })
+            SELL_ONLY_ASSETS = frozenset(
+                {
+                    "CADCHF",
+                    "AUDUSD",
+                    "ES",
+                    "NQ",
+                    "NZDCHF",
+                    "EURAUD",
+                    "^DJI",
+                    "USDCHF",
+                    "EURCHF",
+                }
+            )
             if asset in SELL_ONLY_ASSETS:
                 n_override = (df["signal"] == 1).sum()
                 df.loc[df["signal"] == 1, "signal"] = 0
@@ -384,9 +455,11 @@ def main():
 
     print("\nPer-Asset Results")
     print("-" * 72)
-    display_cols = ["n_trades", "win_rate", "total_R", "avg_R",
-                    "profit_factor", "sharpe", "sharpe_adj", "max_dd_R", "calmar"]
+    display_cols = ["n_trades", "win_rate", "total_R", "sharpe", "psr_gt_0", "psr_gt_1", "min_trl", "hhi", "max_dd_R"]
     print(per_asset_df[display_cols].to_string(float_format="%.4f"))
+    print()
+    col_note = "  psr_gt_0 = P(true Sharpe > 0),  psr_gt_1 = P(true Sharpe > 1),  min_trl = MinTRL @ α=0.05"
+    print(col_note)
     print()
 
     # Portfolio-level
@@ -399,7 +472,7 @@ def main():
         loss_cluster_threshold=args.cluster_threshold,
     )
 
-    print(f"Portfolio (equal-weight, ≥{args.min_assets} assets)")
+    print(f"Portfolio (equal-weight, ≥{args.min_assets} assets, DSR num_trials=18)")
     print("-" * 72)
     for k, v in pf_metrics.items():
         print(f"  {k:25s} = {v}")
@@ -443,16 +516,16 @@ def main():
         for asset in common_assets:
             d1 = all_daily_r[asset].sum()
             d2 = ensemble_map[asset].sum()
-            deltas.append({
-                "asset": asset,
-                "base_total_R": round(float(d1), 2),
-                "ensemble_total_R": round(float(d2), 2),
-                "delta_R": round(float(d2 - d1), 2),
-            })
+            deltas.append(
+                {
+                    "asset": asset,
+                    "base_total_R": round(float(d1), 2),
+                    "ensemble_total_R": round(float(d2), 2),
+                    "delta_R": round(float(d2 - d1), 2),
+                }
+            )
         delta_df = pd.DataFrame(deltas).set_index("asset")
-        delta_df["pct_change"] = (
-            delta_df["delta_R"] / delta_df["base_total_R"].replace(0, 1) * 100
-        )
+        delta_df["pct_change"] = delta_df["delta_R"] / delta_df["base_total_R"].replace(0, 1) * 100
         print(delta_df.to_string(float_format="%.4f"))
 
         # Portfolio-level comparison
@@ -470,16 +543,24 @@ def main():
         n_losses = (paired["ensemble"] < paired["base"]).sum()
         n_ties = len(paired) - n_wins - n_losses
         from scipy.stats import binomtest
+
         n_non_ties = n_wins + n_losses
-        pooled_p = (
-            binomtest(n_wins, n_non_ties, p=0.5, alternative="two-sided").pvalue
-            if n_non_ties > 0
-            else 1.0
-        )
+        pooled_p = binomtest(n_wins, n_non_ties, p=0.5, alternative="two-sided").pvalue if n_non_ties > 0 else 1.0
+
+        # DSR on portfolio daily delta (ensemble - base)
+        delta_series = r_ens - r_base
+        delta_sharpe = float(delta_series.mean() / delta_series.std() * np.sqrt(252)) if delta_series.std() > 0 else 0.0
+        delta_skew, delta_exkurt = _moments(delta_series.values)
+        n_days_delta = len(delta_series)
+        dsr_delta = deflated_sharpe_ratio(delta_sharpe, n_days_delta, delta_skew, delta_exkurt, num_trials=2)
+        psr_delta = probabilistic_sharpe_ratio(delta_sharpe, n_days_delta, delta_skew, delta_exkurt, 0.0)
 
         print(f"\nPortfolio delta (ensemble - base): {delta_total:+.2f} R over {len(common_dates)} days")
         print(f"  Days ensemble wins: {n_wins}, loses: {n_losses}, ties: {n_ties}")
         print(f"  Sign test (pooled): p = {pooled_p:.4f}")
+        print(f"  Delta Sharpe: {delta_sharpe:.4f}")
+        print(f"  PSR(>0) on delta: {psr_delta:.4f}")
+        print(f"  DSR on delta (num_trials=2): {dsr_delta:.4f}")
 
         comp_path = WALKDIR / f"pnl_comparison_{tag}_vs_{args.ensemble_tag}.csv"
         delta_df.to_csv(comp_path)
@@ -493,18 +574,18 @@ def _test_pnl():
     """Run unit tests on compute_trade_pnl."""
     cases = [
         # (signal, label, tp, sl, expected)
-        (1, 1, 2.0, 2.0, 2.0),   # BUY, TP hit
+        (1, 1, 2.0, 2.0, 2.0),  # BUY, TP hit
         (1, 0, 2.0, 2.0, -2.0),  # BUY, SL hit
         (-1, 0, 2.0, 2.0, 2.0),  # SELL, lower(TP) hit
-        (-1, 1, 2.0, 2.0, -2.0), # SELL, upper(SL) hit
-        (0, 1, 2.0, 2.0, 0.0),   # FLAT
-        (0, 0, 2.0, 2.0, 0.0),   # FLAT
+        (-1, 1, 2.0, 2.0, -2.0),  # SELL, upper(SL) hit
+        (0, 1, 2.0, 2.0, 0.0),  # FLAT
+        (0, 0, 2.0, 2.0, 0.0),  # FLAT
         (1, 0, 1.5, 3.0, -3.0),  # BUY, EURUSD-like, SL hit
         (-1, 0, 1.5, 3.0, 1.5),  # SELL, EURUSD-like, TP hit (lower)
-        (-1, 1, 1.5, 3.0, -3.0), # SELL, EURUSD-like, SL hit (upper)
-        (1, 1, 1.0, 3.0, 1.0),   # BUY, GBPNZD-like, TP hit
+        (-1, 1, 1.5, 3.0, -3.0),  # SELL, EURUSD-like, SL hit (upper)
+        (1, 1, 1.0, 3.0, 1.0),  # BUY, GBPNZD-like, TP hit
         (-1, 0, 1.0, 3.0, 1.0),  # SELL, GBPNZD-like, TP hit
-        (-1, 1, 1.0, 3.0, -3.0), # SELL, GBPNZD-like, SL hit
+        (-1, 1, 1.0, 3.0, -3.0),  # SELL, GBPNZD-like, SL hit
     ]
     failures = 0
     for signal, label, tp, sl, expected in cases:
@@ -514,8 +595,7 @@ def _test_pnl():
         if not ok:
             failures += 1
             print(
-                f"  {status}: signal={signal:+d} label={label} "
-                f"tp={tp} sl={sl} → {result:.1f} (expected {expected:.1f})"
+                f"  {status}: signal={signal:+d} label={label} tp={tp} sl={sl} → {result:.1f} (expected {expected:.1f})"
             )
     if failures == 0:
         print(f"All {len(cases)} PnL tests passed.")

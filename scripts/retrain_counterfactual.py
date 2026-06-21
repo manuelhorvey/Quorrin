@@ -42,6 +42,11 @@ from features.alpha_features import build_alpha_features
 from features.data_fetch import fetch_asset_data, fetch_asset_ohlcv, fetch_cot_features
 from labels.compat import PurgedWalkForwardFolds
 from labels.triple_barrier import apply_triple_barrier
+from quantforge.domain.value_objects.statistical_metrics import (
+    _moments,
+    deflated_sharpe_ratio,
+    probabilistic_sharpe_ratio,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("counterfactual")
@@ -164,6 +169,41 @@ def _trade_pnl(signal: int, label: int, tp: float, sl: float) -> float:
     if signal == 1:
         return tp if label == 1 else -sl
     return tp if label == 0 else -sl
+
+
+def _daily_r_series(df: pd.DataFrame, tp: float, sl: float) -> pd.Series:
+    """Compute daily R-multiple series from a predictions DataFrame."""
+    r = np.zeros(len(df), dtype=float)
+    signals = df["signal"].values
+    labels = df["label"].values
+    buy_mask = signals == 1
+    sell_mask = signals == -1
+    r[buy_mask & (labels == 1)] = tp
+    r[buy_mask & (labels == 0)] = -sl
+    r[sell_mask & (labels == 0)] = tp
+    r[sell_mask & (labels == 1)] = -sl
+    return pd.Series(r, index=df.index, name="daily_r")
+
+
+def _infer_trial_count(asset_list: list[str], args) -> int:
+    """Infer num_trials from asset count x active ablation flags.
+
+    No manual override -- always inferred. This avoids the risk of a
+    manual --n-trials flag drifting out of sync with the actual
+    number of comparisons being tested.
+    """
+    n_ablations = sum(
+        [
+            args.remove_carry,
+            args.remove_dxy,
+            args.remove_momentum,
+            args.remove_zscore,
+            args.remove_cot,
+        ]
+    )
+    if n_ablations == 0:
+        n_ablations = 1  # baseline-comparison mode
+    return len(asset_list) * n_ablations
 
 
 def run_asset_counterfactual(
@@ -334,6 +374,8 @@ def main():
     os.makedirs(details_dir, exist_ok=True)
 
     all_rows = []
+    all_baseline_r: dict[str, pd.Series] = {}
+    all_cf_r: dict[str, pd.Series] = {}
     for asset_name in asset_list:
         ticker = CONFIG_ASSETS.get(asset_name)
         if ticker is None:
@@ -365,6 +407,15 @@ def main():
             "baseline_max_dd_r": baseline_agg.get("max_dd_r", 0),
             "cf_max_dd_r": cf_agg.get("max_dd_r", 0),
         }
+
+        # Daily R series for portfolio-level DSR
+        if not baseline_preds.empty:
+            bl_r = _daily_r_series(baseline_preds, tp_mult, sl_mult)
+            all_baseline_r[asset_name] = bl_r
+        if not cf_preds.empty:
+            cf_r = _daily_r_series(cf_preds, tp_mult, sl_mult)
+            all_cf_r[asset_name] = cf_r
+
         all_rows.append(row)
 
         # Save per-fold detail
@@ -442,6 +493,32 @@ def main():
                 improved,
                 portfolio["n_assets"],
             )
+
+        # ── DSR: Deflated Sharpe on portfolio delta (baseline → CF) ──
+        num_trials = _infer_trial_count(asset_list, args)
+        if all_baseline_r and all_cf_r:
+            bl_pf = pd.DataFrame(all_baseline_r).mean(axis=1)
+            cf_pf = pd.DataFrame(all_cf_r).mean(axis=1)
+            common_idx = bl_pf.index.intersection(cf_pf.index)
+            if len(common_idx) > 5:
+                delta_r = cf_pf.loc[common_idx].values - bl_pf.loc[common_idx].values
+                n_days = len(delta_r)
+                ddof_std = np.std(delta_r, ddof=1)
+                pf_sharpe = float(np.mean(delta_r) / ddof_std * np.sqrt(252)) if ddof_std > 1e-9 else 0.0
+                pf_skew, pf_exkurt = _moments(delta_r)
+                pf_psr = probabilistic_sharpe_ratio(pf_sharpe, n_days, pf_skew, pf_exkurt, 0.0)
+                pf_dsr = deflated_sharpe_ratio(pf_sharpe, n_days, pf_skew, pf_exkurt, num_trials=num_trials)
+                logger.info("")
+                logger.info("=== Counterfactual DSR ===")
+                n_abl = num_trials // max(len(asset_list), 1)
+                logger.info("num_trials=%d (%d assets x %d ablations)", num_trials, len(asset_list), n_abl)
+                logger.info("Portfolio delta Sharpe: %.4f", pf_sharpe)
+                logger.info("PSR(>0): %.4f (probability delta Sharpe > 0)", pf_psr)
+                logger.info("DSR: %.4f (deflated for %d trials)", pf_dsr, num_trials)
+                if pf_dsr < 0.95:
+                    logger.info(">>> DSR < 0.95 - not significant after multiple-testing correction <<<")
+                else:
+                    logger.info(">>> DSR >= 0.95 - survives multiple-testing correction <<<")
 
     else:
         logger.warning("No results — no assets processed")

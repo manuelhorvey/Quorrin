@@ -248,3 +248,47 @@ class TestCircuitBreaker:
             cb.record_daily_pnl(1.0)
         result = cb.check(portfolio_value=106.0)
         assert not result.trip
+
+
+class TestCorrelationMonitor:
+    def test_empty_report_with_single_asset(self):
+        from paper_trading.orchestrator.correlation import CorrelationMonitor
+
+        cm = CorrelationMonitor()
+        report = cm.update({"AUDUSD": 1.0}, {}, "2025-01-01")
+        assert report["high_pairs"] == []
+        assert report["cluster_alerts"] == []
+
+    def test_high_correlation_detected(self):
+        from paper_trading.orchestrator.correlation import CorrelationMonitor
+
+        cm = CorrelationMonitor(correlation_threshold=0.9, min_periods=3)
+        for i, d in enumerate([f"2025-01-{d:02d}" for d in range(1, 11)]):
+            cm.update({"A": 100 + i, "B": 100 + i + 0.5}, {}, d)
+        report = cm.update({"A": 110, "B": 110.5}, {}, "2025-01-11")
+        assert len(report["high_pairs"]) > 0
+
+    def test_no_correlation_no_alerts(self):
+        from paper_trading.orchestrator.correlation import CorrelationMonitor
+
+        cm = CorrelationMonitor(correlation_threshold=0.5, min_periods=3)
+        for i, d in enumerate([f"2025-01-{d:02d}" for d in range(1, 11)]):
+            cm.update({"A": 100, "B": 100 + (i % 3)}, {}, d)
+        report = cm.update({"A": 100, "B": 102}, {}, "2025-01-11")
+        assert report["cluster_alerts"] == []
+
+    def test_cluster_alert_same_side(self):
+        from paper_trading.orchestrator.correlation import CorrelationMonitor
+
+        cm = CorrelationMonitor(
+            correlation_threshold=0.8, cluster_same_side_threshold=2, min_periods=3
+        )
+        for i, d in enumerate([f"2025-01-{d:02d}" for d in range(1, 11)]):
+            cm.update({"A": 100 + i, "B": 100 + i + 0.3, "C": 100 - i}, {}, d)
+        positions = {
+            "A": {"side": "long"},
+            "B": {"side": "long"},
+            "C": {"side": "short"},
+        }
+        report = cm.update({"A": 110, "B": 110.3, "C": 90}, positions, "2025-01-11")
+        assert any("cluster" in a for a in report["cluster_alerts"])

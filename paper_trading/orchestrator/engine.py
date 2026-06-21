@@ -32,6 +32,7 @@ from paper_trading.orchestrator.actor import (
     AssetResult,
     compute_health_snapshot,
 )
+from paper_trading.orchestrator.correlation import CorrelationMonitor
 from paper_trading.orchestrator.health import CircuitBreaker
 from paper_trading.replay.wal import WalWriter
 
@@ -77,6 +78,9 @@ class EngineOrchestrator:
 
         # Portfolio circuit breaker (vol spike + consecutive loss)
         self._circuit_breaker = CircuitBreaker()
+
+        # Cross-asset correlation monitor
+        self._correlation_monitor = CorrelationMonitor()
 
         self._pool = ThreadPoolExecutor(
             max_workers=self._max_workers,
@@ -302,7 +306,30 @@ class EngineOrchestrator:
             penalty *= 0.9
             self._backstop_multiplier = 1.0 - penalty
 
-        # ── Phase 3e: MT5 orphan reconciliation ───────────────────────────
+        # ── Phase 3e: Cross-asset correlation monitoring ──────────────────
+        prices: dict[str, float] = {}
+        positions: dict[str, dict] = {}
+        for name, actor in self._actors.items():
+            engine = getattr(actor, "_engine", None)
+            if engine is None:
+                continue
+            px = getattr(engine, "current_price", None)
+            if px is not None and px > 0:
+                prices[name] = px
+            pos = getattr(engine, "pos_mgr", None)
+            if pos is not None and pos.has_position():
+                side = pos.position.side if hasattr(pos.position, "side") else None
+                positions[name] = {"side": side.value if hasattr(side, "value") else side}
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        corr_report = self._correlation_monitor.update(prices, positions, today_str)
+        results["correlation"] = {
+            "n_high_pairs": len(corr_report["high_pairs"]),
+            "cluster_alerts": corr_report["cluster_alerts"],
+        }
+        if any("cluster" in a for a in corr_report["cluster_alerts"]):
+            logger.warning("Correlation cluster alert: %s", corr_report["cluster_alerts"])
+
+        # ── Phase 3f: MT5 orphan reconciliation ───────────────────────────
         self._reconcile_mt5_orphans()
 
         # ── Phase 4: Persist all queues ───────────────────────────────────

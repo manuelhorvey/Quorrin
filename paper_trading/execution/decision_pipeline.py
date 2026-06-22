@@ -438,7 +438,7 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
 def apply_sell_only_filter(ctx: DecisionContext) -> None:
     """Force FLAT on BUY signals for assets with inverted BUY calibration.
 
-    For these 9 assets, p_long > 0.5 corresponds to ~17% win rate (inverted
+    For these 11 assets, p_long > 0.5 corresponds to ~17% win rate (inverted
     signal), while p_long < 0.425 corresponds to ~77% win rate (well-calibrated
     SELL).  This stage lets SELL signals pass through unchanged but overrides
     BUY signals to FLAT, converting these assets to sell-only.

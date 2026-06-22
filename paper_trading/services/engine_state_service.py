@@ -17,6 +17,16 @@ logger = logging.getLogger("quantforge.engine_state_service")
 
 ET = pytz.timezone("US/Eastern")
 
+_PC_FALLBACK = {
+    "long": 0,
+    "short": 0,
+    "total": 0,
+    "skew": 0.0,
+    "dominant_side": "unknown",
+    "threshold": 0.75,
+    "alert": False,
+}
+
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -134,10 +144,10 @@ class EngineStateService:
             if any_halted
             else (ExecutionState.PAUSED if (overall_validity / n) < 0.5 else ExecutionState.ACTIVE)
         )
-        # Use post-sync capital as baseline so dashboard returns match
-        # the actual capital used for sizing (not raw config which may
-        # diverge when MT5 broker equity is synced).
-        tc = sum(a.capital_base for a in engine.assets.values()) or get_config().capital or 1.0
+        # FIXED 2026-06-22: was sum(a.capital_base) which got overwritten by
+        # rebalancing, making denominator chase numerator → return ≈ 0%.
+        # Now uses get_config().capital (the immutable config baseline).
+        tc = get_config().capital or 1.0
 
         mtm_total = self.compute_mtm_total()
 
@@ -179,6 +189,12 @@ class EngineStateService:
             "average_validity_exposure": round(overall_validity / n, 4),
             "portfolio_drawdown": round(portfolio_dd * 100, 2),
             "portfolio_peak_value": round(engine.portfolio_peak_value, 2) if engine.portfolio_peak_value else None,
+            "position_concentration": getattr(
+                getattr(engine, "_orchestrator", None),
+                "_position_concentration",
+                _PC_FALLBACK,
+            )
+            or _PC_FALLBACK,
         }
 
     def save_state(self):

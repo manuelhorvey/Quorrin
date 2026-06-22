@@ -49,6 +49,7 @@ Cross-sectional multi-asset paper trading engine. 19-asset portfolio (FX, commod
 | `scripts/backtest_pnl.py` | PnL backtest from OOS signal parquets (R-multiples, autocorrelation-adj Sharpe) |
 | `scripts/compare_ensemble.py` | Ensemble vs base PnL comparison with per-fold sign test |
 | `paper_trading/governance/risk.py` | Risk evaluation, SL hit rate, drift scoring, **SELL tripwire** (per-asset deque, TP=1/SL=0, win, 20-trade window, 65% threshold, WARNING log on trip) |
+| `paper_trading/orchestrator/engine.py` | `EngineOrchestrator` — phases 1-3 (parallel signal, atomic entry, portfolio phase with correlation monitoring, MT5 orphan reconciliation, position concentration check) |
 
 ## Position Sizing Chain
 
@@ -166,6 +167,10 @@ The dashboard HTTP server (`paper_trading/serve.py`) supports optional bearer-to
 - **Carry feature always zero (FIXED 2026-06-19)**: `rate_diffs` DataFrame in `data_fetch.py:442` used `asset_name` column key, but `build_alpha_features` looks up by `"close"` — so rate_diff lookup always failed and carry was `pd.Series(0.0)`. Affected all assets, both training and inference (same code path), so no training-inference mismatch — carry was simply inert. Fixed column name to `"close"`.
 - **Bar-jump suppression (ADDED 2026-06-19)**: `decision_pipeline.py:apply_bar_jump_suppression` — suppresses all trading for 60 minutes when bar count changes >100 (indicating data-source switch). Stage 0 in DEFAULT_STAGES. Detection in `pipeline.py:_detect_bar_jump()`.
 - **Risk-off suppression for AUDUSD/AUDCHF (ADDED 2026-06-19)**: `decision_pipeline.py:apply_risk_off_suppression` — holds flat for AUDUSD/AUDCHF when VIX is rising (>0) and SPX is falling (<0). Detection in `pipeline.py:_detect_risk_off()` via `features_df["vix_mom_5d"]` and `features_df["spx_mom_5d"]`. Stage after `resolve_signal` in DEFAULT_STAGES.
+- **Return computation denominator using rebalanced capital_base (FIXED 2026-06-22)**: `engine_state_service.py:_compute_portfolio_summary` used `sum(a.capital_base)` as the return baseline, but `capital_base` is overwritten by rebalancing to equal `total_value * weight`, making `(mtm_total - tc) / tc ≈ 0%` regardless of actual PnL. A `-16.97%` loss was reported as `+0.04%`. Fix: replaced `sum(a.capital_base)` with `get_config().capital` — the immutable config baseline. Also fixes `realized_return` which used the same `tc`. Also corrected the misleading comment that claimed this was intentional.
+- **NQ price deviation gate blocking all entries (FIXED 2026-06-22)**: All 258 "entry skipped" events on NQ were caused by the 2% default `max_entry_slippage_pct` being too tight for volatile Nasdaq-100 futures. Deferred entries saw >2% price moves between signal generation and execution. Fix: added per-asset `max_entry_slippage_pct: 5.0` to NQ config in `paper_trading.yaml`. The code at `entry_service.py:201` already supports per-asset override with global fallback — no logic change needed.
+- **MT5 orphan dry-run Phase C (ADDED 2026-06-22)**: `orchestrator/engine.py:_reconcile_mt5_orphans()` Phase C — log-only orphan reporter. Logs every MT5 position with no matching paper-side ticket. Deduped by ticket, tracks first_seen cycle, flags removed-asset orphans with `engine_actor=None`. No state mutation. Run for at least one full cycle to produce a clean list before designing adoption/close/manual logic.
+- **Position concentration check (ADDED 2026-06-22)**: `orchestrator/engine.py` Phase 3e — counts open long/short positions each cycle, logs WARNING when skew exceeds `net_short_concentration_threshold` (default 75%). Exposed in `state.json` portfolio as `position_concentration` dict. Config key: `defaults.net_short_concentration_threshold` in `paper_trading.yaml`.
 - **Risk-off consequence validated (2026-06-19)**: Checked 63 trading days (3 months) — risk-off (VIX>0 & SPX<0) occurred on 12 days vs the 1 live episode. AUDUSD always-long accuracy: 8.3% on risk-off days vs 54.9% on normal days. Mean-reversion (oversold→BUY) accuracy: 14.3% (1/7) on risk-off+oversold vs 100% on normal+oversold (2/2). Consequence generalizes — the suppression rule is not tuned to one episode.
   **Note on methodology:** This finding is *not* based on counting intraday prediction cycles. It was validated using daily-resolution historical price action (63 daily bars × independent forward returns), so it is exempt from the per-cycle-counting artifact that debunked the three-mechanism taxonomy below. The two conclusions came from different evidentiary standards.
 - **Prediction taxonomy (CORRECTED 2026-06-19)**: Earlier taxonomy claimed three distinct failure mechanisms across five assets. That taxonomy was based on *per-cycle* accuracy (each ~30s engine cycle counted as an independent prediction), which amplified a 1-2 day directional miss into "hundreds of wrong predictions." A daily-bar XGBoost model updates once per day; ~500 intraday cycles all reproduce the same daily signal. The live window was **3 calendar days (Jun 17-19)**. Honest per-day accuracy:
@@ -320,17 +325,17 @@ Folds where the direction *wasn't* flipped show zero or near-zero removed signal
 
 The original "directional flip" narrative was wrong as a portfolio-wide diagnosis. The real failure mode is:
 
-**The model's BUY signal is inverted for 9 of 19 assets** — `p_long > 0.5` reliably predicts the WRONG direction.
+**The model's BUY signal is inverted for 11 of 19 assets** — `p_long > 0.5` reliably predicts the WRONG direction.
 
 ### Evidence Chain
 
-1. **BUY is flat at ~17% win rate from p_long=0.57 to p_long=1.0** across all 9 assets. p_long=0.50-0.575 bucket: 0 wins out of 144 predictions (0%). This is NOT miscalibration — it's an **inverted signal**.
+1. **BUY is flat at ~17% win rate from p_long=0.57 to p_long=1.0** across all 11 assets. p_long=0.50-0.575 bucket: 0 wins out of 144 predictions (0%). This is NOT miscalibration — it's an **inverted signal**.
 
-2. **SELL is well-calibrated at ~77% win rate** on the same 9 assets. p_long < 0.425 bucket: 1,273 predictions at 77% win rate.
+2. **SELL is well-calibrated at ~77% win rate** on the same 11 assets. p_long < 0.425 bucket: 1,273 predictions at 77% win rate.
 
 3. **The pattern is not trend-conditional**: confident BUY wins 15% in trending windows and 23% in non-trending windows. The model simply misprices these assets regardless of regime.
 
-4. **The pattern is uniform across all 9 assets**: every single one shows 0% win rate in the 50-57% p_long bucket.
+4. **The pattern is uniform across all 11 assets**: every single one shows 0% win rate in the 50-57% p_long bucket.
 
 5. **Portfolio-wide, not concentrated**: 77% of assets have at least one fold with >50% wrong rate. The BUY inversion is a specific subset of a broader miscalibration.
 
@@ -339,7 +344,7 @@ The original "directional flip" narrative was wrong as a portfolio-wide diagnosi
 - The "directional flip" (AUDNZD confident SELL during uptrend) was an asset-specific anomaly, not portfolio pattern
 - The portfolio-wide problem is **BUY overconfidence on 9 specific assets**, not "confident wrong-direction bets during trends"
 - DXY correlation, trend duration, and regime-conditional factors were all tested and ruled out as mechanisms
-- Three of the 9 assets (^DJI, EURCHF, USDCHF) are marginally net-positive on BUY due to favorable tp/sl ratios masking the inverted signal — this is still a trust issue, not a returns issue
+- Three of the 11 assets (^DJI, EURCHF, USDCHF) are marginally net-positive on BUY due to favorable tp/sl ratios masking the inverted signal — this is still a trust issue, not a returns issue
 
 ### Fix Applied
 
@@ -514,6 +519,9 @@ New handlers in `replay/runner.py`:
 | `paper_trading/ops/slack_alerter.py` | **NEW** — WAL-tailing Slack alert daemon |
 | `paper_trading/dashboard/src/hooks/useEngineHealth.ts` | **NEW** — 5s health poll for liveness indicator |
 | `paper_trading/dashboard/src/components/WalTimeline.tsx` | **NEW** — per-asset WAL causal-boundary event timeline |
+| `paper_trading/orchestrator/engine.py` | Phase 3e — position concentration check |
+| `paper_trading/services/engine_state_service.py` | `position_concentration` exposed in portfolio summary |
+| `configs/paper_trading.yaml` | `net_short_concentration_threshold` default |
 
 ## Barrier Symmetry Audit (2026-06-20)
 

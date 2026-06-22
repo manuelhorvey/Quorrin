@@ -37,6 +37,7 @@ defaults:
   size_taper_min: 0.50
   portfolio_max_leverage: 2.0
   portfolio_leverage_tolerance: 0.001
+  net_short_concentration_threshold: 0.75
   spread_gate:
     enabled: true
     staleness_secs: 300
@@ -214,6 +215,7 @@ assets:
   NQ:
     ticker: NQ=F
     allocation: 0.07
+    max_entry_slippage_pct: 5.0
     sl_mult: 2.5
     tp_mult: 5.0
     spread_tier: indices

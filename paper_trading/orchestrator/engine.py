@@ -95,6 +95,17 @@ class EngineOrchestrator:
         # Separate from Phase 3b's _prev_portfolio_value (which uses total_value sum):
         self._var_prev_value: float | None = None
 
+        # Position concentration snapshot (updated each cycle in Phase 3e)
+        self._position_concentration: dict = {
+            "long": 0,
+            "short": 0,
+            "total": 0,
+            "skew": 0.0,
+            "dominant_side": "unknown",
+            "threshold": 0.75,
+            "alert": False,
+        }
+
         self._pool = ThreadPoolExecutor(
             max_workers=self._max_workers,
             thread_name_prefix="qf-actor",
@@ -321,7 +332,64 @@ class EngineOrchestrator:
             penalty *= 0.9
             self._backstop_multiplier = 1.0 - penalty
 
-        # ── Phase 3e: Cross-asset correlation monitoring ──────────────────
+        # ── Phase 3e: Position concentration check ────────────────────────
+        # Warns when open positions are heavily skewed to one side.
+        long_count = 0
+        short_count = 0
+        for name, actor in self._actors.items():
+            engine = getattr(actor, "_engine", None)
+            if engine is None:
+                continue
+            pos = getattr(engine, "pos_mgr", None)
+            if pos is None or not pos.has_position():
+                continue
+            side = getattr(pos.position, "side", None)
+            if side is None:
+                continue
+            if side == "long":
+                long_count += 1
+            elif side == "short":
+                short_count += 1
+        total_positions = long_count + short_count
+        if total_positions > 0:
+            long_ratio = long_count / total_positions
+            skew = max(long_ratio, 1.0 - long_ratio)
+            from paper_trading.config_manager import get_config
+
+            threshold = (get_config().defaults or {}).get("net_short_concentration_threshold", 0.75)
+            if skew > threshold:
+                side_label = "LONG" if long_ratio > 0.5 else "SHORT"
+                logger.warning(
+                    "POSITION_CONCENTRATION: %d/%d positions on %s side (skew=%.1f%% threshold=%.0f%%)",
+                    max(long_count, short_count),
+                    total_positions,
+                    side_label,
+                    skew * 100,
+                    threshold * 100,
+                )
+            results["position_concentration"] = {
+                "long": long_count,
+                "short": short_count,
+                "total": total_positions,
+                "skew": round(skew, 4),
+                "dominant_side": side_label if total_positions > 0 and skew > threshold else "balanced",
+                "threshold": threshold,
+                "alert": skew > threshold,
+            }
+            self._position_concentration = results["position_concentration"]
+        else:
+            results["position_concentration"] = {
+                "long": 0,
+                "short": 0,
+                "total": 0,
+                "skew": 0.0,
+                "dominant_side": "none",
+                "threshold": 0.75,
+                "alert": False,
+            }
+            self._position_concentration = results["position_concentration"]
+
+        # ── Phase 3f: Cross-asset correlation monitoring ──────────────────
         prices: dict[str, float] = {}
         positions: dict[str, dict] = {}
         for name, actor in self._actors.items():
@@ -344,10 +412,10 @@ class EngineOrchestrator:
         if any("cluster" in a for a in corr_report["cluster_alerts"]):
             logger.warning("Correlation cluster alert: %s", corr_report["cluster_alerts"])
 
-        # ── Phase 3f: MT5 orphan reconciliation ───────────────────────────
+        # ── Phase 3g: MT5 orphan reconciliation ───────────────────────────
         self._reconcile_mt5_orphans()
 
-        # ── Phase 3g: HealthMonitor + VaR + RecoveryScheduler ─────────────
+        # ── Phase 3h: HealthMonitor + VaR + RecoveryScheduler ─────────────
         pv = None
         try:
             pv_raw = self.get_total_portfolio_value()
@@ -529,6 +597,7 @@ class EngineOrchestrator:
 
         Phase A — Drain cleanup queues (event-triggered from close failures).
         Phase B — Detect stale paper mt5_tickets (MT5-native SL/TP, manual close).
+        Phase C — Dry-run orphan report (log only, no state mutation).
         """
         broker = self._resolve_broker()
         if broker is None:
@@ -553,9 +622,8 @@ class EngineOrchestrator:
                     queue,
                 )
                 # FIXME: add abandoned-orphan counter to diagnostics/metrics
-                # FIXME: Phase C deferral — orphaned MT5 positions without any
-                # paper-side record (e.g. after engine restart) need a separate
-                # startup recovery pass. Tracked as follow-up.
+                # Phase C (dry-run orphan report) now logs these; adoption
+                # logic still needs a design pass.
                 engine._mt5_cleanup_queue = []
                 engine._mt5_cleanup_retries = 0
                 continue
@@ -624,6 +692,106 @@ class EngineOrchestrator:
                     mt5_ticket,
                 )
                 engine.position.pop("mt5_ticket", None)
+
+        # ── Phase C: Dry-run orphan report (log only, no state mutation) ──
+        # Reports every MT5 position with no matching paper-side ticket.
+        # Deduped by ticket; tracks first_seen cycle; flags removed-asset
+        # orphans distinctly (engine_actor=None).
+        # See https://github.com/anomalyco/opencode/issues for discussion.
+        if not hasattr(self, "_orphan_first_seen"):
+            self._orphan_first_seen: dict[str, int] = {}
+            self._orphan_cycle_no: int = 0
+        self._orphan_cycle_no += 1
+
+        # Build paper-side ticket set (tickets tracked by both paper + broker)
+        known_tickets: set[str] = set()
+        for name, actor in self._actors.items():
+            engine = actor._engine
+            if not engine.position:
+                continue
+            ticket = engine.position.get("mt5_ticket")
+            if ticket is not None:
+                mt5_str = str(ticket)
+                if mt5_str in mt5_by_ticket:
+                    known_tickets.add(mt5_str)
+
+        # Build MT5 symbol → [(actor_name, engine)] lookup (handles
+        # one-to-many mappings like ^DJI+YM=F → US30)
+        sym_actors: dict[str, list[tuple[str, Any]]] = {}
+        for name, actor in self._actors.items():
+            engine = actor._engine
+            if engine is None:
+                continue
+            mt5_sym = broker.ticker_to_mt5_symbol(engine.ticker)
+            sym_actors.setdefault(mt5_sym, []).append((name, engine))
+
+        # Build reverse symbol map: MT5 symbol → QuantForge ticker
+        reverse_map: dict[str, str] = {}
+        for ticker, mt5_sym in broker._symbol_map.items():
+            reverse_map[mt5_sym] = ticker
+
+        unique_orphans_this_cycle: set[str] = set()
+        for p in mt5_positions:
+            ticket = p.position_id
+            if ticket is None:
+                continue
+            if ticket in known_tickets:
+                continue
+
+            unique_orphans_this_cycle.add(ticket)
+
+            if ticket not in self._orphan_first_seen:
+                self._orphan_first_seen[ticket] = self._orphan_cycle_no
+                first_seen_str = "this_cycle"
+            else:
+                first_seen_str = f"cycle_{self._orphan_first_seen[ticket]}"
+
+            # Determine ticker and actor status
+            matching = sym_actors.get(p.asset)
+            if matching:
+                name, matched_engine = matching[0]
+                ticker = matched_engine.ticker
+                paper_pos = matched_engine.position
+                if paper_pos and paper_pos.get("mt5_ticket") is not None:
+                    orphan_reason = f"paper_ticket_mismatch (has {paper_pos['mt5_ticket']})"
+                elif paper_pos:
+                    orphan_reason = "paper_has_position_no_ticket"
+                else:
+                    orphan_reason = "no_paper_position"
+                engine_actor = name
+            else:
+                ticker = reverse_map.get(p.asset, p.asset)
+                orphan_reason = "removed_asset" if p.asset in reverse_map else "unknown_symbol"
+                engine_actor = None
+
+            side = "long" if p.quantity >= 0 else "short"
+            vol = abs(p.quantity)
+
+            logger.warning(
+                "PHASE_C_ORPHAN: ticket=%s mt5_symbol=%s ticker=%s "
+                "engine_actor=%s side=%s vol=%.4f entry=%.5f price=%.5f "
+                "upnl=%.2f first_seen=%s reason=%s",
+                ticket,
+                p.asset,
+                ticker,
+                engine_actor or "None",
+                side,
+                vol,
+                p.avg_entry_price,
+                p.current_price,
+                p.unrealized_pnl,
+                first_seen_str,
+                orphan_reason,
+            )
+
+        n_unique = len(self._orphan_first_seen)
+        n_this_cycle = len(unique_orphans_this_cycle)
+        if n_unique > 0 or n_this_cycle > 0:
+            logger.warning(
+                "PHASE_C_SUMMARY: %d unique orphan tickets tracked (%d this cycle)",
+                n_unique,
+                n_this_cycle,
+            )
 
     def get_total_portfolio_value(self) -> float | None:
         """Sum of all actor positions' current market value + cash."""

@@ -614,6 +614,16 @@ The counterfactual script uses a 600-row dataset (vs 848 in production), 5 folds
 | 7 | Adversarial governance tests | Pending |
 | 8 | Evidence-based gating (Phase A) | **CANCELLED** — no causal mechanism to gate on |
 
+## Known Issues
+
+- **MT5 orphan/re-entry bug (FIXED 2026-06-22)**: 5-fix chain to resolve same-side re-entry orphan problem:
+  1. `decision_pipeline.py:manage_position` — sets `ctx.new_side = None` when already in same-side position (was `logger.debug`, promoted to `logger.info` same session)
+  2. `entry_service.py:_record_position_state` — preserves existing `mt5_ticket` when broker returns None
+  3. `decision_pipeline.py:apply_spread_gate` — observe-mode check runs before fail-closed check (prevents blockage during 720-cycle warmup)
+  4. `orchestrator/engine.py:Phase C` — orphan detection now includes self-healing adoption (`PHASE_D_ADOPT`) that backfills `mt5_ticket` from broker Position objects when paper has position but no ticket (`paper_has_position_no_ticket`)
+  5. `orchestrator/engine.py:Phase B` — broker position cache invalidated before stale-ticket detection (5s cache would otherwise miss positions placed earlier in same cycle)
+  **Validation**: 11 MT5 orphans adopted in cycle 2, 0 new orphans in 3+ consecutive subsequent cycles.
+
 ## Ruff
 
 ```bash

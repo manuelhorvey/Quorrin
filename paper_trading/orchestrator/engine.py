@@ -666,9 +666,12 @@ class EngineOrchestrator:
         # ── Phase B: Stale ticket detection ────────────────────────────────
         # Catches MT5-native SL/TP hits and manual closes where paper still
         # holds a stale mt5_ticket but the MT5 position no longer exists.
+        # Invalidates broker cache first so entries placed earlier in this
+        # cycle are visible (5s cache would otherwise return stale data).
         if not broker.ensure_connected():
             return
         try:
+            broker._position_cache_time = 0.0  # invalidate cache for fresh data
             mt5_positions = broker.get_positions()
         except Exception:
             return
@@ -756,6 +759,14 @@ class EngineOrchestrator:
                     orphan_reason = f"paper_ticket_mismatch (has {paper_pos['mt5_ticket']})"
                 elif paper_pos:
                     orphan_reason = "paper_has_position_no_ticket"
+                    # Phase D: self-healing adoption — backfill mt5_ticket from broker
+                    matched_engine.position["mt5_ticket"] = int(ticket)
+                    logger.info(
+                        "PHASE_D_ADOPT: %s adopted orphan ticket=%s on %s",
+                        name,
+                        int(ticket),
+                        p.asset,
+                    )
                 else:
                     orphan_reason = "no_paper_position"
                 engine_actor = name

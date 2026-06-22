@@ -556,8 +556,20 @@ class EntryService:
         mt5_symbol = broker.ticker_to_mt5_symbol(asset.ticker)
         matching = [p for p in existing_positions if p.asset == mt5_symbol]
         if matching:
-            # Load-bearing guard: prevents double-position on MT5 when orphan
-            # cleanup from a previous close failure hasn't resolved yet.
+            paper_pos = asset.position
+            # Phase D: orphan adoption — paper has position but no ticket (crash recovery / gap B)
+            if paper_pos and paper_pos.get("mt5_ticket") is None:
+                ticket = int(matching[0].position_id)
+                logger.info(
+                    "%s: PHASE_D_ADOPT adopting orphan ticket=%s on %s (sl=%.5f tp=%.5f)",
+                    asset.name,
+                    ticket,
+                    mt5_symbol,
+                    matching[0].stop_loss or 0.0,
+                    matching[0].take_profit or 0.0,
+                )
+                return entry_price, 0.0, ticket
+            # Load-bearing guard: prevents double-position on MT5 (paper already has ticket)
             tickets = [p.position_id or "?" for p in matching]
             logger.error(
                 "%s: MT5_ORPHAN blocking entry — %d open position(s) on %s (tickets=%s)",
@@ -608,7 +620,7 @@ class EntryService:
                 regime=getattr(asset, "_current_regime", "neutral"),
                 meta_confidence=getattr(asset, "_last_meta_proba", None),
             )
-        asset.position = {
+        new_position = {
             "side": intent.side,
             "entry": intent.entry_price,
             "sl": intent.stop_loss,
@@ -620,6 +632,10 @@ class EntryService:
             "tp_geo": tp_geo,
             "mt5_ticket": mt5_ticket,
         }
+        # Defensive: preserve existing mt5_ticket if broker didn't return one
+        if mt5_ticket is None and asset.position and asset.position.get("mt5_ticket") is not None:
+            new_position["mt5_ticket"] = asset.position["mt5_ticket"]
+        asset.position = new_position
         asset._entry_vol = vol
         asset._bars_at_entry = 0
         asset._initial_sl = float(intent.stop_loss)

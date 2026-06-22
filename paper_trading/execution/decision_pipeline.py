@@ -198,6 +198,12 @@ def manage_position(ctx: DecisionContext) -> None:
     engine = ctx.engine
     d = ctx.decision
     if ctx.new_side == ctx.current_side:
+        logger.info(
+            "%s: already in %s position — suppressing re-entry",
+            engine.name,
+            ctx.new_side,
+        )
+        ctx.new_side = None
         return
 
     # Check entry gate before doing anything.
@@ -491,8 +497,33 @@ def apply_spread_gate(ctx: DecisionContext) -> None:
     age = time.time() - spread_time
     tier = getattr(engine, "_spread_tier", "fx_cross")
     threshold = SPREAD_TIER_BPS.get(tier, 20.0)
+    cycle = getattr(engine, "_cycle_counter", 0)
 
-    # ── Staleness / missing-data check (fail-closed) ───────────────
+    # ── Observe mode — log without blocking ────────────────────────
+    # Runs first so that missing data during warmup doesn't block entries.
+    if cycle < SPREAD_GATE_MIN_OBSERVE_CYCLES:
+        if spread_bps is None or age > SPREAD_GATE_STALENESS_SECS:
+            reason = "no_spread_data" if spread_bps is None else f"stale_spread_{age:.0f}s"
+            logger.info(
+                "%s: SPREAD_GATE [OBSERVE] %s — would block in live mode (tier=%s threshold=%.1fbps)",
+                engine.name,
+                reason,
+                tier,
+                threshold,
+            )
+        elif spread_bps > threshold:
+            logger.info(
+                "%s: SPREAD_GATE [OBSERVE] would block — spread=%.1fbps tier=%s threshold=%.1fbps "
+                "(gate active after %d cycles)",
+                engine.name,
+                spread_bps,
+                tier,
+                threshold,
+                SPREAD_GATE_MIN_OBSERVE_CYCLES,
+            )
+        return
+
+    # ── Staleness / missing-data check (fail-closed, post-observe) ─
     if spread_bps is None or age > SPREAD_GATE_STALENESS_SECS:
         reason = "no_spread_data" if spread_bps is None else f"stale_spread_{age:.0f}s"
         logger.warning(
@@ -503,21 +534,6 @@ def apply_spread_gate(ctx: DecisionContext) -> None:
             threshold,
         )
         ctx.new_side = None
-        return
-
-    # ── Observe mode — log without blocking ────────────────────────
-    cycle = getattr(engine, "_cycle_counter", 0)
-    if cycle < SPREAD_GATE_MIN_OBSERVE_CYCLES:
-        if spread_bps > threshold:
-            logger.info(
-                "%s: SPREAD_GATE [OBSERVE] would block — spread=%.1fbps tier=%s threshold=%.1fbps "
-                "(gate active after %d cycles)",
-                engine.name,
-                spread_bps,
-                tier,
-                threshold,
-                SPREAD_GATE_MIN_OBSERVE_CYCLES,
-            )
         return
 
     # ── Live blocking ─────────────────────────────────────────────

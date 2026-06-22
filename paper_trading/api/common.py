@@ -4,6 +4,7 @@ import threading
 import time
 from urllib.parse import unquote
 
+
 class _StrictJSONEncoder(json.JSONEncoder):
     """Fails loud on non-serializable types instead of silently converting via default=str."""
 

@@ -63,8 +63,6 @@ def sanitize(obj):
         return {k: sanitize(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple)):
         return [sanitize(v) for v in obj]
-    elif isinstance(obj, tuple):
-        return [sanitize(v) for v in obj]
     elif isinstance(obj, (float, np.floating)) and (math.isinf(obj) or math.isnan(obj)):
         return None
     return obj

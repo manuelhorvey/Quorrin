@@ -17,7 +17,6 @@ from paper_trading.api.common import (
     json_dumps,
 )
 from paper_trading.config_manager import get_config
-from paper_trading.state_store import CONTRACT_VERSION
 from paper_trading.governance.health import compute_all as _compute_health_all
 from paper_trading.governance.health import get_latest as _get_health_latest
 from paper_trading.governance.multipliers import compute_governance_multipliers
@@ -755,36 +754,40 @@ def handle_asset_detail(path: str, query: dict) -> tuple[str, int]:
             direction = 1 if t.get("side") == "long" else -1
             mae = min(0, (exit_px - entry) / entry * 100 * direction)
             mfe = max(0, (exit_px - entry) / entry * 100 * direction)
-        trades.append({
-            "side": t.get("side"),
-            "entry": entry,
-            "exit": exit_px,
-            "return": t.get("return"),
-            "reason": t.get("reason"),
-            "entry_date": t.get("entry_date"),
-            "exit_date": t.get("exit_date"),
-            "mae": round(mae, 4) if mae is not None else None,
-            "mfe": round(mfe, 4) if mfe is not None else None,
-        })
+        trades.append(
+            {
+                "side": t.get("side"),
+                "entry": entry,
+                "exit": exit_px,
+                "return": t.get("return"),
+                "reason": t.get("reason"),
+                "entry_date": t.get("entry_date"),
+                "exit_date": t.get("exit_date"),
+                "mae": round(mae, 4) if mae is not None else None,
+                "mfe": round(mfe, 4) if mfe is not None else None,
+            }
+        )
 
-    data = json_dumps({
-        "asset": asset_name,
-        "feature_importance": feature_importance,
-        "trades": trades,
-        "final_signal": asset.get("final_signal"),
-        "sell_only": asset.get("sell_only", False),
-        "tripwire_active": asset.get("tripwire_active", False),
-        "last_signal": asset.get("last_signal"),
-        "metrics": {
-            "total_return": metrics.get("total_return"),
-            "drawdown": metrics.get("drawdown"),
-            "win_rate": metrics.get("win_rate"),
-            "profit_factor": metrics.get("profit_factor"),
-            "sharpe_ratio": metrics.get("sharpe_ratio"),
-            "n_trades": metrics.get("n_trades"),
-            "mean_confidence": metrics.get("mean_confidence"),
-        },
-    })
+    data = json_dumps(
+        {
+            "asset": asset_name,
+            "feature_importance": feature_importance,
+            "trades": trades,
+            "final_signal": asset.get("final_signal"),
+            "sell_only": asset.get("sell_only", False),
+            "tripwire_active": asset.get("tripwire_active", False),
+            "last_signal": asset.get("last_signal"),
+            "metrics": {
+                "total_return": metrics.get("total_return"),
+                "drawdown": metrics.get("drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "profit_factor": metrics.get("profit_factor"),
+                "sharpe_ratio": metrics.get("sharpe_ratio"),
+                "n_trades": metrics.get("n_trades"),
+                "mean_confidence": metrics.get("mean_confidence"),
+            },
+        }
+    )
 
     return data, 200
 

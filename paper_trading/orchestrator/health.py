@@ -180,6 +180,10 @@ class CircuitBreaker:
         max_consecutive_losses: int = 7,
         loss_streak_lookback: int = 30,
     ):
+        # max_consecutive_losses=7 calibrated by circuit_breaker_sim.py
+        # (2026-06-22, 10K sims across 3 horizons, 10-day blocks).
+        # Caveat: calibration window was a 14-month bull market; revisit
+        # after 6 months of live data or a -10R drawdown, whichever first.
         self._max_drawdown = max_drawdown_pct
         self._max_halt_ratio = max_halt_ratio
         self._vol_spike = vol_spike_threshold

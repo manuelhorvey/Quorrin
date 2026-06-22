@@ -201,6 +201,7 @@ def safe_download(ticker: str, **kwargs) -> pd.DataFrame:
             _get_store().save_cache(ticker, df)
             _check_data_quality(df, ticker, source="mt5")
             return df
+        logger.warning("MT5 fetch returned empty for %s — falling back to yfinance", ticker)
 
     delays = [5, 15, 45]
     for attempt, delay in enumerate(delays, 1):

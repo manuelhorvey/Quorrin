@@ -69,6 +69,24 @@ class PurgedWalkForwardFolds(BaseCrossValidator):
       to prevent leakage from the test period's leading edge.
     - Each training fold excludes the ``gap`` bars after the previous
       test fold (purging) so no observation appears in both train and test.
+    - Supports both expanding (all history) and rolling (fixed lookback)
+      training windows via ``window_type`` and ``rolling_window_bars``.
+
+    Parameters
+    ----------
+    n_folds : int
+        Number of test windows (default 5).
+    gap : int
+        Embargo gap between train and test (default 20).
+    min_train : int
+        Minimum training samples required (default 200).
+    window_type : str
+        ``"expanding"`` (all history) or ``"rolling"`` (fixed lookback).
+        Default ``"expanding"``.
+    rolling_window_bars : int, optional
+        Lookback in bars for ``"rolling"`` window.  If not set, defaults
+        to ``fold_size * n_folds`` (approximate number of bars for a
+        ``n_folds``-fold lookback).
     """
 
     def __init__(
@@ -76,10 +94,14 @@ class PurgedWalkForwardFolds(BaseCrossValidator):
         n_folds: int = 5,
         gap: int = 20,
         min_train: int = 200,
+        window_type: str = "expanding",
+        rolling_window_bars: int | None = None,
     ):
         self.n_folds = n_folds
         self.gap = gap
         self.min_train = min_train
+        self.window_type = window_type
+        self.rolling_window_bars = rolling_window_bars
 
     def get_n_splits(self, x=None, y=None, groups=None):
         return self.n_folds
@@ -95,7 +117,13 @@ class PurgedWalkForwardFolds(BaseCrossValidator):
             train_end = test_start - self.gap
             idx = list(range(n))
 
-            train_idx = idx[:train_end]
+            train_idx = idx[:train_end]  # expanding (all history)
+
+            # Rolling window: truncate to last N bars
+            if self.window_type == "rolling":
+                max_bars = self.rolling_window_bars or (fold_size * self.n_folds)
+                train_idx = train_idx[-max_bars:]
+
             test_idx = idx[test_start:test_end]
 
             if len(train_idx) < self.min_train:

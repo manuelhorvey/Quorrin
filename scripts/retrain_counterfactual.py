@@ -257,6 +257,8 @@ def run_asset_counterfactual(
     folds = PurgedWalkForwardFolds(
         n_folds=5,
         gap=10,
+        window_type=getattr(args, "window_type", "expanding"),
+        rolling_window_bars=getattr(args, "rolling_window_bars", None),
     )
     fold_indices = folds.split(alpha_df.index, label_series)
 
@@ -363,6 +365,10 @@ def main():
     parser.add_argument("--remove-cot", action="store_true", help="Zero-fill COT features")
     parser.add_argument("--tag", default="", help="Custom experiment tag (default: auto from flags)")
     parser.add_argument("--parallel-workers", type=int, default=1, help="Parallel asset workers")
+    parser.add_argument("--window-type", type=str, default="expanding", choices=["expanding", "rolling"],
+                        help="Training window type (default: expanding)")
+    parser.add_argument("--rolling-window-bars", type=int, default=None,
+                        help="Fixed lookback in bars for rolling window")
     args = parser.parse_args()
 
     asset_list = sorted(SELL_ONLY_ASSETS) if args.assets == "all" else [a.strip() for a in args.assets.split(",")]

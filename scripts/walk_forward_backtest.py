@@ -182,7 +182,11 @@ def run_walk_forward(
 
     X_all = X_all.loc[y_all.index]
 
-    cv = PurgedWalkForwardFolds(n_folds=n_folds, gap=gap, min_train=100)
+    cv = PurgedWalkForwardFolds(
+        n_folds=n_folds, gap=gap, min_train=100,
+        window_type=window_type,
+        rolling_window_bars=rolling_window_bars or (window_years * 252),
+    )
 
     windows = []
     all_oos_signals = []
@@ -191,10 +195,6 @@ def run_walk_forward(
     lo_thresh = 0.5 - ensemble_threshold / 2.0
 
     for fold, (train_idx, test_idx) in enumerate(cv.split(X_all)):
-        # Rolling window: truncate training to last N bars
-        if window_type == "rolling":
-            max_bars = rolling_window_bars or (window_years * 252)
-            train_idx = train_idx[-max_bars:]
         train_start = X_all.index[train_idx[0]]
         train_end = X_all.index[train_idx[-1]]
         test_start = X_all.index[test_idx[0]]

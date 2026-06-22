@@ -35,6 +35,17 @@ defaults:
   size_taper_start_dd: -0.05
   size_taper_end_dd: -0.15
   size_taper_min: 0.50
+  stacking:
+    enabled: false
+    dry_run: true
+    max_layers: 3
+    layer_multipliers: [0.8, 0.5, 0.3]
+    min_confidence: 0.60
+    stack_target_vol: 0.15
+    stack_vol_clamp: [0.3, 1.2]
+    min_stack_size_factor: 0.5
+    stack_micro_threshold: 0.0
+    cooldown_minutes: 0
   portfolio_max_leverage: 2.0
   portfolio_leverage_tolerance: 0.001
   net_short_concentration_threshold: 0.75

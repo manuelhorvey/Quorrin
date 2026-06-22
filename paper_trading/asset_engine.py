@@ -40,6 +40,7 @@ from paper_trading.services.entry_service import EntryService
 from paper_trading.services.position_service import PositionService
 from paper_trading.shadow.engine import ShadowSLTPEngine
 from paper_trading.state_store import _SKIP_JOURNAL
+from quantforge.domain.entities.position import OrderType
 from shared.registry import StrategyRegistry
 
 logger = logging.getLogger("quantforge.asset_engine")
@@ -391,8 +392,17 @@ class AssetEngine:
     def _tb_vol(self, close_series):
         return self._entry.tb_vol(close_series)
 
-    def _open_position(self, side, entry_price, entry_date, df=None, tp_geo=None):
-        self._entry.open_position(side, entry_price, entry_date, self, df, tp_geo)
+    def _open_position(self, side, entry_price, entry_date, df=None, tp_geo=None, order_type=None, stack_cmd=None):
+        self._entry.open_position(
+            side,
+            entry_price,
+            entry_date,
+            self,
+            df,
+            tp_geo,
+            order_type=order_type or OrderType.ENTRY,
+            stack_cmd=stack_cmd,
+        )
 
     def _close_position(self, exit_price, exit_date, reason) -> bool:
         mutations = self._position.close_position(

@@ -18,6 +18,7 @@ Observability events (supporting — not required for causal replay):
     position_closed   — position closed (any reason)
     state_committed   — full state snapshot checkpoint
     actor_health      — actor health state change
+    stack_added       — pyramid layer added to an existing position
 
 Invariants:
     I1: Events from a single source are strictly ordered by sequence.

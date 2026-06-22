@@ -7,6 +7,7 @@ import pytz
 from paper_trading.entry.decision import EntryAction, PositionIntent, PositionSide
 from paper_trading.entry.deferred_entry import DeferredEntryStatus
 from paper_trading.governance.multipliers import compute_effective_multipliers
+from quantforge.domain.entities.position import OrderType, StackLayer
 
 logger = logging.getLogger("quantforge.entry_service")
 
@@ -135,13 +136,59 @@ class EntryService:
 
         return True, "ok"
 
-    def open_position(self, side, entry_price, entry_date, asset, df=None, tp_geo=None):
+    def open_position(
+        self, side, entry_price, entry_date, asset, df=None, tp_geo=None, order_type=OrderType.ENTRY, stack_cmd=None
+    ):
         data = df if df is not None else asset.price_data
         vol, entry_price = self._validate_price_vol(asset, data, entry_price)
         if vol is None:
             return
 
         state = self._resolve_validity_state(asset)
+
+        # ── Stacking branch ─────────────────────────────────────────
+        if order_type == OrderType.STACK:
+            if stack_cmd is None:
+                logger.error("%s: STACK order missing StackCommand", asset.name)
+                return
+            intent_sl = asset.position.get("sl") if asset.position else None
+            if intent_sl is None:
+                intent_sl = self._compute_stop_loss(asset, data, side, entry_price, 1.0, 1.0, 0.01)
+            if intent_sl is None:
+                return
+            final_tp = asset.position.get("tp") if asset.position else None
+            fill_price, entry_slippage_bps, mt5_ticket = self._submit_to_broker(
+                asset,
+                side,
+                entry_price,
+                intent_sl,
+                final_tp,
+                state,
+                order_type=order_type,
+            )
+            if fill_price is None:
+                return
+            layer = StackLayer(
+                entry_price=float(fill_price),
+                size=stack_cmd.size,
+                timestamp=entry_date,
+                signal_id=stack_cmd.reason,
+                pnl_at_time=0.0,
+            )
+            self._record_stack_layer(asset, layer, mt5_ticket)
+            self._record_attribution(asset, side, entry_date, entry_price, fill_price, entry_slippage_bps, None, None)
+            logger.info(
+                "%s: STACK layer=%d size=%.4f price=%.5f total_size=%.4f avg_price=%.5f",
+                asset.name,
+                stack_cmd.expected_layer_idx,
+                stack_cmd.size,
+                fill_price,
+                asset.position.get("total_size", 0) if asset.position else 0,
+                asset.position.get("avg_price", 0) if asset.position else 0,
+            )
+            return
+
+        # ── Normal entry ─────────────────────────────────────────────
         sl_mult, tp_mult = self._compute_multipliers(asset, state)
         intent_sl = self._compute_stop_loss(asset, data, side, entry_price, sl_mult, tp_mult, vol)
         if intent_sl is None:
@@ -310,7 +357,7 @@ class EntryService:
             return False
         return True
 
-    def _submit_to_broker(self, asset, side, entry_price, intent_sl, final_tp, state):
+    def _submit_to_broker(self, asset, side, entry_price, intent_sl, final_tp, state, order_type=OrderType.ENTRY):
         fill_price = entry_price
         entry_slippage_bps = 0.0
         mt5_ticket = None
@@ -458,7 +505,7 @@ class EntryService:
         )
 
         if hasattr(asset.execution_bridge, "_is_real_broker") and asset.execution_bridge._is_real_broker:
-            return self._submit_mt5_order(asset, broker_side, entry_price, intent_sl, final_tp)
+            return self._submit_mt5_order(asset, broker_side, entry_price, intent_sl, final_tp, order_type=order_type)
         fill_price, entry_slippage_bps, _ = asset.execution_bridge.fill_price(
             asset.ticker,
             broker_side,
@@ -546,7 +593,7 @@ class EntryService:
         )
         return qty
 
-    def _submit_mt5_order(self, asset, broker_side, entry_price, intent_sl, final_tp):
+    def _submit_mt5_order(self, asset, broker_side, entry_price, intent_sl, final_tp, order_type=OrderType.ENTRY):
         qty = self._compute_mt5_qty(asset, entry_price, intent_sl)
         if qty <= 0:
             return entry_price, 0.0, None
@@ -556,29 +603,37 @@ class EntryService:
         mt5_symbol = broker.ticker_to_mt5_symbol(asset.ticker)
         matching = [p for p in existing_positions if p.asset == mt5_symbol]
         if matching:
-            paper_pos = asset.position
-            # Phase D: orphan adoption — paper has position but no ticket (crash recovery / gap B)
-            if paper_pos and paper_pos.get("mt5_ticket") is None:
-                ticket = int(matching[0].position_id)
+            # Stacking bypass: MT5 netting absorbs additional same-side orders
+            if order_type == OrderType.STACK:
                 logger.info(
-                    "%s: PHASE_D_ADOPT adopting orphan ticket=%s on %s (sl=%.5f tp=%.5f)",
+                    "%s: stacking bypass MT5_ORPHAN guard — sending stack order on %s",
                     asset.name,
-                    ticket,
                     mt5_symbol,
-                    matching[0].stop_loss or 0.0,
-                    matching[0].take_profit or 0.0,
                 )
-                return entry_price, 0.0, ticket
-            # Load-bearing guard: prevents double-position on MT5 (paper already has ticket)
-            tickets = [p.position_id or "?" for p in matching]
-            logger.error(
-                "%s: MT5_ORPHAN blocking entry — %d open position(s) on %s (tickets=%s)",
-                asset.name,
-                len(matching),
-                mt5_symbol,
-                tickets,
-            )
-            return entry_price, 0.0, None
+            else:
+                paper_pos = asset.position
+                # Phase D: orphan adoption — paper has position but no ticket (crash recovery / gap B)
+                if paper_pos and paper_pos.get("mt5_ticket") is None:
+                    ticket = int(matching[0].position_id)
+                    logger.info(
+                        "%s: PHASE_D_ADOPT adopting orphan ticket=%s on %s (sl=%.5f tp=%.5f)",
+                        asset.name,
+                        ticket,
+                        mt5_symbol,
+                        matching[0].stop_loss or 0.0,
+                        matching[0].take_profit or 0.0,
+                    )
+                    return entry_price, 0.0, ticket
+                # Load-bearing guard: prevents double-position on MT5 (paper already has ticket)
+                tickets = [p.position_id or "?" for p in matching]
+                logger.error(
+                    "%s: MT5_ORPHAN blocking entry — %d open position(s) on %s (tickets=%s)",
+                    asset.name,
+                    len(matching),
+                    mt5_symbol,
+                    tickets,
+                )
+                return entry_price, 0.0, None
 
         mt5_sl = float(intent_sl)
         mt5_tp = float(final_tp)
@@ -609,6 +664,21 @@ class EntryService:
         self, asset, side, intent, sl_mult, tp_mult, tp_geo, vol, fill_price, state, mt5_ticket, data
     ):
         asset.pos_mgr.open(intent)
+
+        # Initialize first stack layer
+        first_layer = {
+            "entry_price": float(fill_price),
+            "size": vol,
+            "timestamp": intent.entry_date,
+            "signal_id": "entry",
+            "pnl_at_time": 0.0,
+        }
+        layers_list = [first_layer]
+        total_sz = vol
+
+        # Position avg_price = fill price for first entry
+        avg_price = float(fill_price)
+
         if asset._shadow_sltp is not None:
             asset._shadow_sltp.record_entry(
                 side=side,
@@ -622,20 +692,26 @@ class EntryService:
             )
         new_position = {
             "side": intent.side,
-            "entry": intent.entry_price,
+            "entry": avg_price,
             "sl": intent.stop_loss,
             "tp": intent.take_profit,
             "entry_date": intent.entry_date,
-            "vol": intent.vol,
+            "vol": total_sz,
             "sl_mult": sl_mult,
             "tp_mult": tp_mult,
             "tp_geo": tp_geo,
             "mt5_ticket": mt5_ticket,
+            "layers": layers_list,
+            "avg_price": avg_price,
+            "total_size": total_sz,
+            "base_entry_size": vol,
         }
         # Defensive: preserve existing mt5_ticket if broker didn't return one
         if mt5_ticket is None and asset.position and asset.position.get("mt5_ticket") is not None:
             new_position["mt5_ticket"] = asset.position["mt5_ticket"]
         asset.position = new_position
+        asset.pos_mgr.position.base_entry_size = vol
+        asset.pos_mgr.enforce_invariant(asset.name)
         asset._entry_vol = vol
         asset._bars_at_entry = 0
         asset._initial_sl = float(intent.stop_loss)
@@ -652,6 +728,31 @@ class EntryService:
                 float(intent.take_profit),
                 tier_specs=tp_geo.scale_out_tiers,
             )
+
+    def _record_stack_layer(self, asset, layer: StackLayer, mt5_ticket):
+        if asset.position is None:
+            logger.error("%s: cannot stack — no existing position", asset.name)
+            return
+        layers = asset.position.setdefault("layers", [])
+        layers.append(
+            {
+                "entry_price": layer.entry_price,
+                "size": layer.size,
+                "timestamp": layer.timestamp,
+                "signal_id": layer.signal_id,
+                "pnl_at_time": layer.pnl_at_time,
+            }
+        )
+        total_sz = sum(_l["size"] for _l in layers)
+        avg = sum(_l["entry_price"] * _l["size"] for _l in layers) / max(total_sz, 1e-9)
+        asset.position["avg_price"] = avg
+        asset.position["total_size"] = total_sz
+        asset.position["entry"] = avg
+        asset.position["vol"] = total_sz
+        if mt5_ticket is not None:
+            asset.position["mt5_ticket"] = mt5_ticket
+        asset.pos_mgr.position.base_entry_size = asset.position.get("base_entry_size", total_sz)
+        asset.pos_mgr.enforce_invariant(asset.name)
 
     def _record_attribution(self, asset, side, entry_date, entry_price, fill_price, entry_slippage_bps, intent, tp_geo):
         trade_id = f"{entry_date}_{side}_{asset.name}"

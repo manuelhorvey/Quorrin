@@ -141,6 +141,11 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
             <span className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${info.pos.side === 'long' ? governanceDot.GREEN : governanceDot.RED}`} />
               {info.pos.side.toUpperCase()} @ ${formatAssetPrice(info.pos.entry)}
+              {info.pos.layers && info.pos.layers.length > 1 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 border border-blue-500/30 leading-none ml-2">
+                  ×{info.pos.layers.length}
+                </span>
+              )}
             </span>
             <span className="font-mono">
               {info.pos.unrealized_pnl != null && (

@@ -19,6 +19,7 @@ from typing import Any
 import pandas as pd
 
 from paper_trading.entry.decision import EntryAction, PositionSide, SignalType, TradeDecision
+from quantforge.domain.entities.position import OrderType, StackCommand
 
 logger = logging.getLogger("quantforge.decision_pipeline")
 
@@ -197,7 +198,15 @@ def evaluate_conviction_gate(ctx: DecisionContext) -> None:
 def manage_position(ctx: DecisionContext) -> None:
     engine = ctx.engine
     d = ctx.decision
-    if ctx.new_side == ctx.current_side:
+    has_pos = engine.pos_mgr.has_position()
+    same_side = has_pos and ctx.new_side == ctx.current_side
+
+    if same_side:
+        stacking_enabled = engine.config.get("stacking", {}).get("enabled", False)
+        if stacking_enabled and _should_stack(ctx):
+            _execute_stack(ctx)
+            ctx.new_side = None
+            return
         logger.info(
             "%s: already in %s position — suppressing re-entry",
             engine.name,
@@ -225,7 +234,7 @@ def manage_position(ctx: DecisionContext) -> None:
             ctx.new_side = None
 
     # Close existing if flip allowed AND entry gate passed
-    if engine.pos_mgr.has_position() and ctx.flip_allowed and ctx.new_side is not None:
+    if has_pos and ctx.flip_allowed and ctx.new_side is not None:
         profit_lock_pct = engine.config.get("profit_lock_threshold_pct", 15.0)
         current_price = getattr(engine, "current_price", None)
         if current_price is not None and current_price > 0:
@@ -246,6 +255,106 @@ def manage_position(ctx: DecisionContext) -> None:
 
     if ctx.new_side is None or not ctx.flip_allowed:
         return
+
+
+def _should_stack(ctx: DecisionContext) -> bool:
+    engine = ctx.engine
+    cfg = engine.config.get("stacking", {})
+
+    # 1. Position must be winning
+    current_price = getattr(engine, "current_price", None)
+    if current_price is None or current_price <= 0:
+        return False
+    pnl = engine.pos_mgr.position_pnl(current_price)
+    if pnl <= 0:
+        return False
+
+    # 2. Confidence must be >= threshold
+    min_conf = cfg.get("min_confidence", 0.60)
+    if ctx.decision.confidence < min_conf:
+        return False
+
+    # 3. Max layers check
+    max_layers = cfg.get("max_layers", 3)
+    if engine.pos_mgr.max_layers_reached(max_layers):
+        return False
+
+    # 4. Regime / risk override hook (hardwired False for v1)
+    if _stack_risk_override(ctx):
+        return False
+
+    # 5. Stack cooldown hook (hardwired False for v1)
+    return not _stack_cooldown_active(ctx)
+
+
+def _stack_risk_override(ctx: DecisionContext) -> bool:
+    return False
+
+
+def _stack_cooldown_active(ctx: DecisionContext) -> bool:
+    return False
+
+
+def _compute_stack_size(ctx: DecisionContext) -> float:
+    engine = ctx.engine
+    cfg = engine.config.get("stacking", {})
+    pos_mgr = engine.pos_mgr
+
+    # Base anchor: frozen at first entry, never drifts
+    base_entry_size = pos_mgr.position.base_entry_size if pos_mgr.position else pos_mgr.position_size
+
+    # Layer multiplier (diminishing)
+    layer_mults = cfg.get("layer_multipliers", [0.8, 0.5, 0.3])
+    layer_idx = pos_mgr.stack_layer_count()
+    mult = layer_mults[layer_idx] if layer_idx < len(layer_mults) else layer_mults[-1]
+
+    # Volatility normalization
+    target_vol = cfg.get("stack_target_vol", 0.15)
+    realized_vol = getattr(engine, "_realized_volatility", target_vol)
+    vol_adj = target_vol / max(realized_vol, 1e-9)
+    vol_clamp = cfg.get("stack_vol_clamp", [0.3, 1.2])
+    vol_adj = max(vol_clamp[0], min(vol_adj, vol_clamp[1]))
+
+    base = base_entry_size * mult * vol_adj
+
+    # Min floor
+    min_entry = cfg.get("min_viable_position_pct", 0.01) * engine.capital_base
+    min_stack_factor = cfg.get("min_stack_size_factor", 0.5)
+    min_stack = max(min_stack_factor * min_entry, cfg.get("stack_micro_threshold", 0.0))
+    return max(base, min_stack)
+
+
+def _execute_stack(ctx: DecisionContext) -> None:
+    engine = ctx.engine
+    d = ctx.decision
+    stack_cmd = StackCommand(
+        size=_compute_stack_size(ctx),
+        reason="stack_signal",
+        expected_layer_idx=engine.pos_mgr.stack_layer_count(),
+        expected_price=d.close_price,
+    )
+
+    # Dry-run mode: log without executing
+    dry_run = engine.config.get("stacking", {}).get("dry_run", True)
+    logger.info(
+        "%s: STACK dry_run=%s size=%.4f layer=%d pnl=%.2f%% reason=%s",
+        engine.name,
+        dry_run,
+        stack_cmd.size,
+        stack_cmd.expected_layer_idx,
+        engine.pos_mgr.position_pnl(d.close_price),
+        stack_cmd.reason,
+    )
+
+    if not dry_run:
+        engine._open_position(
+            ctx.new_side,
+            d.close_price,
+            d.timestamp,
+            ctx.df,
+            order_type=OrderType.STACK,
+            stack_cmd=stack_cmd,
+        )
 
 
 def build_entry_artifacts(ctx: DecisionContext) -> None:

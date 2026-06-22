@@ -1,5 +1,6 @@
 import logging
 from copy import deepcopy
+from datetime import datetime
 
 import pandas as pd
 
@@ -35,6 +36,8 @@ class PositionManager:
 
     def open(self, intent: PositionIntent) -> None:
         self.position = intent
+        if intent.base_entry_size <= 0:
+            intent.base_entry_size = self.position_size
         self._scale_out_active = False
         self._scale_out_breakeven = None
         self._remaining_fraction = 1.0
@@ -223,6 +226,49 @@ class PositionManager:
         logger.info("Breakeven stop activated for remaining %.1f%%", self._remaining_fraction * 100)
         return True
 
+    # ── Stacking helpers ──────────────────────────────────────────
+
+    def last_stack_time(self) -> datetime | None:
+        if self.position is None or not self.position.layers:
+            return None
+        last = self.position.layers[-1]
+        try:
+            return datetime.fromisoformat(last.timestamp)
+        except Exception:
+            return None
+
+    def max_layers_reached(self, max_layers: int) -> bool:
+        if self.position is None:
+            return True
+        return len(self.position.layers) >= max_layers
+
+    def stack_layer_count(self) -> int:
+        if self.position is None:
+            return 0
+        return max(0, len(self.position.layers) - 1)
+
+    def enforce_invariant(self, asset_name: str = "?") -> bool:
+        if self.position is None:
+            return True
+        return self.position.enforce_invariant(asset_name)
+
+    # ── Market / position state hooks (pre-wired for future use) ──
+    @property
+    def regime(self) -> str:
+        return getattr(self, "_regime", "neutral")
+
+    @regime.setter
+    def regime(self, value: str) -> None:
+        self._regime = value
+
+    @property
+    def volatility_state(self) -> str:
+        return getattr(self, "_volatility_state", "normal")
+
+    @volatility_state.setter
+    def volatility_state(self, value: str) -> None:
+        self._volatility_state = value
+
     # ── Queries ───────────────────────────────────────────────────
 
     def position_pnl(self, current_price: float) -> float:
@@ -257,6 +303,8 @@ class PositionManager:
         self._scale_out_breakeven = None
         self._remaining_fraction = 1.0
         self._partial_closes = []
+        self._regime = "neutral"
+        self._volatility_state = "normal"
 
     def get_remaining_fraction(self) -> float:
         return self._remaining_fraction

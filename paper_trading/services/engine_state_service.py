@@ -270,15 +270,21 @@ class EngineStateService:
         for name, asset in engine.assets.items():
             if asset.pos_mgr.has_position():
                 pos = asset.pos_mgr.position
+                ap = asset.position or {}
+                layers_list: list = ap.get("layers") or []
                 snapshot.open_positions[name] = {
                     "position": {
                         "side": pos.side,
-                        "entry": pos.entry_price,
+                        "entry": ap.get("avg_price") or pos.entry_price,
                         "sl": pos.stop_loss,
                         "tp": pos.take_profit,
                         "entry_date": pos.entry_date,
-                        "vol": pos.vol,
-                        "mt5_ticket": asset.position.get("mt5_ticket") if asset.position else None,
+                        "vol": ap.get("total_size") or pos.vol,
+                        "mt5_ticket": ap.get("mt5_ticket"),
+                        "layers": layers_list,
+                        "avg_price": ap.get("avg_price") or pos.entry_price,
+                        "total_size": ap.get("total_size") or pos.vol,
+                        "base_entry_size": ap.get("base_entry_size") or pos.vol,
                     },
                     "current_value": asset.pos_mgr.current_value,
                     "peak_value": asset.pos_mgr.peak_value,

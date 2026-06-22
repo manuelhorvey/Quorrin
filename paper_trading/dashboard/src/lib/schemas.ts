@@ -319,7 +319,7 @@ export const AssetMetricsSchema = z.object({
   settled_return: z.number(),
   mtm_return: z.number(),
   drawdown: z.number(),
-  profit_factor: z.number(),
+  profit_factor: z.number().nullable(),
   win_rate: z.number(),
   n_trades: z.number().int(),
   n_signals: z.number().int(),

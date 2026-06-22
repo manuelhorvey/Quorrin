@@ -1,3 +1,4 @@
+import math
 import logging
 from datetime import datetime
 
@@ -266,7 +267,7 @@ class MetricsService:
             "settled_return": round(total_return * 100, 2),
             "mtm_return": round(mtm_return, 2),
             "drawdown": round(dd * 100, 2),
-            "profit_factor": round(pf, 2),
+            "profit_factor": round(pf, 2) if math.isfinite(pf) else None,
             "win_rate": round(win_rate * 100, 2),
             "n_trades": len(trade_log),
             "n_signals": len(prob_history),

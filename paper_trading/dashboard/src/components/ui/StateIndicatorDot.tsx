@@ -18,6 +18,7 @@ const motionMap: Record<GovernanceState, string> = {
   YELLOW: 'animate-pulse-subtle',
   RED: 'animate-pulse',
   INIT: '',
+  GRAY: '',
 }
 
 export default function StateIndicatorDot({

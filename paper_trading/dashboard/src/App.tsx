@@ -14,8 +14,6 @@ import TradeOutcomes from './components/TradeOutcomes'
 import LoadingScreen from './components/ui/LoadingScreen'
 import ErrorScreen from './components/ui/ErrorScreen'
 import Section from './components/ui/Section'
-import type { FilterState } from './components/FilterBar'
-import FilterBar from './components/FilterBar'
 import ExecutionQualityStrip from './components/execution/ExecutionQualityStrip'
 import AttributionBreakdownCard from './components/attribution/AttributionBreakdownCard'
 import PnLWaterfall from './components/attribution/PnLWaterfall'
@@ -28,19 +26,17 @@ import GovernanceRadar from './components/governance/GovernanceRadar'
 import StatisticalMetricsTable from './components/StatisticalMetricsTable'
 import WeeklyReviewModal from './components/WeeklyReviewModal'
 import AssetDetailPanel from './components/AssetDetailPanel'
+import AssetDeepDive from './components/AssetDeepDive'
 
-import { useAttributionTrades } from './hooks/useAttributionTrades'
 import Sidebar from './components/layout/Sidebar'
 import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
   const { data: state, isPending, isError } = usePortfolioState()
-  const [filters, setFilters] = useState<FilterState>({ archetype: '', regime: '', asset: '' })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null)
+  const [deepDiveAsset, setDeepDiveAsset] = useState<string | null>(null)
   const enableDetailPanel = getFlag('ENABLE_DETAIL_PANEL')
-  const { data: allTrades } = useAttributionTrades(200)
-  const uniqueAssets = [...new Set(allTrades?.map(t => t.asset) ?? [])]
 
   if (isPending) return <LoadingScreen />
   if (isError) return <ErrorScreen />
@@ -49,7 +45,7 @@ export default function App() {
 
   return (
     <ErrorBoundary title="Application">
-      <SelectedAssetContext.Provider value={{ selectedAsset, setSelectedAsset }}>
+      <SelectedAssetContext.Provider value={{ selectedAsset, setSelectedAsset, deepDiveAsset, setDeepDiveAsset }}>
         <div className="min-h-screen bg-app text-secondary flex flex-col">
           <Header onMenuClick={() => setSidebarOpen(prev => !prev)} />
 
@@ -63,7 +59,7 @@ export default function App() {
 
               <Section id="portfolio" errorTitle="Portfolio">
                 <PortfolioSummary />
-                <AssetGrid />
+                {!enableDetailPanel && <AssetGrid />}
                 <HaltConditions />
               </Section>
 
@@ -79,7 +75,6 @@ export default function App() {
               </Section>
 
               <Section id="execution" errorTitle="Execution" className="space-y-5 sm:space-y-6">
-                <FilterBar assets={uniqueAssets} onChange={setFilters} />
                 <ExecutionQualityStrip />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
                   <AttributionBreakdownCard />
@@ -118,6 +113,12 @@ export default function App() {
             asset={detailAsset}
             name={selectedAsset!}
             onClose={() => setSelectedAsset(null)}
+          />
+        )}
+        {deepDiveAsset && (
+          <AssetDeepDive
+            name={deepDiveAsset}
+            onClose={() => setDeepDiveAsset(null)}
           />
         )}
         <WeeklyReviewModal />

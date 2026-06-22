@@ -1,12 +1,37 @@
+import { useMemo } from 'react'
 import { Check, X, AlertTriangle } from 'lucide-react'
-import { useHaltStatus } from '../hooks/useHaltStatus'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { MetricCardSkeleton } from './ui/Skeleton'
 import { governanceDot, governanceText } from './ui/governance'
 
 export default function HaltConditions() {
   const { data, isPending } = usePortfolioState()
-  const status = useHaltStatus(data)
+
+  const status = useMemo(() => {
+    const hc = data?.halt_conditions
+    const assets = data?.assets ?? {}
+    let maxDD = 0
+    let minPF = Infinity
+    for (const name in assets) {
+      const m = assets[name].metrics
+      if (m) {
+        if (m.drawdown < maxDD) maxDD = m.drawdown
+        if (m.monthly_pf != null && m.monthly_pf < minPF) minPF = m.monthly_pf
+      }
+    }
+    const ddTrigger = (hc?.drawdown ?? -0.08) * 100
+    const pfTrigger = hc?.monthly_pf ?? 0.7
+    const hasMonthlyPf = minPF !== Infinity
+    return {
+      maxDrawdown: maxDD,
+      minMonthlyPf: hasMonthlyPf ? minPF : null,
+      drawdownTrigger: ddTrigger,
+      monthlyPfTrigger: pfTrigger,
+      drawdownPass: maxDD > ddTrigger,
+      monthlyPfPass: hasMonthlyPf ? minPF >= pfTrigger : true,
+      anyTriggered: maxDD <= ddTrigger || (hasMonthlyPf && minPF < pfTrigger),
+    }
+  }, [data])
 
   if (isPending) {
     return <MetricCardSkeleton count={4} />

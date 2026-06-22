@@ -373,6 +373,12 @@ class EntryService:
                     min_viable_pct * 100,
                 )
                 asset._last_entry_notional = 0.0
+                asset._last_sizing_chain = {
+                    "drawdown_taper": round(dd_taper, 4),
+                    "effective_cap": round(effective_cap, 2),
+                    "size_scalar": round(size_scalar, 4),
+                    "reason": "below_min_viable",
+                }
                 return None, entry_slippage_bps, mt5_ticket
 
             notional = capped_notional
@@ -395,6 +401,12 @@ class EntryService:
                         getattr(asset, "_cycle_total_equity", 0.0),
                     )
                     asset._last_entry_notional = 0.0
+                    asset._last_sizing_chain = {
+                        "drawdown_taper": round(dd_taper, 4),
+                        "effective_cap": round(effective_cap, 2),
+                        "size_scalar": round(size_scalar, 4),
+                        "reason": "leverage_exhausted",
+                    }
                     return None, entry_slippage_bps, mt5_ticket
                 notional = min(notional, remaining)
                 budget_ref[0] = remaining - notional
@@ -408,6 +420,18 @@ class EntryService:
 
         qty = max(notional / entry_price, 1e-6)
         asset._last_entry_notional = notional
+
+        # ── Sizing chain snapshot for UI ──────────────────────────────
+        asset._last_sizing_chain = {
+            "drawdown_taper": round(dd_taper, 4),
+            "effective_cap": round(effective_cap, 2),
+            "size_scalar": round(size_scalar, 4),
+            "position_cap": round(max_pos_notional, 2) if total_equity > 0 else 0.0,
+            "risk_cap": round(max_risk_usd, 2) if total_equity > 0 else 0.0,
+            "leverage_budget": round(leverage_budget_total, 2),
+            "final_notional": round(notional, 2),
+            "quantity": round(qty, 6),
+        }
 
         # ── Decomposed sizing attribution log ─────────────────────────
         logger.info(

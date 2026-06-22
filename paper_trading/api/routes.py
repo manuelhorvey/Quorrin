@@ -702,6 +702,93 @@ def handle_mt5_status(path: str, query: dict) -> str:
     return data
 
 
+def handle_asset_detail(path: str, query: dict) -> tuple[str, int]:
+    """Per-asset deep dive: feature importance, trade history, prob history."""
+    asset_name = path[len("/asset/") : -len(".json")]
+    snapshot = _STORE.load_snapshot()
+    if not snapshot or not snapshot.assets or asset_name not in snapshot.assets:
+        return json_dumps({"error": f"No data for {asset_name}"}), 404
+
+    asset = snapshot.assets[asset_name]
+    metrics = asset.get("metrics") or {}
+
+    # Feature importance from saved model JSON
+    model_path = f"paper_trading/models/{asset_name}.json"
+    feature_importance: list[dict] = []
+    if os.path.exists(model_path):
+        try:
+            with open(model_path) as f:
+                model_data = json.load(f)
+            # Extract feature names and types from XGBoost JSON dump
+            learner = model_data.get("learner", {})
+            features_info = learner.get("feature_names", [])
+            feat_types = learner.get("feature_types", [])
+            # Compute gain-based importance from tree structure
+            importance: dict[str, float] = {}
+            for tree in learner.get("gradient_booster", {}).get("model", {}).get("trees", []):
+                splits = tree.get("split_conditions", [])
+                for si, node in enumerate(tree.get("split_indices", [])):
+                    if node < len(features_info):
+                        fname = features_info[node]
+                        importance[fname] = importance.get(fname, 0.0) + abs(splits[si] if si < len(splits) else 0.0)
+            total = sum(importance.values()) or 1.0
+            feature_importance = [
+                {
+                    "feature": f,
+                    "importance": round(v / total, 6),
+                    "type": feat_types[i] if i < len(feat_types) else "float",
+                }
+                for i, (f, v) in enumerate(sorted(importance.items(), key=lambda x: -x[1]))
+            ]
+        except Exception as exc:
+            feature_importance = [{"error": str(exc)}]
+
+    # Trade history with MAE/MFE estimates
+    trade_log = metrics.get("trade_log") or []
+    trades = []
+    for t in trade_log:
+        entry = t.get("entry", 0)
+        exit_px = t.get("exit", 0)
+        mae = t.get("mae")
+        mfe = t.get("mfe")
+        if mae is None and entry and exit_px:
+            direction = 1 if t.get("side") == "long" else -1
+            mae = min(0, (exit_px - entry) / entry * 100 * direction)
+            mfe = max(0, (exit_px - entry) / entry * 100 * direction)
+        trades.append({
+            "side": t.get("side"),
+            "entry": entry,
+            "exit": exit_px,
+            "return": t.get("return"),
+            "reason": t.get("reason"),
+            "entry_date": t.get("entry_date"),
+            "exit_date": t.get("exit_date"),
+            "mae": round(mae, 4) if mae is not None else None,
+            "mfe": round(mfe, 4) if mfe is not None else None,
+        })
+
+    data = json_dumps({
+        "asset": asset_name,
+        "feature_importance": feature_importance,
+        "trades": trades,
+        "final_signal": asset.get("final_signal"),
+        "sell_only": asset.get("sell_only", False),
+        "tripwire_active": asset.get("tripwire_active", False),
+        "last_signal": asset.get("last_signal"),
+        "metrics": {
+            "total_return": metrics.get("total_return"),
+            "drawdown": metrics.get("drawdown"),
+            "win_rate": metrics.get("win_rate"),
+            "profit_factor": metrics.get("profit_factor"),
+            "sharpe_ratio": metrics.get("sharpe_ratio"),
+            "n_trades": metrics.get("n_trades"),
+            "mean_confidence": metrics.get("mean_confidence"),
+        },
+    })
+
+    return data, 200
+
+
 GET_ROUTES: dict[str, tuple] = {
     "/state.json": (handle_state, False),
     "/trades.json": (handle_trades, False),
@@ -738,6 +825,7 @@ GET_ROUTES_PREFIX: list[tuple[str, object, bool]] = [
     ("/risk/", handle_risk_asset, False),
     ("/shadow-actions/", handle_shadow_actions_asset, False),
     ("/health/", handle_health_asset, False),
+    ("/asset/", handle_asset_detail, False),
 ]
 
 POST_ROUTES: dict[str, object] = {

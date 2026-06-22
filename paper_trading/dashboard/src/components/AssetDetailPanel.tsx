@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Shield, Sliders, Activity, BarChart3, ChevronDown, ChevronRight } from 'lucide-react'
 import type { AssetState } from '../types/portfolio'
+import { governanceText } from './ui/governance'
 
 type TabId = 'overview' | 'governance' | 'sizing' | 'diagnostics'
 
@@ -116,7 +117,7 @@ function OverviewTab({ asset }: { asset: AssetState }) {
   const pos = m.position
   return (
     <>
-      <MetricRow label="Final Signal" value={asset.final_signal ?? 'FLAT'} valueClass={asset.final_signal === 'BUY' ? 'text-gov-green' : asset.final_signal === 'SELL' ? 'text-gov-red' : ''} />
+      <MetricRow label="Final Signal" value={asset.final_signal ?? 'FLAT'} valueClass={asset.final_signal === 'BUY' ? governanceText.GREEN : asset.final_signal === 'SELL' ? governanceText.RED : ''} />
       <MetricRow label="Raw Signal" value={asset.last_signal?.signal ?? 'FLAT'} />
       <MetricRow label="Confidence" value={m.mean_confidence?.toFixed(1) ?? '—'} />
       <MetricRow label="Current Price" value={m.current_price?.toFixed(4) ?? '—'} />
@@ -125,8 +126,8 @@ function OverviewTab({ asset }: { asset: AssetState }) {
       {asset.signal_flip && <div className="text-xs text-gov-yellow font-medium">⚠ Signal flip detected</div>}
 
       <Section title="Performance">
-        <MetricRow label="Total Return" value={m.total_return != null ? `${m.total_return.toFixed(2)}%` : '—'} valueClass={m.total_return != null && m.total_return >= 0 ? 'text-gov-green' : 'text-gov-red'} />
-        <MetricRow label="Drawdown" value={m.drawdown != null ? `${m.drawdown.toFixed(2)}%` : '—'} valueClass={m.drawdown != null && m.drawdown < -5 ? 'text-gov-red' : ''} />
+        <MetricRow label="Total Return" value={m.total_return != null ? `${m.total_return.toFixed(2)}%` : '—'} valueClass={m.total_return != null && m.total_return >= 0 ? governanceText.GREEN : governanceText.RED} />
+        <MetricRow label="Drawdown" value={m.drawdown != null ? `${m.drawdown.toFixed(2)}%` : '—'} />
         <MetricRow label="MTM Return" value={m.mtm_return != null ? `${m.mtm_return.toFixed(2)}%` : '—'} />
         <MetricRow label="Profit Factor" value={m.profit_factor?.toFixed(2) ?? '—'} />
         <MetricRow label="Win Rate" value={m.win_rate != null ? `${(m.win_rate * 100).toFixed(0)}%` : '—'} />
@@ -141,11 +142,11 @@ function OverviewTab({ asset }: { asset: AssetState }) {
 
       {pos && (
         <Section title="Position">
-          <MetricRow label="Side" value={pos.side.toUpperCase()} valueClass={pos.side === 'long' ? 'text-gov-green' : 'text-gov-red'} />
+          <MetricRow label="Side" value={pos.side.toUpperCase()} valueClass={pos.side === 'long' ? governanceText.GREEN : governanceText.RED} />
           <MetricRow label="Entry" value={pos.entry?.toFixed(4) ?? '—'} />
           <MetricRow label="SL" value={pos.sl?.toFixed(4) ?? '—'} />
           <MetricRow label="TP" value={pos.tp?.toFixed(4) ?? '—'} />
-          <MetricRow label="Unrealized PnL" value={pos.unrealized_pnl != null ? `${pos.unrealized_pnl.toFixed(2)}%` : '—'} valueClass={pos.unrealized_pnl != null && pos.unrealized_pnl >= 0 ? 'text-gov-green' : 'text-gov-red'} />
+          <MetricRow label="Unrealized PnL" value={pos.unrealized_pnl != null ? `${pos.unrealized_pnl.toFixed(2)}%` : '—'} valueClass={pos.unrealized_pnl != null && pos.unrealized_pnl >= 0 ? governanceText.GREEN : governanceText.RED} />
           <MetricRow label="Volume" value={pos.current_vol?.toFixed(2) ?? '—'} />
         </Section>
       )}
@@ -157,6 +158,7 @@ function GovernanceTab({ asset }: { asset: AssetState }) {
   const m = asset.metrics
   const h = asset.halt
   const psi = m.psi_drift
+  const gt = asset.gates_trace
   return (
     <>
       <div className="flex items-center justify-between py-1.5">
@@ -187,7 +189,7 @@ function GovernanceTab({ asset }: { asset: AssetState }) {
       </Section>
 
       <Section title="Halt Checks">
-        <MetricRow label="Halted" value={h.halted ? 'Yes' : 'No'} valueClass={h.halted ? 'text-gov-red' : 'text-gov-green'} />
+        <MetricRow label="Halted" value={h.halted ? 'Yes' : 'No'} valueClass={h.halted ? governanceText.RED : governanceText.GREEN} />
         <MetricRow label="Drawdown OK" value={h.drawdown_ok ? 'Yes' : 'No'} />
         <MetricRow label="Monthly PF OK" value={h.monthly_pf_ok ? 'Yes' : 'No'} />
         <MetricRow label="Drought OK" value={h.drought_ok ? 'Yes' : 'No'} />
@@ -200,9 +202,22 @@ function GovernanceTab({ asset }: { asset: AssetState }) {
         )}
       </Section>
 
+      {gt && (
+        <Section title="Governance Trace">
+          {Object.entries(gt).map(([stage, passed]) => (
+            <div key={stage} className="flex items-center justify-between py-1">
+              <span className="text-xs text-tertiary">{stage.replace(/_/g, ' ')}</span>
+              <span className={`text-xs font-mono font-medium ${passed ? 'text-gov-green' : 'text-gov-red'}`}>
+                {passed ? 'PASS' : 'ABORT'}
+              </span>
+            </div>
+          ))}
+        </Section>
+      )}
+
       {psi && (
         <Section title="PSI Drift">
-          <MetricRow label="Worst" value={psi.worst_classification} valueClass={psi.worst_classification === 'severe' ? 'text-gov-red' : psi.worst_classification === 'moderate' ? 'text-gov-yellow' : ''} />
+          <MetricRow label="Worst" value={psi.worst_classification} valueClass={psi.worst_classification === 'severe' ? governanceText.RED : psi.worst_classification === 'moderate' ? governanceText.YELLOW : ''} />
           <MetricRow label="Moderate" value={String(psi.moderate_count)} />
           <MetricRow label="Severe" value={String(psi.severe_count)} />
           {psi.per_feature && psi.per_feature.length > 0 && (
@@ -218,7 +233,7 @@ function GovernanceTab({ asset }: { asset: AssetState }) {
       {m.meta_inference && (
         <Section title="Meta-Labeling">
           <MetricRow label="Meta Confidence" value={m.meta_inference.meta_confidence?.toFixed(4) ?? '—'} />
-          <MetricRow label="Meta Decision" value={m.meta_inference.meta_decision ?? '—'} valueClass={m.meta_inference.meta_decision === 'BLOCK' ? 'text-gov-red' : 'text-gov-green'} />
+          <MetricRow label="Meta Decision" value={m.meta_inference.meta_decision ?? '—'} valueClass={m.meta_inference.meta_decision === 'BLOCK' ? governanceText.RED : governanceText.GREEN} />
         </Section>
       )}
 
@@ -234,6 +249,7 @@ function SizingTab({ asset }: { asset: AssetState }) {
   const narrativeScalar = asset.narrative_size_scalar ?? 1
   const liquidityScalar = asset.liquidity_size_scalar ?? 1
   const combined = narrativeScalar * liquidityScalar
+  const sc = asset.sizing_chain
 
   return (
     <>
@@ -259,6 +275,21 @@ function SizingTab({ asset }: { asset: AssetState }) {
         <MetricRow label="Size Scalar (narrative)" value={`${narrativeScalar.toFixed(4)}x`} />
         <MetricRow label="Size Scalar (liquidity)" value={`${liquidityScalar.toFixed(4)}x`} />
         <MetricRow label="Size Scalar (combined)" value={`${combined.toFixed(4)}x`} />
+        {sc ? (
+          <>
+            <MetricRow label="Drawdown Taper" value={sc.drawdown_taper != null ? `${Number(sc.drawdown_taper).toFixed(4)}x` : '—'} />
+            <MetricRow label="Effective Cap" value={sc.effective_cap != null ? `$${Number(sc.effective_cap).toFixed(2)}` : '—'} />
+            <MetricRow label="Size Scalar (final)" value={sc.size_scalar != null ? `${Number(sc.size_scalar).toFixed(4)}x` : '—'} />
+            <MetricRow label="Position Cap" value={sc.position_cap != null ? `$${Number(sc.position_cap).toFixed(2)}` : '—'} />
+            <MetricRow label="Risk Cap" value={sc.risk_cap != null ? `$${Number(sc.risk_cap).toFixed(2)}` : '—'} />
+            <MetricRow label="Leverage Budget" value={sc.leverage_budget != null ? `$${Number(sc.leverage_budget).toFixed(2)}` : '—'} />
+            <MetricRow label="Final Notional" value={sc.final_notional != null ? `$${Number(sc.final_notional).toFixed(2)}` : '—'} />
+            <MetricRow label="Quantity" value={sc.quantity != null ? Number(sc.quantity).toFixed(6) : '—'} />
+            {sc.reason && <MetricRow label="Skip Reason" value={String(sc.reason)} valueClass="text-gov-yellow" />}
+          </>
+        ) : (
+          <MetricRow label="Active Sizing" value="No entry attempted" />
+        )}
       </Section>
 
       {m.scale_out_active && m.scale_out_tiers && (

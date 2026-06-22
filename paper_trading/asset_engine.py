@@ -207,6 +207,8 @@ class AssetEngine:
         self._current_window_train_end = ""
         self._last_stability = None
         self._last_psi_drift = None
+        self._last_gates_trace: dict[str, bool] | None = None
+        self._last_sizing_chain: dict[str, float] | None = None
         self._truncate_inference = False
         self._psi_drift_initialized = False
         self._signal_chain: list = []

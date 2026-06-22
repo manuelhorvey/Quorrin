@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, ExternalLink } from 'lucide-react'
 import { usePortfolioState } from '../hooks/usePortfolioState'
 import { useSelectedAsset } from '../hooks/useSelectedAsset'
 import { getFlag } from '../lib/featureFlags'
@@ -10,18 +10,7 @@ import SectionHeader from './ui/SectionHeader'
 import EmptyState from './ui/EmptyState'
 import { TableSkeleton } from './ui/Skeleton'
 import Badge, { signalToBadge } from './ui/Badge'
-
-function confClass(conf: number): string {
-  if (conf >= 60) return 'text-gov-green'
-  if (conf >= 45) return 'text-gov-yellow'
-  return 'text-gov-red'
-}
-
-function ddClass(dd: number): string {
-  if (dd > -3) return 'text-gov-green'
-  if (dd > -5) return 'text-gov-yellow'
-  return 'text-gov-red'
-}
+import { confToState, ddToState, governanceText } from './ui/governance'
 
 interface SignalRow {
   name: string
@@ -33,12 +22,14 @@ interface SignalRow {
   dd: number
   sellOnly: boolean
   tripwireActive: boolean
+  tpPct: number | null
+  slPct: number | null
 }
 
 export default function SignalsTable() {
   const [search, setSearch] = useState('')
   const { data, isPending } = usePortfolioState()
-  const { setSelectedAsset } = useSelectedAsset()
+  const { setSelectedAsset, setDeepDiveAsset } = useSelectedAsset()
   const enableDetailPanel = getFlag('ENABLE_DETAIL_PANEL')
 
   const rows = useMemo(() => {
@@ -51,6 +42,18 @@ export default function SignalsTable() {
         const sig = asset.last_signal
         const m = asset.metrics
         const alloc = data.portfolio?.allocations?.[name] ?? 0
+        const pos = m?.position
+        let tpPct: number | null = null
+        let slPct: number | null = null
+        if (pos?.entry && pos?.tp && pos?.sl) {
+          if (pos.side === 'long') {
+            tpPct = ((pos.tp - pos.entry) / pos.entry) * 100
+            slPct = ((pos.entry - pos.sl) / pos.entry) * 100
+          } else {
+            tpPct = ((pos.entry - pos.tp) / pos.entry) * 100
+            slPct = ((pos.sl - pos.entry) / pos.entry) * 100
+          }
+        }
         return {
           name,
           signal: asset.final_signal ?? sig?.signal ?? 'FLAT',
@@ -61,6 +64,8 @@ export default function SignalsTable() {
           dd: m?.drawdown ?? 0,
           sellOnly: asset.sell_only ?? false,
           tripwireActive: asset.tripwire_active ?? false,
+          tpPct,
+          slPct,
         }
       })
   }, [data, search])
@@ -112,7 +117,7 @@ export default function SignalsTable() {
               style={{ width: `${r.confidence}%` }}
             />
           </div>
-          <span className={`font-mono tabular-nums text-[10px] ${confClass(r.confidence)}`}>
+          <span className={`font-mono tabular-nums text-[10px] ${governanceText[confToState(r.confidence)]}`}>
             {r.confidence.toFixed(0)}
           </span>
         </div>
@@ -152,7 +157,47 @@ export default function SignalsTable() {
       align: 'right',
       sortable: true,
       sortKey: r => r.dd,
-      render: r => <span className={`font-mono tabular-nums ${ddClass(r.dd)}`}>{r.dd.toFixed(2)}</span>,
+      render: r => <span className={`font-mono tabular-nums ${governanceText[ddToState(r.dd)]}`}>{r.dd.toFixed(2)}</span>,
+    },
+    {
+      key: 'tpPct',
+      label: 'TP%',
+      align: 'right',
+      sortable: true,
+      sortKey: r => r.tpPct ?? -Infinity,
+      render: r => (
+        <span className={`font-mono tabular-nums ${r.tpPct != null ? 'text-gov-green' : 'text-tertiary'}`}>
+          {r.tpPct != null ? `${r.tpPct.toFixed(1)}%` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'slPct',
+      label: 'SL%',
+      align: 'right',
+      sortable: true,
+      sortKey: r => r.slPct ?? -Infinity,
+      render: r => (
+        <span className={`font-mono tabular-nums ${r.slPct != null ? 'text-gov-red' : 'text-tertiary'}`}>
+          {r.slPct != null ? `${r.slPct.toFixed(1)}%` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      align: 'center',
+      width: '32px',
+      render: r => (
+        <button
+          type="button"
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDeepDiveAsset(r.name) }}
+          className="p-1 rounded hover:bg-panel transition-colors text-tertiary hover:text-primary"
+          title={`Deep dive: ${r.name}`}
+        >
+          <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+        </button>
+      ),
     },
   ], [])
 

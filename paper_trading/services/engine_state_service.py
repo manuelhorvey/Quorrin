@@ -54,8 +54,7 @@ class EngineStateService:
             if halt["halted"]:
                 any_halted = True
             signal = dict(asset.prob_history[-1]) if asset.prob_history else None
-            if signal and metrics.get("current_price"):
-                signal["close_price"] = metrics["current_price"]
+            # signal.close_price has the signal-time price from prob_history — do not overwrite
             meta_inf = metrics.get("meta_inference") or {}
             feat_stab = metrics.get("feature_stability") or {}
             sig_flip = False
@@ -103,6 +102,8 @@ class EngineStateService:
                     else None
                 ),
                 "last_regime_features": getattr(asset, "_last_regime_features", None),
+                "gates_trace": getattr(asset, "_last_gates_trace", None),
+                "sizing_chain": getattr(asset, "_last_sizing_chain", None),
             }
         total_value = self.compute_mtm_total()
         rp_weights = {}

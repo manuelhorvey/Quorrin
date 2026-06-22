@@ -1,14 +1,15 @@
 /** Calibration / governance state — use everywhere for consistent color psychology */
 
-export type GovernanceState = 'GREEN' | 'YELLOW' | 'RED' | 'INIT'
+export type GovernanceState = 'GREEN' | 'YELLOW' | 'RED' | 'INIT' | 'GRAY'
 
-export const GOVERNANCE_STATES: GovernanceState[] = ['GREEN', 'YELLOW', 'RED', 'INIT']
+export const GOVERNANCE_STATES: GovernanceState[] = ['GREEN', 'YELLOW', 'RED', 'INIT', 'GRAY']
 
 export const governanceBadge: Record<GovernanceState, string> = {
   GREEN: 'bg-gov-green-muted text-gov-green border-gov-green/25',
   YELLOW: 'bg-gov-yellow-muted text-gov-yellow border-gov-yellow/25',
   RED: 'bg-gov-red-muted text-gov-red border-gov-red/25',
   INIT: 'bg-gov-init-muted text-gov-init border-gov-init/25',
+  GRAY: 'bg-gov-gray-muted text-gov-gray border-gov-gray/25',
 }
 
 export const governanceDot: Record<GovernanceState, string> = {
@@ -16,6 +17,7 @@ export const governanceDot: Record<GovernanceState, string> = {
   YELLOW: 'bg-gov-yellow',
   RED: 'bg-gov-red',
   INIT: 'bg-gov-init',
+  GRAY: 'bg-gov-gray',
 }
 
 export const governanceText: Record<GovernanceState, string> = {
@@ -23,6 +25,7 @@ export const governanceText: Record<GovernanceState, string> = {
   YELLOW: 'text-gov-yellow',
   RED: 'text-gov-red',
   INIT: 'text-gov-init',
+  GRAY: 'text-gov-gray',
 }
 
 export const governanceBorder: Record<GovernanceState, string> = {
@@ -30,6 +33,7 @@ export const governanceBorder: Record<GovernanceState, string> = {
   YELLOW: 'border-l-gov-yellow',
   RED: 'border-l-gov-red',
   INIT: 'border-l-gov-init',
+  GRAY: 'border-l-gov-gray',
 }
 
 export const governanceBgMuted: Record<GovernanceState, string> = {
@@ -37,6 +41,7 @@ export const governanceBgMuted: Record<GovernanceState, string> = {
   YELLOW: 'bg-gov-yellow-muted2',
   RED: 'bg-gov-red-muted2',
   INIT: 'bg-gov-init-muted2',
+  GRAY: 'bg-gov-gray-muted2',
 }
 
 export function prematureRateState(rate: number | null): GovernanceState {
@@ -120,6 +125,7 @@ export const GOV_STATE_META: Record<GovernanceState, GovStateMeta> = {
   YELLOW: { fill: 'bg-gov-yellow text-white',              border: 'border-gov-yellow/25 bg-gov-yellow-muted text-gov-yellow', dot: 'bg-gov-yellow', motion: 'animate-pulse-subtle' },
   RED:    { fill: 'bg-gov-red text-white',                 border: 'border-gov-red/25 bg-gov-red-muted text-gov-red',       dot: 'bg-gov-red',    motion: 'state-pulse-red' },
   INIT:   { fill: 'bg-gov-init text-white',                border: 'border-gov-init/25 bg-gov-init-muted text-gov-init',    dot: 'bg-gov-init',   motion: '' },
+  GRAY:   { fill: 'bg-gov-gray text-white',                border: 'border-gov-gray/25 bg-gov-gray-muted text-gov-gray',    dot: 'bg-gov-gray',   motion: '' },
 }
 
 export function getStateMeta(state: GovernanceState): GovStateMeta {

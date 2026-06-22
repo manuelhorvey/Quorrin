@@ -41,6 +41,9 @@ class DecisionContext:
     abort: bool = False
     current_side: PositionSide | None = None
 
+    # Per-stage pass/fail trace for UI display
+    gates_trace: dict[str, bool] | None = None
+
     # Causal replay identifiers (set before pipeline runs)
     feature_hash: str = ""
 
@@ -591,7 +594,10 @@ def run_decision_pipeline(
         feature_hash=feature_hash,
     )
 
+    ctx.gates_trace = {}
     for stage in stages:
+        stage_name = stage.__name__
+        ctx.gates_trace[stage_name] = not ctx.abort
         stage(ctx)
         if ctx.abort:
             break
@@ -610,6 +616,8 @@ def run_decision_pipeline(
                 "model_hash": getattr(engine, "_model_hash", "unknown"),
             },
         )
+
+    engine._last_gates_trace = ctx.gates_trace
 
     if ctx.abort:
         return None

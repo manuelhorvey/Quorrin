@@ -236,14 +236,17 @@ class AssetActor:
             return
         price = self._engine.current_price
         if price is not None and not (isinstance(price, float) and pd.isna(price)):
-            self._wal.write(
-                "price_update",
-                {
-                    "asset": self.name,
-                    "price": float(price),
-                    "time": str(datetime.now()),
-                },
-            )
+            try:
+                self._wal.write(
+                    "price_update",
+                    {
+                        "asset": self.name,
+                        "price": float(price),
+                        "time": str(datetime.now()),
+                    },
+                )
+            except Exception:
+                logger.exception("WAL write failed for price_update on %s", self.name)
             self._last_price = float(price)
 
     def _write_position_events(self) -> None:
@@ -252,34 +255,40 @@ class AssetActor:
         current_count = len(getattr(self._engine, "trade_log", []))
         if current_count > self._last_trade_count:
             for trade in getattr(self._engine, "trade_log", [])[self._last_trade_count :]:
-                self._wal.write(
-                    "position_closed",
-                    {
-                        "asset": self.name,
-                        "reason": trade.get("reason", "unknown"),
-                        "pnl": trade.get("pnl", 0),
-                        "exit_price": trade.get("exit_price", 0),
-                        "entry_price": trade.get("entry_price", 0),
-                        "side": trade.get("side", ""),
-                        "exit_date": trade.get("exit_date", ""),
-                    },
-                )
+                try:
+                    self._wal.write(
+                        "position_closed",
+                        {
+                            "asset": self.name,
+                            "reason": trade.get("reason", "unknown"),
+                            "pnl": trade.get("pnl", 0),
+                            "exit_price": trade.get("exit_price", 0),
+                            "entry_price": trade.get("entry_price", 0),
+                            "side": trade.get("side", ""),
+                            "exit_date": trade.get("exit_date", ""),
+                        },
+                    )
+                except Exception:
+                    logger.exception("WAL write failed for position_closed on %s", self.name)
         self._last_trade_count = current_count
 
     def _write_signal(self, signal: dict | None) -> None:
         if self._wal is None:
             return
         if signal is not None:
-            self._wal.write(
-                "signal_generated",
-                {
-                    "asset": self.name,
-                    "signal": signal.get("signal"),
-                    "confidence": signal.get("confidence"),
-                    "position_size": signal.get("position_size", 0),
-                    "time": str(datetime.now()),
-                },
-            )
+            try:
+                self._wal.write(
+                    "signal_generated",
+                    {
+                        "asset": self.name,
+                        "signal": signal.get("signal"),
+                        "confidence": signal.get("confidence"),
+                        "position_size": signal.get("position_size", 0),
+                        "time": str(datetime.now()),
+                    },
+                )
+            except Exception:
+                logger.exception("WAL write failed for signal_generated on %s", self.name)
 
 
 # ── Actor Health Aggregator ───────────────────────────────────────────────────

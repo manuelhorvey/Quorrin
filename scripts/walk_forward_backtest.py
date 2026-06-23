@@ -218,19 +218,9 @@ def run_walk_forward(
         n1 = (y_tr == 1).sum()
         imbalance_ratio = n0 / max(n1, 1)
 
-        # ── Time-based validation split with vb embargo (matching production) ──
-        vb = 20
-        n = len(y_tr)
-        n_valid = max(int(n * 0.2), 1)
-        tr_end = n - n_valid - vb
-        if tr_end < 50:
-            tr_end = n - n_valid
-
-        X_tr_val = X_tr.iloc[:tr_end]
-        y_tr_val = y_tr.iloc[:tr_end]
-        X_ev = X_tr.iloc[-n_valid:]
-        y_ev = y_tr.iloc[-n_valid:]
-
+        # Train on ALL fold training data (matching production expanding-window
+        # approach). No validation split — walk-forward folds are too small for
+        # reliable early stopping, and production trains on all available data.
         model = xgb.XGBClassifier(
             n_estimators=300,
             max_depth=max_depth,
@@ -240,14 +230,9 @@ def run_walk_forward(
             random_state=42,
             n_jobs=1,
             tree_method="hist",
-            early_stopping_rounds=50,
             verbosity=0,
         )
-        model.fit(
-            X_tr_val[alpha_cols], y_tr_val,
-            eval_set=[(X_ev[alpha_cols], y_ev)],
-            verbose=False,
-        )
+        model.fit(X_tr[alpha_cols], y_tr)
 
         base_p_long = model.predict_proba(X_te[alpha_cols])[:, 1]
 

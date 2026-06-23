@@ -333,17 +333,20 @@ class AssetInferencePipeline:
         # ── Inference output WAL event (causal boundary P0.3, pre-gate) ──
         wal = getattr(asset, "_wal_writer", None)
         if wal is not None:
-            wal.write(
-                "inference_output",
-                {
-                    "asset": asset.name,
-                    "prob_long": round(float(proba[-1, 2]), 6),
-                    "prob_short": round(float(proba[-1, 0]), 6),
-                    "prob_neutral": round(float(proba[-1, 1]), 6),
-                    "model_hash": getattr(asset, "_model_hash", "unknown"),
-                    "feature_hash": feature_hash,
-                },
-            )
+            try:
+                wal.write(
+                    "inference_output",
+                    {
+                        "asset": asset.name,
+                        "prob_long": round(float(proba[-1, 2]), 6),
+                        "prob_short": round(float(proba[-1, 0]), 6),
+                        "prob_neutral": round(float(proba[-1, 1]), 6),
+                        "model_hash": getattr(asset, "_model_hash", "unknown"),
+                        "feature_hash": feature_hash,
+                    },
+                )
+            except Exception:
+                logger.exception("WAL write failed for inference_output on %s", asset.name)
 
         return proba, _infer_idx
 
@@ -471,16 +474,19 @@ class AssetInferencePipeline:
         # ── WAL: features_snapshot (causal boundary P0.1) ─────────────────
         wal = getattr(asset, "_wal_writer", None)
         if wal is not None and feature_vector is not None:
-            wal.write(
-                "features_snapshot",
-                {
-                    "asset": asset.name,
-                    "features": feature_vector,
-                    "feature_hash": feature_hash,
-                    "feature_schema": getattr(asset, "_last_feature_schema", sorted(feature_vector.keys())),
-                    "model_hash": getattr(asset, "_model_hash", "unknown"),
-                },
-            )
+            try:
+                wal.write(
+                    "features_snapshot",
+                    {
+                        "asset": asset.name,
+                        "features": feature_vector,
+                        "feature_hash": feature_hash,
+                        "feature_schema": getattr(asset, "_last_feature_schema", sorted(feature_vector.keys())),
+                        "model_hash": getattr(asset, "_model_hash", "unknown"),
+                    },
+                )
+            except Exception:
+                logger.exception("WAL write failed for features_snapshot on %s", asset.name)
 
         # ── Trace.jsonl decision entry (derives from same feature_vector) ──
         _regime_label = (

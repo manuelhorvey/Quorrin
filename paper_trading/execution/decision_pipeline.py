@@ -993,18 +993,21 @@ def run_decision_pipeline(
     # ── Decision output WAL event (causal boundary P0.3, post-gate) ──
     wal = getattr(engine, "_wal_writer", None)
     if wal is not None:
-        final_signal = ctx.new_side.value if ctx.new_side is not None else "NONE"
-        wal.write(
-            "decision_output",
-            {
-                "asset": engine.name,
-                "final_signal": final_signal,
-                "gates_aborted": ctx.abort,
-                "gates_trace": ctx.gates_trace,
-                "feature_hash": ctx.feature_hash,
-                "model_hash": getattr(engine, "_model_hash", "unknown"),
-            },
-        )
+        try:
+            final_signal = ctx.new_side.value if ctx.new_side is not None else "NONE"
+            wal.write(
+                "decision_output",
+                {
+                    "asset": engine.name,
+                    "final_signal": final_signal,
+                    "gates_aborted": ctx.abort,
+                    "gates_trace": ctx.gates_trace,
+                    "feature_hash": ctx.feature_hash,
+                    "model_hash": getattr(engine, "_model_hash", "unknown"),
+                },
+            )
+        except Exception:
+            logger.exception("WAL write failed for decision_output on %s", engine.name)
 
     engine._last_gates_trace = ctx.gates_trace
 

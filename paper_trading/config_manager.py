@@ -35,6 +35,7 @@ class MT5Config:
     server: str = ""
     bridge_host: str = "127.0.0.1"
     bridge_port: int = 9879
+    min_lot: float = 0.05
     symbol_map_path: str = ""
 
     @classmethod
@@ -51,6 +52,7 @@ class MT5Config:
             server=server,
             bridge_host=data.get("bridge_host", "127.0.0.1"),
             bridge_port=int(data.get("bridge_port", 9879)),
+            min_lot=float(data.get("min_lot", 0.05)),
             symbol_map_path=data.get("symbol_map_path", ""),
         )
 

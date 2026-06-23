@@ -9,6 +9,7 @@ mt5:
   enabled: true
   bridge_host: 127.0.0.1
   bridge_port: 9879
+  min_lot: 0.05
   symbol_map_path: configs/mt5_symbol_map.yaml
 # Ensemble is configured programmatically per-asset after regime model training.
 # Config values here serve as global defaults for all assets.

@@ -44,6 +44,7 @@ class MT5Broker(BrokerInterface):
         bridge_host: str = "127.0.0.1",
         bridge_port: int = 9876,
         lot_size_map: dict[str, float] | None = None,
+        min_lot: float = 0.05,
         client: MT5Client | None = None,
     ):
         if client is not None:
@@ -59,6 +60,7 @@ class MT5Broker(BrokerInterface):
             )
         self._symbol_map = symbol_map or {}
         self._lot_size_map = lot_size_map or {}
+        self._min_lot = min_lot
         self._connected = False
 
         # Cache for positions (avoids hammering the bridge)
@@ -295,8 +297,9 @@ class MT5Broker(BrokerInterface):
         info = self._client.symbol_info(asset)
         if info:
             contract_size = info.get("contract_size", 100000.0)
-            step = info.get("volume_step", 0.01)
-            min_vol = info.get("min_volume", 0.01)
+            step = info.get("volume_step", self._min_lot)
+            broker_min = info.get("min_volume", self._min_lot)
+            min_vol = max(broker_min, self._min_lot)
             max_vol = info.get("max_volume", 100.0)
             lots = quantity / contract_size
             lots = round(lots / step) * step

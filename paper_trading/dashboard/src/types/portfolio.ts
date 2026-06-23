@@ -156,7 +156,7 @@ export interface AssetState {
   last_regime_label: string | null
   last_regime_features: Record<string, number> | null
   gates_trace: Record<string, boolean> | null
-  sizing_chain: Record<string, number | string> | null
+  sizing_chain: Record<string, number | string | null> | null
 }
 
 export interface ExitReasons {

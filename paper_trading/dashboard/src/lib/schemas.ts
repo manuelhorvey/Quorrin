@@ -407,7 +407,7 @@ export const AssetStateSchema = z.object({
   last_regime_label: z.string().nullable(),
   last_regime_features: z.record(z.string(), z.number()).nullable(),
   gates_trace: z.record(z.string(), z.boolean()).nullable(),
-  sizing_chain: z.record(z.string(), z.union([z.number(), z.string()])).nullable(),
+  sizing_chain: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).nullable(),
 })
 
 // ── Open position (per-asset with metadata) ───────────────────────

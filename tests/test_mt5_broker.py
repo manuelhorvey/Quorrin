@@ -248,6 +248,13 @@ class TestLotConversion:
         lots = broker._quantity_to_lots("EURUSD", 5000)
         assert lots == 5.0
 
+    def test_quantity_to_lots_enforces_configured_min_lot(self, mock_client):
+        broker = MT5Broker(client=mock_client, min_lot=0.05)
+        broker.connect()
+        # 2000 units → 0.02 lots before floor; must upsize to 0.05
+        lots = broker._quantity_to_lots("EURUSD", 2000)
+        assert lots == 0.05
+
     def test_lots_to_quantity(self, mock_client):
         broker = MT5Broker(client=mock_client)
         broker.connect()

@@ -21,7 +21,7 @@ Create `SimulationStore` in `paper_trading/simulation_snapshot.py` with:
 1. **Per-asset snapshots** — `AssetSnapshot` captures position, trade_log, prob_history, validity state, meta-model inference, and feature stability metrics for each asset
 2. **Portfolio-level row** — associates the entire asset snapshot set with portfolio value, return, cash buffer, and satellite value at a single timestamp
 3. **Parquet persistence** to `data/live/snapshots/simulation_history.parquet` — append-only with deduplication on (timestamp, asset)
-4. **Cold state store** — `cold_state.pkl` for non-feature-engineerable data (model pickle paths etc.)
+4. **Cold state store** — `cold_state.json` for non-feature-engineerable data (model pickle paths etc.)
 5. **Three load modes:**
    - `load_snapshot(timestamp)` — exact-timestamp lookup
    - `load_snapshot_by_date(date_str)` — latest snapshot on a given date
@@ -32,7 +32,7 @@ Create `SimulationStore` in `paper_trading/simulation_snapshot.py` with:
 
 - **Full-database approach (SQLite):** Overengineered for snapshot storage. Parquet with deduplication is simpler, self-contained, and directly readable by pandas for analysis.
 - **Checkpoint entire engine as pickle:** Fragile across code changes. Row-based parquet allows schema evolution and partial loads.
-- **Store model pickle inside snapshot:** Model files are large (5-50 MB per asset × 6 assets). External references via cold_state.pkl avoids duplicating into every snapshot row.
+- **Store model pickle inside snapshot:** Model files are large (5-50 MB per asset × 6 assets). External references via cold_state.json avoids duplicating into every snapshot row.
 
 ## Consequences
 

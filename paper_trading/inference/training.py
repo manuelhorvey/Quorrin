@@ -190,16 +190,21 @@ class AssetTrainingPipeline:
         except Exception as e:
             logger.warning("%s: failed to persist PSI baseline: %s", asset.name, e)
 
-        # Train meta-label model
+        # Train meta-label model using OOS primary predictions
         if asset.config.get("meta_labeling", {}).get("enabled", False):
             asset._meta_label_model = MetaLabelModel(
                 threshold=asset.config.get("meta_labeling", {}).get("threshold", 0.55),
             )
             try:
-                primary_pred = model.predict_proba(x_binary)
-                full_train = train.copy()
-                full_train["label"] = y
-                asset._meta_label_model.train(full_train, primary_pred, asset._alpha_feature_cols, asset.name)
+                oos_pred = model.predict_proba(x_ev)
+                ev_indices = x_ev.index
+                ev_data = train.loc[ev_indices, asset._alpha_feature_cols].copy()
+                ev_data["label"] = y.loc[ev_indices]
+                asset._meta_label_model.train(ev_data, oos_pred, asset._alpha_feature_cols, asset.name)
+                logger.info(
+                    "%s: meta model trained on %d OOS samples",
+                    asset.name, len(ev_data),
+                )
             except Exception as e:
                 logger.warning("%s: meta-label training failed: %s", asset.name, e)
 

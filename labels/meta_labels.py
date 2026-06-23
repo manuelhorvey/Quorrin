@@ -18,7 +18,6 @@ import pickle
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger("quantforge.meta_labels")
 
@@ -120,13 +119,14 @@ class MetaLabelModel:
 
         self._feature_names = list(meta_X.columns)
 
-        X_tr, X_va, y_tr, y_va = train_test_split(
-            meta_X.values,
-            meta_y,
-            test_size=0.2,
-            random_state=42,
-            stratify=meta_y,
-        )
+        # Time-based validation split (no lookahead)
+        n = len(meta_X)
+        n_valid = max(int(n * 0.2), 1)
+        split_idx = n - n_valid
+        X_tr = meta_X.iloc[:split_idx].values
+        X_va = meta_X.iloc[-n_valid:].values
+        y_tr = meta_y[:split_idx]
+        y_va = meta_y[-n_valid:]
 
         scale_pos_weight = (y_tr == 0).sum() / (y_tr == 1).sum()
         self.model = xgb.XGBClassifier(

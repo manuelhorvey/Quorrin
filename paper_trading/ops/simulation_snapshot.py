@@ -8,9 +8,9 @@ and model state reconstruction.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
-import pickle
 from dataclasses import asdict, dataclass, field
 
 import pandas as pd
@@ -19,7 +19,7 @@ logger = logging.getLogger("quantforge.simulation_snapshot")
 
 SNAPSHOT_DIR = "data/live/snapshots"
 SNAPSHOT_FILE = "simulation_history.parquet"
-COLD_STATE_FILE = "cold_state.pkl"
+COLD_STATE_FILE = "cold_state.json"
 CHECKSUM_EXT = ".sha256"
 
 
@@ -51,7 +51,7 @@ def _verify_checksum(path: str) -> bool:
     with open(checksum_path) as f:
         expected = f.read().strip()
     if sha.hexdigest() != expected:
-        logger.warning("cold_state.pkl checksum MISMATCH — possible tampering")
+        logger.warning("cold_state.json checksum MISMATCH — possible tampering")
         return False
     return True
 
@@ -171,8 +171,8 @@ class SimulationStore:
         # Persist cold state (model paths, etc.)
         if cold_state is not None:
             try:
-                with open(self.cold_state_path, "wb") as f:
-                    pickle.dump(cold_state, f)
+                with open(self.cold_state_path, "w") as f:
+                    json.dump(cold_state, f)
                 _write_checksum(self.cold_state_path)
             except Exception as e:
                 logger.warning("failed to persist cold state: %s", e)
@@ -182,8 +182,8 @@ class SimulationStore:
             return None
         _verify_checksum(self.cold_state_path)
         try:
-            with open(self.cold_state_path, "rb") as f:
-                return pickle.load(f)
+            with open(self.cold_state_path) as f:
+                return json.load(f)
         except Exception as e:
             logger.warning("failed to load cold state: %s", e)
             return None

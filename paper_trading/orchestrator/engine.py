@@ -163,11 +163,19 @@ class EngineOrchestrator:
         # Mutable list so all actors share the same budget object — each
         # atomic decrement is visible to all readers.
         budget_ref = [leverage_budget]
+
+        # Exposure multiplier: computed from current drawdown BEFORE entries
+        # so Phase 2 sizing uses the correct multiplier (not one cycle late).
+        from paper_trading.governance.drawdown_controls import compute_exposure_multiplier as _compute_exp_mult
+        exp_mult, _ = _compute_exp_mult(current_dd)
+
         for actor in self._actors.values():
             actor._engine._cycle_total_equity = total_equity
             actor._engine._cycle_drawdown_pct = current_dd
             actor._engine._leverage_budget_ref = budget_ref
             actor._engine._leverage_lock = self._leverage_lock
+            if hasattr(actor._engine, "pos_mgr"):
+                actor._engine.pos_mgr.exposure_multiplier = exp_mult
 
         # ── Phase 1: Refresh + Signal (parallel, isolated) ──────────────
         results["phasetimestamps"][EnginePhase.REFRESH] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
@@ -245,11 +253,6 @@ class EngineOrchestrator:
                 "reason": f"drawdown_{dd_result['drawdown']:.4f}",
             }
             return results
-        elif dd_result["exposure_multiplier"] < 1.0:
-            for actor in self._actors.values():
-                if hasattr(actor._engine, "pos_mgr"):
-                    actor._engine.pos_mgr.exposure_multiplier = dd_result["exposure_multiplier"]
-
         # ── Halt ratio circuit breaker ──────────────────────────────────────
         if not health.is_system_healthy:
             logger.error(

@@ -452,27 +452,29 @@ class EntryService:
         lock = getattr(asset, "_leverage_lock", None)
         budget_ref = getattr(asset, "_leverage_budget_ref", None)
         leverage_budget_total = float("inf")
+        is_mt5 = hasattr(asset.execution_bridge, "_is_real_broker") and asset.execution_bridge._is_real_broker
         if lock is not None and budget_ref is not None:
-            with lock:
-                remaining = budget_ref[0]
-                if remaining <= 0:
-                    logger.warning(
-                        "%s: entry skipped — leverage budget exhausted (remaining=%.2f total_eq=%.2f)",
-                        asset.name,
-                        remaining,
-                        getattr(asset, "_cycle_total_equity", 0.0),
-                    )
-                    asset._last_entry_notional = 0.0
-                    asset._last_sizing_chain = {
-                        "drawdown_taper": round(dd_taper, 4),
-                        "effective_cap": round(effective_cap, 2),
-                        "size_scalar": round(size_scalar, 4),
-                        "reason": "leverage_exhausted",
-                    }
-                    return None, entry_slippage_bps, mt5_ticket
-                notional = min(notional, remaining)
-                budget_ref[0] = remaining - notional
-                leverage_budget_total = remaining
+            if not is_mt5:
+                with lock:
+                    remaining = budget_ref[0]
+                    if remaining <= 0:
+                        logger.warning(
+                            "%s: entry skipped — leverage budget exhausted (remaining=%.2f total_eq=%.2f)",
+                            asset.name,
+                            remaining,
+                            getattr(asset, "_cycle_total_equity", 0.0),
+                        )
+                        asset._last_entry_notional = 0.0
+                        asset._last_sizing_chain = {
+                            "drawdown_taper": round(dd_taper, 4),
+                            "effective_cap": round(effective_cap, 2),
+                            "size_scalar": round(size_scalar, 4),
+                            "reason": "leverage_exhausted",
+                        }
+                        return None, entry_slippage_bps, mt5_ticket
+                    notional = min(notional, remaining)
+                    budget_ref[0] = remaining - notional
+                    leverage_budget_total = remaining
         elif not getattr(self, "_leverage_fallback_warned", False):
             self._leverage_fallback_warned = True
             logger.warning(
@@ -519,7 +521,7 @@ class EntryService:
             qty,
         )
 
-        if hasattr(asset.execution_bridge, "_is_real_broker") and asset.execution_bridge._is_real_broker:
+        if is_mt5:
             return self._submit_mt5_order(asset, broker_side, entry_price, intent_sl, final_tp, order_type=order_type)
         fill_price, entry_slippage_bps, _ = asset.execution_bridge.fill_price(
             asset.ticker,
@@ -581,6 +583,24 @@ class EntryService:
             risk_capped_notional = capped_notional
 
         notional = min(notional, risk_capped_notional)
+
+        # ── Leverage budget: atomic decrement from shared pool ───────
+        lock = getattr(asset, "_leverage_lock", None)
+        budget_ref = getattr(asset, "_leverage_budget_ref", None)
+        leverage_budget_total = float("inf")
+        if lock is not None and budget_ref is not None:
+            with lock:
+                remaining = budget_ref[0]
+                if remaining <= 0:
+                    logger.info(
+                        "%s: MT5 entry skipped — shared leverage budget exhausted",
+                        asset.name,
+                    )
+                    return 0.0
+                notional = min(notional, remaining)
+                budget_ref[0] = remaining - notional
+                leverage_budget_total = remaining
+
         qty = notional / entry_price if entry_price > 0 else 0.0
 
         # ── Min volume check ──────────────────────────────────────────
@@ -596,12 +616,13 @@ class EntryService:
 
         logger.info(
             "MT5_SIZING %s: equity=%.2f dd=%.2f max_pct=%.2f%% risk_cap=%.2f "
-            "min_viable=%.2f -> final_not=%.2f qty=%.6f",
+            "lev_budget=%.2f min_viable=%.2f -> final_not=%.2f qty=%.6f",
             asset.name,
             mt5_equity,
             dd_taper,
             max_pos_pct * 100,
             max_risk_usd if mt5_equity > 0 else 0.0,
+            leverage_budget_total,
             min_viable_notional,
             notional,
             qty,

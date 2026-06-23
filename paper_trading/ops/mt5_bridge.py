@@ -9,6 +9,10 @@ Each line is a complete JSON object.
 Request:  {"id": 1, "method": "...", "params": {}}
 Response: {"id": 1, "result": ...}  or  {"id": 1, "error": "..."}
 
+Credentials are supplied to the bridge via CLI args
+(--account, --password, --server).  The TCP protocol never
+transmits the MT5 password — it would be cleartext.
+
 Supports:
   - fetch_ohlcv     (symbol, years, timeframe)
   - fetch_ticks     (symbol, from_timestamp, to_timestamp)
@@ -391,6 +395,10 @@ def _dispatch(method: str, params: dict, conn: socket.socket) -> dict:
         return {"result": "shutting down"}
     if method == "configure":
         global _config
+        # Credentials are supplied via CLI args (--password) or env vars;
+        # the TCP protocol never transmits the password — it would be
+        # cleartext.  Ignore password if sent (backward compat).
+        params.pop("password", None)
         _config.update(params)
         return {"result": "configured"}
     handler = _HANDLERS.get(method)

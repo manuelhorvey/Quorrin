@@ -404,6 +404,8 @@ class TestPreOpenGuard:
         engine.initial_capital = 100000
         engine.capital_base = 100000
         engine.current_value = 100000
+        engine._leverage_lock = None  # skip leverage budget check
+        engine._leverage_budget_ref = None
         engine.pos_mgr.position_size = 0.95
         engine.pos_mgr.exposure_multiplier = 1.0
         engine._attribution = MagicMock()

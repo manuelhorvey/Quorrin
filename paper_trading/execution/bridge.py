@@ -105,10 +105,13 @@ class ExecutionBridge:
         if mid_price <= 0 or quantity <= 0:
             return mid_price, 0.0, 0.0
 
-        # Real broker: return mid price directly — no simulated slippage
+        # Real broker: apply nominal spread estimate so paper P&L tracks
+        # closer to real MT5 fills instead of showing zero-slippage mid prices.
         if self._is_real_broker:
-            logger.debug("%s %s fill: mid=%.4f (real broker, no simulation)", asset, side, mid_price)
-            return mid_price, 0.0, 0.0
+            slip_bps = 2.0
+            fill = mid_price * (1 + slip_bps / 10000) if side == "buy" else mid_price * (1 - slip_bps / 10000)
+            logger.debug("%s %s fill: mid=%.4f fill=%.4f slip=%.1fbps (real broker)", asset, side, mid_price, fill, slip_bps)
+            return fill, slip_bps, 0.0
 
         self.broker.set_price(asset, mid_price)
         self.broker._update_vol_tracking(asset, mid_price)
@@ -146,7 +149,10 @@ class ExecutionBridge:
         ohlcv: pd.DataFrame | None = None,
     ) -> FillResult:
         if self._is_real_broker:
-            return FillResult(current_price, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
+            slip_bps = 3.0
+            slip_px = current_price * slip_bps / 10000
+            fill_px = current_price + slip_px if position.side == "long" else current_price - slip_px
+            return FillResult(fill_px, max(position.vol * 1000, 1.0), slip_bps, 0, False, False)
         if self.simulator is not None:
             config = self.broker._get_config(asset)
             market = self._build_market_snapshot(asset, current_price, ohlcv)
@@ -167,7 +173,10 @@ class ExecutionBridge:
         When ohlcv is None, falls back to price-based fill.
         """
         if self._is_real_broker:
-            return FillResult(current_price, max(position.vol * 1000, 1.0), 0.0, 0, False, False)
+            slip_bps = 2.0
+            slip_px = current_price * slip_bps / 10000
+            fill_px = current_price - slip_px if position.side == "long" else current_price + slip_px
+            return FillResult(fill_px, max(position.vol * 1000, 1.0), slip_bps, 0, False, False)
         if self.simulator is not None:
             config = self.broker._get_config(asset)
             market = self._build_market_snapshot(asset, current_price, ohlcv)

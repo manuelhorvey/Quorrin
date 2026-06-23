@@ -284,3 +284,10 @@ class TestSimulationStore:
         loaded = store.load_cold_state()
         assert loaded is not None
         assert loaded["model_paths"]["TEST"] == "models/TEST_model.json"
+
+        # Verify it's valid JSON (not pickle)
+        with open(store.cold_state_path) as f:
+            raw = f.read()
+        import json
+        reloaded = json.loads(raw)
+        assert reloaded["schema"] == "1.0"

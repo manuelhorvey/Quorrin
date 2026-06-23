@@ -297,11 +297,14 @@ class MT5Client:
         return True
 
     def _configure(self) -> None:
+        # Credentials are supplied to the bridge via CLI args
+        # (--account --password --server) or env vars.  The client
+        # only sends account/server for identification; the password
+        # is never transmitted over the TCP connection.
         self._proto.send_request(
             "configure",
             {
                 "account": self._account,
-                "password": self._password,
                 "server": self._server,
             },
         )

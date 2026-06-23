@@ -5,6 +5,7 @@ import os
 
 from paper_trading.api.common import (
     MIME_TYPES,
+    _load_auth_token,
     _with_state_meta,
     auth_headers,
     cache_get,
@@ -105,6 +106,10 @@ class Handler:
             try:
                 with open(idx_path, "rb") as f:
                     data = f.read()
+                token = _load_auth_token()
+                if token:
+                    tag = f'<meta name="api-token" content="{token}">\n    '
+                    data = data.replace(b"<meta name=\"color-scheme\"", tag.encode() + b"<meta name=\"color-scheme\"")
                 ext = os.path.splitext(idx_path)[1]
                 ct = MIME_TYPES.get(ext, "text/html; charset=utf-8")
                 self.send_response(200)

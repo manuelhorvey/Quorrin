@@ -92,4 +92,4 @@ Per-asset `pt_sl` from `configs/paper_trading.yaml`.
 
 ## Architecture Note
 
-All 18 dashboard assets use the same 13 alpha features from `features/alpha_features.py:build_alpha_features()`. A few assets additionally use `yield_slope` or `mom126` variants defined in `features/registry.py`. Each asset has an independent XGBoost model — no shared feature manifold across all assets.
+All 19 dashboard assets use the same 13 alpha features from `features/alpha_features.py:build_alpha_features()`. A few assets additionally use `yield_slope` or `mom126` variants defined in `features/registry.py`. Each asset has an independent XGBoost model — no shared feature manifold across all assets.

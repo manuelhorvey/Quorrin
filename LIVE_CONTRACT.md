@@ -17,7 +17,7 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Per-asset max_depth:**
 | Depth | Assets |
 |-------|--------|
-| 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, EURAUD |
+| 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, GBPUSD, EURAUD |
 | 3 | GBPAUD, EURCAD, EURNZD |
 | 4 | USDCHF, ^DJI, EURCHF |
 | 5 | USDCAD, NZDUSD |
@@ -304,9 +304,9 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 **Builder:** `paper_trading/portfolio_builder.py:build_paper_portfolio()`
 **Source:** `configs/paper_trading.yaml`
 
-### Current assets (18 promoted)
+### Current assets (19 promoted)
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
 | USDCAD | USDCAD=X | 2.5% | 2.50 | 2.03 | 5 |
@@ -324,9 +324,10 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 | EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 
-**Total allocation: ~0.95** (remaining capacity held as cash buffer).
+**Total allocation: ~0.83** (remaining capacity held as cash buffer).
 
 ### Removed from trading (2026-06-20)
 AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base model directional instability (confident wrong-direction bets during trend periods).
@@ -335,8 +336,10 @@ AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base 
 
 **USDCAD/NZDUSD allocation halved** from 5% → 2.5% to limit drawdown impact while keeping diversification.
 
+**2026-06-22: GBPUSD promoted** to portfolio after walk-forward showed IC 0.186 (4/4 folds positive), HR 0.371, pt_sl=(1.97, 0.52) giving R:R=3.79.
+
 ### Previously removed (post walk-forward, insufficient edge)
-CHFJPY, CADJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPUSD, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM
+CHFJPY, CADJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM
 
 ---
 

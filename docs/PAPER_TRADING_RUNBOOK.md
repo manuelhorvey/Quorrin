@@ -27,14 +27,16 @@ Operational procedures for the paper trading system. This document is for the pe
 
 ### Assets
 
-**Core portfolio (18 assets promoted from walk-forward screening):**
+**Core portfolio (19 assets promoted from walk-forward screening):**
 
 Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_depth calibrated via walk-forward optimization.
+
+**Added 2026-06-22:** GBPUSD promoted (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability failure mode). USDCAD and NZDUSD halved from 5%→2.5%.
 
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
 | USDCAD | USDCAD=X | 2.5% | 2.50 | 2.03 | 5 |
@@ -52,9 +54,10 @@ Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_
 | EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 
-**Total allocation: ~0.95** (remaining capacity held as cash buffer).
+**Total allocation: ~0.83** (remaining capacity held as cash buffer).
 
 **Backtest performance (pre-leak-fix baseline, 5-year: 2021–2025):** PF 1.908, avgR +0.268, 2383 trades, 18 assets.
 > Note: These are the screening baseline. Current walk-forward diagnostics after look-ahead fixes
@@ -194,7 +197,7 @@ curl http://127.0.0.1:5000/ping
 **What to verify on the dashboard (use the anchor nav bar to jump between sections):**
 
 - Portfolio total value and daily return are updating (trend arrows on metric cards show direction)
-- All 18 assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
+- All 19 assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
 - Current price is within ~0.5% of market price
 - No asset is in halt (check asset cards for RED status)
 - Per-asset drawdown % is not approaching per-asset limits
@@ -220,7 +223,7 @@ curl http://127.0.0.1:5000/ping
 
 ### Log Check
 
-After startup (Mon–Fri during market hours), verify log output shows signal lines for all 18 assets:
+After startup (Mon–Fri during market hours), verify log output shows signal lines for all 19 assets:
 ```
 GC: BUY conf=XX% @ $XX.XX
 USDCHF: BUY conf=XX% @ $XX.XX
@@ -274,7 +277,7 @@ for name, a in s['assets'].items():
 
 **Expectations:**
 
-All 18 assets should show a balanced BUY/SELL ratio (~1:1) with mean confidence in the 55-75% range. For the 11 SELL_ONLY assets, expect FLAT to dominate BUY (BUY signals are overridden to FLAT). Deviations warrant investigation of the specific asset's governance state and recent market conditions.
+All 19 assets should show a balanced BUY/SELL ratio (~1:1) with mean confidence in the 55-75% range. For the 11 SELL_ONLY assets, expect FLAT to dominate BUY (BUY signals are overridden to FLAT). Deviations warrant investigation of the specific asset's governance state and recent market conditions.
 
 ### Narrative Check (Monday Morning)
 
@@ -812,8 +815,8 @@ Before transitioning from paper to live, verify all checks below. 6/7 must pass 
 | # | Check | Target | Source | Criticality |
 |---|-------|--------|--------|-------------|
 | 1 | Gate override rate | <40% across all assets | `data/monitoring/paper_trade_monitor.csv` — column `gate_overrides` | Hard |
-| 2 | Mean confidence | >0.52 for ≥15/18 assets | Monitor CSV — column `mean_confidence` per snapshot | Hard |
-| 3 | Signal flips | ≤3/day for ≥15/18 assets | Monitor CSV — column `signal_flips` | Hard |
+| 2 | Mean confidence | >0.52 for ≥16/19 assets | Monitor CSV — column `mean_confidence` per snapshot | Hard |
+| 3 | Signal flips | ≤3/day for ≥16/19 assets | Monitor CSV — column `signal_flips` | Hard |
 | 4 | Cross-asset correlation | No unexplained >0.7 | `python scripts/signal_correlation_check.py` | Hard |
 | 5 | MT5 errors | Zero across all cycles | `grep ERROR /tmp/paper_trading.log` | Hard |
 | 6 | Trades executed | ≥10 across portfolio | MT5 terminal or dashboard trades panel | Hard |

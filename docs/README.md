@@ -48,15 +48,17 @@ Project documentation for the QuantForge cross-sectional factor ranking and pape
 
 ## Current Portfolio
 
-18 assets across FX, commodities, and equity indices. See `configs/paper_trading.yaml` for full configuration and allocations.
+19 assets across FX, commodities, and equity indices. See `configs/paper_trading.yaml` for full configuration and allocations.
+
+**Added 2026-06-22:** GBPUSD promoted (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability). USDCAD/NZDUSD halved 5%→2.5%.
 
 ### Active
-GC, USDCHF, USDCAD, ES, NQ, GBPCAD, NZDCAD, ^DJI, NZDUSD, GBPAUD, NZDCHF, CADCHF, AUDUSD, EURCHF, EURCAD, EURNZD, GBPCHF, EURAUD
+GC, USDCHF, USDCAD, ES, NQ, GBPCAD, NZDCAD, ^DJI, NZDUSD, GBPAUD, NZDCHF, CADCHF, AUDUSD, EURCHF, EURCAD, EURNZD, GBPCHF, GBPUSD, EURAUD
 
 ### Removed (post walk-forward, insufficient edge)
-AUDCHF, AUDNZD, EURUSD, GBPNZD, CADJPY, CHFJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPUSD, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM
+AUDCHF, AUDNZD, EURUSD, GBPNZD, CADJPY, CHFJPY, CL, USDJPY, BTCUSD, EURGBP, EURJPY, GBPJPY, AUDCAD, NZDJPY, ^VIX, IWM
 
 ## Services / Processes
 

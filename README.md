@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Status](https://img.shields.io/badge/status-paper%20trading-green)
 ![WalkForward](https://img.shields.io/badge/walk--forward-36%20assets%20screened-success)
-![Portfolio](https://img.shields.io/badge/portfolio-18%20dashboard%20assets-blue)
+![Portfolio](https://img.shields.io/badge/portfolio-19%20dashboard%20assets-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/QuantForge/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/QuantForge)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
@@ -61,7 +61,9 @@ State Persistence + Replay
 
 # Current Portfolio
 
-18 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
+19 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
+
+**Added 2026-06-22:** GBPUSD promoted (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability failure mode — confident wrong-direction bets during trends). USDCAD and NZDUSD allocations halved from 5%→2.5% to limit drawdown impact.
 
@@ -76,7 +78,7 @@ State Persistence + Replay
 | NZDCAD     | NZDCAD=X     | 2.50    | 4.00    | 5.0%       | 2         |
 | ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
 | NZDUSD     | NZDUSD=X     | 2.50    | 1.50    | 2.5%       | 5         |
-| GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 3.0%       | 3         |
+| GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 5.0%       | 3         |
 | NZDCHF     | NZDCHF=X     | 1.00    | 4.00    | 7.0%       | 2         |
 | CADCHF     | CADCHF=X     | 1.00    | 4.00    | 5.0%       | 2         |
 | AUDUSD     | AUDUSD=X     | 1.50    | 4.00    | 4.0%       | 2         |
@@ -84,15 +86,19 @@ State Persistence + Replay
 | EURCAD     | EURCAD=X     | 1.00    | 1.00    | 2.0%       | 3         |
 | EURNZD     | EURNZD=X     | 1.50    | 2.50    | 3.0%       | 3         |
 | GBPCHF     | GBPCHF=X     | 1.00    | 2.00    | 3.0%       | 2         |
+| GBPUSD     | GBPUSD=X     | 0.52    | 1.97    | 4.0%       | 2         |
 | EURAUD     | EURAUD=X     | 0.54    | 1.77    | 1.0%       | 2         |
 
-Allocation sums to ~0.95. Remaining capacity held as cash buffer.
+Allocation sums to ~0.83. Remaining capacity held as cash buffer.
 
 ### Backtest Performance (pre-leak-fix baseline — 5-Year 2021–2025, 18-asset portfolio)
 
 > Metrics from the original screening (before look-ahead leak fixes). Current walk-forward
 > diagnostics (post-fix, 19-asset portfolio) show lower, honest metrics. These numbers are preserved as the
 > baseline that justified promotion; live performance will differ.
+
+> **Note:** The original 18-asset baseline was calculated before GBPUSD promotion.
+> The current 19-asset portfolio includes GBPUSD with its own walk-forward validation.
 
 | Metric | Value |
 |--------|-------|

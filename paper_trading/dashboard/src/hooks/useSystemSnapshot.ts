@@ -3,7 +3,9 @@ import { fetchApi } from '../lib/api'
 import { QUERY_KEYS } from '../lib/queryKeys'
 import type { SystemBundle } from '../types/bundle'
 
-export function useSystemSnapshot() {
+export function useSystemSnapshot<T = SystemBundle>(
+  select?: (data: SystemBundle) => T
+) {
   return useQuery({
     queryKey: QUERY_KEYS.system,
     queryFn: () => fetchApi<SystemBundle>('/state-bundle.json'),
@@ -13,6 +15,7 @@ export function useSystemSnapshot() {
     },
     staleTime: 3_000,
     placeholderData: keepPreviousData,
+    select,
     retry: 2,
     retryDelay: 1_000,
   })

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSystemSnapshot } from '../hooks/useSystemSnapshot'
 import { useEngineHealth } from '../hooks/useEngineHealth'
 import { useSystemHealthModal } from '../hooks/useSystemHealthModal'
+import { systemSelectors } from '../selectors/system'
 import ThemeToggle from './ui/ThemeToggle'
 import MT5Status from './MT5Status'
 import { formatTimeAgo } from '../utils/format'
@@ -40,8 +41,7 @@ function EngineDotMobile() {
 }
 
 const QuickStatsBar = memo(function QuickStatsBar() {
-  const { data: bundle } = useSystemSnapshot()
-  const portfolio = bundle?.snapshot?.portfolio
+  const { data: portfolio } = useSystemSnapshot(systemSelectors.portfolio)
   if (!portfolio) return null
 
   const pnl = portfolio.mtm_value - portfolio.capital
@@ -70,13 +70,12 @@ interface HeaderProps {
 }
 
 function Header({ onMenuClick }: HeaderProps) {
-  const { data: bundle, dataUpdatedAt } = useSystemSnapshot()
-  const data = bundle?.snapshot
+  const { data: snapshot, dataUpdatedAt } = useSystemSnapshot(systemSelectors.snapshot)
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const { open: openSystemHealth } = useSystemHealthModal()
-  const lastServerUpdate = data?.portfolio?.last_update ?? data?.engine_status?.last_update ?? data?.timestamp
+  const lastServerUpdate = snapshot?.portfolio?.last_update ?? snapshot?.engine_status?.last_update ?? snapshot?.timestamp
   const lastClientUpdate = dataUpdatedAt ? new Date(dataUpdatedAt).toISOString() : ''
   const freshnessLabel = lastServerUpdate
     ? `Updated ${formatTimeAgo(lastServerUpdate)}`

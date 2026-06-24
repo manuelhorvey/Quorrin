@@ -3,6 +3,7 @@ import {
   selectGovernanceByAsset,
   selectGovernanceSummary,
 } from './governance'
+import { systemSelectors } from './system'
 
 export {
   selectGovernance,
@@ -18,4 +19,5 @@ export const selectors = {
     byAsset: selectGovernanceByAsset,
     summary: selectGovernanceSummary,
   },
+  system: systemSelectors,
 } as const

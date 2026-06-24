@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { Search, ExternalLink } from 'lucide-react'
 import { useSystemSnapshot } from '../hooks/useSystemSnapshot'
 import { useSelectedAsset } from '../hooks/useSelectedAsset'
+import { systemSelectors } from '../selectors/system'
 import { confidenceToPercent, formatAssetPrice } from '../utils/format'
 import DataTable, { type ColumnDef } from './ui/DataTable'
 import Panel from './ui/Panel'
@@ -31,10 +32,9 @@ interface SignalRow {
   slPct: number | null
 }
 
-export default function SignalsTable() {
+function SignalsTable() {
   const [search, setSearch] = useState('')
-  const { data: bundle, isPending } = useSystemSnapshot()
-  const data = bundle?.snapshot
+  const { data, isPending } = useSystemSnapshot(systemSelectors.snapshot)
   const { setSelectedAsset, setDeepDiveAsset } = useSelectedAsset()
 
   const rows = useMemo(() => {
@@ -305,3 +305,5 @@ export default function SignalsTable() {
     </Panel>
   )
 }
+
+export default memo(SignalsTable)

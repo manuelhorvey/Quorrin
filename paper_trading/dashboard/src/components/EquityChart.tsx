@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceDot } from 'recharts'
 import { useEquityHistory } from '../hooks/useEquityHistory'
 import { useSystemSnapshot } from '../hooks/useSystemSnapshot'
-import { useSelectedAsset } from '../hooks/useSelectedAsset'
+import { systemSelectors } from '../selectors/system'
 import ChartContainer from './ui/ChartContainer'
 import {
   CHART_PALETTE,
@@ -25,9 +25,8 @@ function formatValue(v: number): string {
 
 export default function EquityChart() {
   const { data, isPending } = useEquityHistory()
-  const { data: bundle } = useSystemSnapshot()
-  const state = bundle?.snapshot
-  const { selectedAsset } = useSelectedAsset()
+  const { data: snapshot } = useSystemSnapshot(systemSelectors.snapshot)
+  const state = snapshot
   const [selected, setSelected] = useState<Set<string>>(new Set(['portfolio']))
 
   const MAX_POINTS = 200

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { memo, useState, useMemo, useCallback } from 'react'
 import { useTrades } from '../hooks/useTrades'
 import { formatAssetPrice, formatHeldDuration, safeToFixed } from '../utils/format'
 import DataTable, { type ColumnDef } from './ui/DataTable'
@@ -8,6 +8,7 @@ import SectionHeader from './ui/SectionHeader'
 import EmptyState from './ui/EmptyState'
 import { TableSkeleton } from './ui/Skeleton'
 import { useSystemSnapshot } from '../hooks/useSystemSnapshot'
+import { systemSelectors } from '../selectors/system'
 import Badge, { reasonToBadge, signalToBadge } from './ui/Badge'
 import type { TradeEntry } from '../hooks/useTrades'
 import TradeInspectorModal from './trades/TradeInspectorModal'
@@ -22,14 +23,13 @@ function reasonLabel(reason?: string): string {
   return reason ?? '—'
 }
 
-export default function TradeFeed() {
+function TradeFeed() {
   const [page, setPage] = useState(0)
   const [selectedTrade, setSelectedTrade] = useState<TradeEntry | null>(null)
   const handleRowClick = useCallback((trade: TradeEntry) => setSelectedTrade(trade), [])
   const offset = page * PAGE_SIZE
   const { data: trades, isPending } = useTrades(PAGE_SIZE + 1, offset)
-  const { data: bundle } = useSystemSnapshot()
-  const portfolio = bundle?.snapshot
+  const { data: engineStatus } = useSystemSnapshot(systemSelectors.engineStatus)
   const rows = useMemo(() => (trades ?? []).slice(0, PAGE_SIZE), [trades])
   const hasMore = (trades?.length ?? 0) > PAGE_SIZE
 
@@ -116,7 +116,7 @@ export default function TradeFeed() {
 
   if (isPending) return <TableSkeleton rows={4} />
 
-  const engineStart = portfolio?.engine_status?.start_time
+  const engineStart = engineStatus?.start_time
 
   if (rows.length === 0) {
     return (
@@ -167,3 +167,5 @@ export default function TradeFeed() {
     </Panel>
   )
 }
+
+export default memo(TradeFeed)

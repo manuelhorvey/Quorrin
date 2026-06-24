@@ -73,7 +73,7 @@ const RiskSignalPanel = memo(function RiskSignalPanel() {
   return <HaltConditions />
 })
 
-export default function DashboardOverview() {
+const DashboardOverview = memo(function DashboardOverview() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <QuickStatsGrid />
@@ -81,4 +81,6 @@ export default function DashboardOverview() {
       <RiskSignalPanel />
     </div>
   )
-}
+})
+
+export default DashboardOverview

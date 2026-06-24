@@ -54,9 +54,9 @@ export default function Panel({
     ? 'cursor-pointer hover:border-strong hover:shadow-card hover:-translate-y-0.5 transition-all duration-200 ease-out'
     : ''
 
-  const glowStyles = glowColor
-    ? `shadow-[0_0_15px_-3px_${glowColor}]`
-    : ''
+  const glowStyle = glowColor
+    ? { boxShadow: `0 0 15px -3px ${glowColor}` }
+    : undefined
 
   return (
     <div
@@ -66,13 +66,12 @@ export default function Panel({
         variantStyles[variant],
         paddingMap[padding],
         hoverStyles,
-        glowStyles,
         leftAccent ? 'border-l-2' : '',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
-      style={leftAccent ? { borderLeftColor: leftAccent } : undefined}
+      style={{ ...glowStyle, ...(leftAccent ? { borderLeftColor: leftAccent } : {}) }}
     >
       {/* Subtle gradient overlay for depth */}
       {gradient && gradientOverlay}

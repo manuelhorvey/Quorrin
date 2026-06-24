@@ -27,9 +27,9 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-WeightMethod = Literal["equal_v1", "risk_parity_v1", "hrp_v1"]
+WeightMethod = Literal["equal_v1", "risk_parity_v1", "hrp_v1", "factor_constrained_v1"]
 
-WEIGHT_METHOD_VERSIONS = frozenset({"equal_v1", "risk_parity_v1", "hrp_v1"})
+WEIGHT_METHOD_VERSIONS = frozenset({"equal_v1", "risk_parity_v1", "hrp_v1", "factor_constrained_v1"})
 
 
 def risk_contribution(weights: np.ndarray, cov: np.ndarray) -> np.ndarray:
@@ -170,6 +170,42 @@ def _hrp_weights(returns: pd.DataFrame) -> dict[str, float]:
     from portfolio.hrp_allocator import hrp_allocation
 
     return hrp_allocation(returns, method="single")
+
+
+# ── factor_constrained_v1 ────────────────────────────────────────────────
+
+
+@register("factor_constrained_v1")
+def _factor_constrained_v1(
+    returns: pd.DataFrame,
+    **kwargs,
+) -> dict[str, float]:
+    """Risk parity with factor exposure constraints.
+
+    Uses a penalized optimization: risk parity objective with a penalty
+    for violating factor exposure limits (USD, CHF, equity beta, etc.).
+
+    Args:
+        returns: Asset return DataFrame
+        **kwargs: May include 'factor_limits' to override defaults,
+                  'risk_parity_weight' (default 0.7), 'penalty_scale'
+
+    Returns:
+        WeightVector with constrained weights.
+    """
+    from shared.factor_model import DEFAULT_FACTOR_LIMITS, factor_constrained_weights
+
+    limits = kwargs.get("factor_limits", DEFAULT_FACTOR_LIMITS)
+    rp_weight = float(kwargs.get("risk_parity_weight", 0.7))
+    penalty_scale = float(kwargs.get("penalty_scale", 10.0))
+
+    weights = factor_constrained_weights(
+        returns,
+        limits=limits,
+        risk_parity_weight=rp_weight,
+        penalty_scale=penalty_scale,
+    )
+    return weights
 
 
 # ── Public API ───────────────────────────────────────────────────────────────

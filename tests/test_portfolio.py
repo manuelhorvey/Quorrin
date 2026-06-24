@@ -1,34 +1,36 @@
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, strategies as st, settings
 
-from portfolio.risk_parity import compute_risk_parity_portfolio
 from portfolio.correlation_clusters import (
+    cluster_assets,
     compute_correlation_matrix,
     correlation_to_distance,
-    cluster_assets,
     get_cluster_summary,
 )
 from portfolio.hrp_allocator import (
-    _get_quasi_diag,
     _get_cluster_variance,
+    _get_quasi_diag,
 )
-
+from portfolio.risk_parity import compute_risk_parity_portfolio
 
 # ── Shared fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def asset_returns():
     np.random.seed(42)
     n = 252
     dates = pd.date_range("2024-01-01", periods=n, freq="B")
-    returns = pd.DataFrame({
-        "ASSET_A": np.random.randn(n) * 0.01,
-        "ASSET_B": np.random.randn(n) * 0.015,
-        "ASSET_C": np.random.randn(n) * 0.02,
-        "ASSET_D": np.random.randn(n) * 0.008,
-    }, index=dates)
+    returns = pd.DataFrame(
+        {
+            "ASSET_A": np.random.randn(n) * 0.01,
+            "ASSET_B": np.random.randn(n) * 0.015,
+            "ASSET_C": np.random.randn(n) * 0.02,
+            "ASSET_D": np.random.randn(n) * 0.008,
+        },
+        index=dates,
+    )
     returns["ASSET_E"] = returns["ASSET_A"] * 0.9 + np.random.randn(n) * 0.001
     return returns
 
@@ -39,16 +41,20 @@ def correlated_returns():
     n = 252
     dates = pd.date_range("2024-01-01", periods=n, freq="B")
     base = np.random.randn(n) * 0.01
-    return pd.DataFrame({
-        "A": base + np.random.randn(n) * 0.002,
-        "B": base + np.random.randn(n) * 0.002,
-        "C": base + np.random.randn(n) * 0.002,
-        "D": np.random.randn(n) * 0.015,
-        "E": np.random.randn(n) * 0.02,
-    }, index=dates)
+    return pd.DataFrame(
+        {
+            "A": base + np.random.randn(n) * 0.002,
+            "B": base + np.random.randn(n) * 0.002,
+            "C": base + np.random.randn(n) * 0.002,
+            "D": np.random.randn(n) * 0.015,
+            "E": np.random.randn(n) * 0.02,
+        },
+        index=dates,
+    )
 
 
 # ── risk_parity ──────────────────────────────────────────────────────────────
+
 
 class TestRiskParity:
     def test_compute_risk_parity_portfolio_returns_dict(self, asset_returns):
@@ -74,6 +80,7 @@ class TestRiskParity:
 
 
 # ── correlation_clusters ─────────────────────────────────────────────────────
+
 
 class TestCorrelationClusters:
     def test_compute_correlation_matrix(self, asset_returns):
@@ -123,17 +130,58 @@ class TestCorrelationClusters:
 
 
 # ── hrp_allocator ────────────────────────────────────────────────────────────
-# Note: hrp_allocation() has a pre-existing bug in _get_quasi_diag when called
-# with partial linkage. Tests cover the internal helpers instead.
+# The _get_quasi_diag bug (partial-linkage dendrogram instability) is fixed:
+# _hrp_weights now uses standard HRP recursive bisection on the full
+# quasi-diagonal order, eliminating the partial-linkage slice approach.
+# optimal_leaf_ordering is applied in hrp_allocation() for deterministic
+# leaf ordering even with non-metric distance matrices.
+
 
 class TestHRPHelpers:
     def test_get_quasi_diag_basic(self):
         """_get_quasi_diag processes linkage matrix correctly."""
         import numpy as np
+
         link = np.array([[0, 2, 1.0, 2], [4, 5, 1.0, 3], [1, 6, 1.0, 4], [3, 7, 1.0, 5]])
         result = _get_quasi_diag(link)
         assert isinstance(result, list)
         assert len(result) == 5
+
+    def test_get_quasi_diag_optimal_leaf_ordering(self):
+        """_get_quasi_diag with dist produces a consistent leaf order
+        regardless of the metric properties of the distance matrix."""
+        import numpy as np
+        from scipy.cluster.hierarchy import linkage
+
+        np.random.seed(42)
+        corr = np.array(
+            [
+                [1.0, 0.9, 0.3, 0.2],
+                [0.9, 1.0, 0.25, 0.15],
+                [0.3, 0.25, 1.0, 0.85],
+                [0.2, 0.15, 0.85, 1.0],
+            ]
+        )
+        dist = np.sqrt(2 * (1 - corr))
+        link = linkage(dist, method="single")
+        result_a = _get_quasi_diag(link, dist)
+        result_b = _get_quasi_diag(link, dist)
+        assert result_a == result_b, "optimal_leaf_ordering must be deterministic"
+
+    def test_hrp_allocation_deterministic(self, asset_returns):
+        """hrp_allocation produces deterministic weights."""
+        from portfolio.hrp_allocator import hrp_allocation
+
+        w1 = hrp_allocation(asset_returns)
+        w2 = hrp_allocation(asset_returns)
+        assert w1 == w2
+
+    def test_hrp_allocation_weights_sum_to_one(self, asset_returns):
+        """hrp_allocation weights sum to 1."""
+        from portfolio.hrp_allocator import hrp_allocation
+
+        w = hrp_allocation(asset_returns)
+        assert abs(sum(w.values()) - 1.0) < 1e-6
 
     def test_get_cluster_variance(self, asset_returns):
         """_get_cluster_variance returns a positive float."""

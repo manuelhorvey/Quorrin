@@ -4,6 +4,7 @@ from datetime import datetime
 import pandas as pd
 import pytz
 
+from paper_trading.config_manager import get_config
 from paper_trading.ops.data_fetcher import fetch_history
 from shared.portfolio_weights import WeightMethod, compute_weights
 
@@ -53,7 +54,7 @@ class EngineRebalanceService:
                 return True
         return False
 
-    def rebalance_portfolio(self, method: WeightMethod = "risk_parity_v1") -> None:
+    def rebalance_portfolio(self, method: WeightMethod | None = None) -> None:
         """Rebalance portfolio using canonical weight computation.
 
         Covariance is computed from RAW historical returns — no governance
@@ -62,9 +63,12 @@ class EngineRebalanceService:
 
         Parameters
         ----------
-        method : WeightMethod
-            Weight strategy to use (default 'risk_parity_v1').
+        method : WeightMethod, optional
+            Weight strategy to use. Reads from config 'portfolio.weight_method'
+            if not provided (default 'risk_parity_v1').
         """
+        if method is None:
+            method = get_config().portfolio.get("weight_method", "risk_parity_v1")
         engine = self.engine
         window = 252
         returns = self._collect_daily_returns(window)

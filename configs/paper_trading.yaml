@@ -32,6 +32,12 @@ kelly:
   max_cap: 1.0
   min_edge: 0.0
 portfolio_drawdown_limit: -0.15
+portfolio:
+  weight_method: risk_parity_v1
+  factor_constraints:
+    enabled: false
+    risk_parity_weight: 0.7
+    penalty_scale: 10.0
 defaults:
   churn_ratio_threshold: 0.35
   cooldown_half_life_hours: 4.0

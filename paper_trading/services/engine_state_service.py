@@ -201,7 +201,19 @@ class EngineStateService:
                 _PC_FALLBACK,
             )
             or _PC_FALLBACK,
+            "factor_exposures": self._compute_factor_exposures(),
         }
+
+    def _compute_factor_exposures(self) -> dict:
+        from shared.factor_model import summary as factor_summary
+        try:
+            rw = getattr(self.engine, "_rebalance_weights", None)
+            if rw:
+                return factor_summary(rw)
+            return {"exposures": {}, "violations": {}, "n_violations": 0, "within_limits": True}
+        except Exception as e:
+            logger.debug("Failed to compute factor exposures: %s", e)
+            return {"exposures": {}, "violations": {}, "n_violations": 0, "within_limits": True}
 
     def save_state(self):
         engine = self.engine

@@ -75,6 +75,7 @@ class EngineConfig:
     narrative_config: dict = field(default_factory=dict)
     liquidity_config: dict = field(default_factory=dict)
     defaults: dict = field(default_factory=dict)
+    portfolio: dict = field(default_factory=dict)
     execution: dict = field(default_factory=dict)
     optimizations: dict = field(
         default_factory=lambda: {
@@ -123,6 +124,7 @@ class EngineConfig:
             narrative_config=governance.get("narrative_config", data.get("narrative_config", {})),
             liquidity_config=governance.get("liquidity_config", data.get("liquidity_config", {})),
             defaults=data.get("defaults", {}),
+            portfolio=data.get("portfolio", {}),
             execution=execution,
             optimizations=data.get("optimizations", {}),
             mt5=MT5Config.from_dict(data.get("mt5", {})),
@@ -146,6 +148,7 @@ class EngineConfig:
             "narrative_config": self.narrative_config,
             "liquidity_config": self.liquidity_config,
             "defaults": self.defaults,
+            "portfolio": self.portfolio,
             "optimizations": self.optimizations,
         }
 

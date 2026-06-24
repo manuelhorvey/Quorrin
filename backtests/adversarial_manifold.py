@@ -78,7 +78,7 @@ def _perturb_correlation(x, kind):
     if kind == "decouple":
         # Shuffle each column independently
         for col in range(m):
-            np.random.shuffle(result.iloc[:, col].values)
+            result.iloc[:, col] = np.random.permutation(result.iloc[:, col].values)
     elif kind == "inversion":
         # Invert sign of one column
         if m >= 2:

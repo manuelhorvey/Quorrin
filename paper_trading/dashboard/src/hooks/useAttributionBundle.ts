@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchApi } from '../lib/api'
+import { QUERY_KEYS } from '../lib/queryKeys'
 import type { ExecutionQualityResponse, SlippageDistribution } from '../types/execution'
 import type { AttributionSummary, AttributionWaterfall } from '../types/attribution'
 
@@ -12,7 +13,7 @@ export interface AttributionBundleData {
 
 export function useAttributionBundle() {
   return useQuery({
-    queryKey: ['attributionBundle'],
+    queryKey: QUERY_KEYS.attribution,
     queryFn: async (): Promise<AttributionBundleData> => {
       const [quality, slippage, summary, waterfall] = await Promise.allSettled([
         fetchApi<ExecutionQualityResponse>('/execution/quality.json').catch(() => null),

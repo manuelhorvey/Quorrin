@@ -40,6 +40,7 @@ export function useMonitorAlerts(): Alert[] {
   const { data: bundle } = useSystemSnapshot()
   const state = bundle?.snapshot
   const health = bundle?.live?.health
+  const seqId = bundle?.meta?.snapshot_sequence_id
 
   return useMemo(() => {
     const alerts: Alert[] = []
@@ -144,5 +145,5 @@ export function useMonitorAlerts(): Alert[] {
     }
 
     return alerts.filter(a => !dismissed.has(a.id))
-  }, [bundle])
+  }, [seqId, state, health])
 }

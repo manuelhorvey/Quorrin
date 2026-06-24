@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useSystemSnapshot } from '../../hooks/useSystemSnapshot'
+import { useSnapshotReconciler } from '../../hooks/useSnapshotReconciler'
 import { useSystemIntegrity } from '../../hooks/useSystemIntegrity'
 import { SystemDegradedBanner } from '../ui/SystemDegradedBanner'
 import LoadingScreen from '../ui/LoadingScreen'
@@ -14,6 +15,7 @@ interface AppShellProps {
 
 export default function AppShell({ children }: AppShellProps) {
   const { data: bundle } = useSystemSnapshot()
+  useSnapshotReconciler(bundle)
   const integrity = useSystemIntegrity(bundle)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 

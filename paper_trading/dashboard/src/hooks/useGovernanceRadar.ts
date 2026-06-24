@@ -23,6 +23,7 @@ export function useGovernanceRadar(): {
   const { data: bundle } = useSystemSnapshot()
   const state = bundle?.snapshot
   const health = bundle?.live?.health
+  const seqId = bundle?.meta?.snapshot_sequence_id
 
   return useMemo(() => {
     // Compute exposure score (0-1, higher means governance allows more deployable exposure)
@@ -133,5 +134,5 @@ export function useGovernanceRadar(): {
       : 0
 
     return { axes, bottlenecks, avgValidityImpact: avgPenalty }
-  }, [bundle])
+  }, [seqId, health])
 }

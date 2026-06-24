@@ -1076,8 +1076,7 @@ def apply_adx_entry_gate(ctx: DecisionContext) -> None:
 
     if observe_only:
         logger.info(
-            "%s: ADX_ENTRY_GATE [OBSERVE] adx=%.1f < threshold=%.1f "
-            "— would block entry in enforce mode",
+            "%s: ADX_ENTRY_GATE [OBSERVE] adx=%.1f < threshold=%.1f — would block entry in enforce mode",
             engine.name,
             adx_val,
             threshold,

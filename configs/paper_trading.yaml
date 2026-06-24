@@ -21,7 +21,7 @@ meta_labeling:
   confidence_threshold: 0.4
   threshold_reduced: 0.4
 calibration:
-  enabled: false
+  enabled: true
   method: binned
   n_bins: 10
   min_samples_per_bin: 5
@@ -33,7 +33,7 @@ kelly:
   min_edge: 0.0
 portfolio_drawdown_limit: -0.15
 portfolio:
-  weight_method: risk_parity_v1
+  weight_method: factor_constrained_v1
   factor_constraints:
     enabled: false
     risk_parity_weight: 0.7

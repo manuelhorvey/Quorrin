@@ -6,6 +6,7 @@ interface SelectedAssetContextValue {
   setSelectedAsset: (name: string | null) => void
   deepDiveAsset: string | null
   setDeepDiveAsset: (name: string | null) => void
+  deepDiveOpen: boolean
 }
 
 const EMPTY = {
@@ -13,6 +14,7 @@ const EMPTY = {
   setSelectedAsset: () => {},
   deepDiveAsset: null,
   setDeepDiveAsset: () => {},
+  deepDiveOpen: false,
 } satisfies SelectedAssetContextValue
 
 export const SelectedAssetContext = createContext<SelectedAssetContextValue>(EMPTY)
@@ -21,7 +23,8 @@ export function SelectedAssetProvider({ children }: { children: React.ReactNode 
   const [searchParams, setSearchParams] = useSearchParams()
 
   const selectedAsset = searchParams.get('asset')
-  const deepDiveAsset = searchParams.get('deep')
+  const deepDiveOpen = searchParams.get('deepDive') === 'true'
+  const deepDiveAsset = deepDiveOpen ? selectedAsset : null
 
   const setSelectedAsset = useCallback(
     (name: string | null) => {
@@ -33,7 +36,7 @@ export function SelectedAssetProvider({ children }: { children: React.ReactNode 
           } else {
             next.delete('asset')
           }
-          next.delete('deep')
+          next.delete('deepDive')
           return next
         },
         { replace: true },
@@ -48,9 +51,10 @@ export function SelectedAssetProvider({ children }: { children: React.ReactNode 
         (prev) => {
           const next = new URLSearchParams(prev)
           if (name) {
-            next.set('deep', name)
+            next.set('asset', name)
+            next.set('deepDive', 'true')
           } else {
-            next.delete('deep')
+            next.delete('deepDive')
           }
           return next
         },
@@ -61,7 +65,7 @@ export function SelectedAssetProvider({ children }: { children: React.ReactNode 
   )
 
   return (
-    <SelectedAssetContext.Provider value={{ selectedAsset, setSelectedAsset, deepDiveAsset, setDeepDiveAsset }}>
+    <SelectedAssetContext.Provider value={{ selectedAsset, setSelectedAsset, deepDiveAsset, setDeepDiveAsset, deepDiveOpen }}>
       {children}
     </SelectedAssetContext.Provider>
   )

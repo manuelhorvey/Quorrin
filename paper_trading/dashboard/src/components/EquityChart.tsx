@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceDot } from 'recharts'
 import { useEquityHistory } from '../hooks/useEquityHistory'
 import { usePortfolioState } from '../hooks/usePortfolioState'
@@ -26,23 +26,10 @@ function formatValue(v: number): string {
 export default function EquityChart() {
   const { data, isPending } = useEquityHistory()
   const { data: state } = usePortfolioState()
-  const { selectedAsset, setSelectedAsset } = useSelectedAsset()
+  const { selectedAsset } = useSelectedAsset()
   const [selected, setSelected] = useState<Set<string>>(new Set(['portfolio']))
 
   const MAX_POINTS = 200
-
-  useEffect(() => {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (selectedAsset && selectedAsset !== 'portfolio') {
-        next.add(selectedAsset)
-      } else if (!selectedAsset) {
-        next.clear()
-        next.add('portfolio')
-      }
-      return next
-    })
-  }, [selectedAsset])
 
   const chartData = useMemo(
     () =>

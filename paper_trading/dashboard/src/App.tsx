@@ -17,7 +17,7 @@ import { useSelectedAsset } from './hooks/useSelectedAsset'
 
 function AppContent() {
   const { data: state } = usePortfolioState()
-  const { selectedAsset, deepDiveAsset } = useSelectedAsset()
+  const { selectedAsset, deepDiveAsset, setSelectedAsset, setDeepDiveAsset } = useSelectedAsset()
 
   const detailAsset = selectedAsset && state?.assets?.[selectedAsset]
 
@@ -35,13 +35,13 @@ function AppContent() {
         <AssetDetailPanel
           asset={detailAsset}
           name={selectedAsset!}
-          onClose={() => {}} // URL-backed: setSelectedAsset(null) is the real close
+          onClose={() => setSelectedAsset(null)}
         />
       )}
       {deepDiveAsset && (
         <AssetDeepDive
           name={deepDiveAsset}
-          onClose={() => {}}
+          onClose={() => setDeepDiveAsset(null)}
         />
       )}
       <WeeklyReviewModal />

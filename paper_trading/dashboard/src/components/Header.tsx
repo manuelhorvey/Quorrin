@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { Menu, RefreshCw, TrendingUp } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSystemSnapshot } from '../hooks/useSystemSnapshot'
@@ -7,14 +7,44 @@ import ThemeToggle from './ui/ThemeToggle'
 import MT5Status from './MT5Status'
 import { formatTimeAgo } from '../utils/format'
 
+function EngineDot() {
+  const health = useEngineHealth()
+  const engineAlive = health.data?.engine_alive ?? false
+  const label = health.isError ? 'Disconnected' : health.isLoading ? '...' : engineAlive ? 'Live' : 'Stale'
+  const dot = health.isError ? 'bg-gov-red' : engineAlive ? 'bg-gov-green' : 'bg-gov-yellow'
+  return (
+    <span className="hidden sm:inline-flex items-center gap-1.5 text-2xs text-tertiary font-mono tabular-nums">
+      <span
+        className={`relative inline-flex w-2 h-2 rounded-full ${dot}`}
+        title={`Engine: ${label}`}
+        aria-label={`Engine: ${label}`}
+      />
+      {label}
+    </span>
+  )
+}
+
+function EngineDotMobile() {
+  const health = useEngineHealth()
+  const engineAlive = health.data?.engine_alive ?? false
+  const label = health.isError ? 'Disconnected' : health.isLoading ? '...' : engineAlive ? 'Live' : 'Stale'
+  const dot = health.isError ? 'bg-gov-red' : engineAlive ? 'bg-gov-green' : 'bg-gov-yellow'
+  return (
+    <span
+      className={`sm:hidden relative inline-flex w-2 h-2 rounded-full ${dot}`}
+      title={`Engine: ${label}`}
+      aria-label={`Engine: ${label}`}
+    />
+  )
+}
+
 interface HeaderProps {
   onMenuClick?: () => void
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
-  const { data: bundle, isError, dataUpdatedAt } = useSystemSnapshot()
+function Header({ onMenuClick }: HeaderProps) {
+  const { data: bundle, dataUpdatedAt } = useSystemSnapshot()
   const data = bundle?.snapshot
-  const health = useEngineHealth()
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -25,20 +55,6 @@ export default function Header({ onMenuClick }: HeaderProps) {
     : lastClientUpdate
       ? `Fetched ${formatTimeAgo(lastClientUpdate)}`
       : ''
-
-  const engineAlive = health.data?.engine_alive ?? false
-  const healthLabel = health.isError
-    ? 'Disconnected'
-    : health.isLoading
-      ? '...'
-      : engineAlive
-        ? 'Live'
-        : 'Stale'
-  const healthDot = health.isError
-    ? 'bg-gov-red'
-    : engineAlive
-      ? 'bg-gov-green'
-      : 'bg-gov-yellow'
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10)
@@ -79,19 +95,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-2xs text-tertiary font-mono tabular-nums">
-            <span
-              className={`relative inline-flex w-2 h-2 rounded-full ${healthDot}`}
-              title={`Engine: ${healthLabel}${freshnessLabel ? ` — ${freshnessLabel}` : ''}`}
-              aria-label={`Engine: ${healthLabel}${freshnessLabel ? ` — ${freshnessLabel}` : ''}`}
-            />
-            {healthLabel}
-          </span>
-          <span
-            className={`sm:hidden relative inline-flex w-2 h-2 rounded-full ${healthDot}`}
-            title={`Engine: ${healthLabel}${freshnessLabel ? ` — ${freshnessLabel}` : ''}`}
-            aria-label={`Engine: ${healthLabel}${freshnessLabel ? ` — ${freshnessLabel}` : ''}`}
-          />
+          <EngineDot />
+          <EngineDotMobile />
 
           <ThemeToggle />
           <MT5Status />
@@ -111,3 +116,5 @@ export default function Header({ onMenuClick }: HeaderProps) {
     </header>
   )
 }
+
+export default memo(Header)

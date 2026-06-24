@@ -370,9 +370,14 @@ def fetch_asset_data(
     # ticker no longer zero-fills the entire batch.
     # TNX uses dropna() because 10Y yield has NaN on non-business days.
     common = close.index
+    if common.duplicated().any():
+        logger.debug("  deduplicating close index (%d duplicates)", common.duplicated().sum())
+        common = common[~common.duplicated(keep="last")]
     for s, dropna in [(dxy, False), (vix, False), (spx, False), (wti, False), (tnx, True)]:
         if not s.empty:
             idx = s.dropna().index if dropna else s.index
+            if idx.duplicated().any():
+                idx = idx[~idx.duplicated(keep="last")]
             common = common.intersection(idx)
 
     if common.empty:
@@ -439,11 +444,11 @@ def fetch_asset_data(
             if alt is not None and alt in macro:
                 base_ticker = alt
         base_yield = macro.get(base_ticker, tnx)
-        if not base_yield.empty and base_yield.index.duplicated().any():
+        if not base_yield.empty:
             base_yield = base_yield[~base_yield.index.duplicated(keep="last")]
         base_yield = base_yield.reindex(common).ffill()
         quote_yield = macro.get(quote_ticker, tnx)
-        if not quote_yield.empty and quote_yield.index.duplicated().any():
+        if not quote_yield.empty:
             quote_yield = quote_yield[~quote_yield.index.duplicated(keep="last")]
         quote_yield = quote_yield.reindex(common).ffill()
         rate_diff_series = base_yield - quote_yield

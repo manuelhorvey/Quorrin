@@ -22,6 +22,12 @@ LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_PATH = os.path.join(LOG_DIR, "paper_trade_monitor.csv")
 
+# Assets under confidence calibration watch.
+# Both show 92-96% confidence every cycle with insufficient trade history to
+# assess whether this reflects genuine skill or miscalibration.
+_CALIBRATION_WATCH_ASSETS = frozenset({"NZDCAD", "NZDUSD"})
+_N_TRADES_MIN = 20  # minimum closed trades before calibration review triggers
+
 
 def poll() -> dict:
     try:
@@ -39,6 +45,39 @@ def append_row(row: dict):
         if not exists:
             w.writeheader()
         w.writerow(row)
+
+
+def check_calibration(state: dict) -> list[str]:
+    """Check NZDCAD/NZDUSD for sufficient trade history to evaluate calibration.
+
+    Returns a list of human-readable alert/review messages (empty if none).
+    """
+    assets = state.get("assets", {})
+    messages: list[str] = []
+    for name in _CALIBRATION_WATCH_ASSETS:
+        adata = assets.get(name, {})
+        metrics = adata.get("metrics", {})
+        n_trades = metrics.get("n_trades", 0)
+        if n_trades >= _N_TRADES_MIN:
+            mean_conf = metrics.get("mean_confidence", 0)
+            win_rate = metrics.get("win_rate", 0)
+            gap = mean_conf - win_rate
+            if gap >= 15:
+                messages.append(
+                    f"CALIBRATION ALERT: {name} — overconfident "
+                    f"(conf={mean_conf:.0f}% vs wr={win_rate:.0f}%, gap={gap:.0f}pp, N={n_trades})"
+                )
+            elif gap >= 10:
+                messages.append(
+                    f"CALIBRATION WATCH: {name} — borderline "
+                    f"(conf={mean_conf:.0f}% vs wr={win_rate:.0f}%, gap={gap:.0f}pp, N={n_trades})"
+                )
+            else:
+                messages.append(
+                    f"CALIBRATION OK: {name} — confidence tracks win rate "
+                    f"(conf={mean_conf:.0f}% vs wr={win_rate:.0f}%, gap={gap:.0f}pp, N={n_trades})"
+                )
+    return messages
 
 
 def compute_metrics(state: dict) -> dict:
@@ -107,6 +146,8 @@ def main():
                       f"conf={metrics['mean_confidence']:.3f} "
                       f"gate={metrics['gate_overrides']} flips={metrics['signal_flips']} "
                       f"B/S/F={metrics['n_buy']}/{metrics['n_sell']}/{metrics['n_flat']}")
+                for msg in check_calibration(state):
+                    print(f"  {msg}")
             time.sleep(args.interval * 3600)
     else:
         state = poll()
@@ -116,6 +157,8 @@ def main():
             metrics = compute_metrics(state)
             append_row(metrics)
             print(json.dumps(metrics, indent=2))
+            for msg in check_calibration(state):
+                print(f"  {msg}")
             print(f"\nLog -> {LOG_PATH}")
 
 

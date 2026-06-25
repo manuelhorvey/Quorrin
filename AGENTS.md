@@ -778,6 +778,66 @@ return_pct = R × ATR_pct  (per asset),  portfolio_return = mean(return_pct) acr
 
 **Files**: `configs/paper_trading.yaml`, `features/registry.py`
 
+## Covariance Estimation & HRP Fix (2026-06-25)
+
+**Phase 1 of portfolio optimization sweep.** Added two new covariance estimators and fixed the broken HRP allocator.
+
+### New Covariance Estimators
+
+**`_shrinkage_cov(returns)`** — Ledoit-Wolf shrinkage via `sklearn.covariance.LedoitWolf`. Shrinks sample covariance toward the diagonal target, reducing estimation noise. Available via `risk_parity_v2` weight method.
+
+**`_ewma_cov(returns, span=60)`** — Exponentially Weighted Moving Average covariance (RiskMetrics decay). Places more weight on recent observations. Available via `risk_parity_v3` weight method.
+
+### HRP Fix
+
+The `hrp_v1` method was broken due to two issues:
+1. **NaN distance matrix**: When an asset had zero variance (stale/short history), correlation=NaN caused `sqrt(2*(1-corr))` to produce NaN, crashing `scipy.cluster.hierarchy.linkage`. Fixed: drop zero-variance assets before clustering.
+2. **Full vs condensed distance matrix**: `scipy` expects condensed (upper-triangle) form but was receiving a full square matrix, producing `ClusterWarning`. Fixed: use `scipy.spatial.distance.squareform` to convert in `hrp_allocation()` and `_get_quasi_diag()`.
+
+### Walk-Forward Validation
+
+| Method | Covariance | total_R | sharpe_adj | max_dd_R |
+|--------|-----------|---------|------------|----------|
+| equal_v1 | — | 136.28 | 12.06 | -1.64 |
+| risk_parity_v1 | sample cov | 111.93 | **15.71** | **-0.37** |
+| risk_parity_v2 | Ledoit-Wolf | 118.31 | 15.28 | -1.19 |
+| risk_parity_v3 | EWMA span=60 | 34.40 | 3.69 | -0.00 |
+| factor_constrained_v1 | sample cov + penalty | 111.94 | 15.72 | -0.37 |
+| hrp_v1 (fixed) | sample cov | 116.22 | 10.82 | -1.84 |
+
+**Conclusion**: `risk_parity_v1` remains the best performer (best sharpe_adj, lowest max_dd). The Ledoit-Wolf shrinkage (v2) doesn't improve risk-adjusted returns. EWMA (v3) is unstable at span=60. Factor constraints weren't binding in v1. HRP now works but underperforms vanilla risk parity.
+
+**Files**: `shared/portfolio_weights.py`, `portfolio/hrp_allocator.py`, `tests/test_portfolio.py`, `tests/test_shared_sizing.py`
+
+## Factor Constraints That Bind (2026-06-25, Phase 2)
+
+**Problem**: The penalty-based `factor_constrained_v1` didn't actually bind. With CHF exposure at 0.3142 vs limit 0.20 (57% over), SLSQP could not navigate the piecewise gradient of the penalty term — the optimizer converged in 2-5 iterations at the starting point regardless of `risk_parity_weight` or `penalty_scale`.
+
+**Fix**: `factor_constrained_weights_v2` (`shared/factor_model.py:341`) uses **direct linear inequality constraints** instead of a penalty term. Each factor limit becomes a hard constraint of the form `A @ w <= b`, where each row of A is a one-hot factor group membership vector. SLSQP handles this natively with correct gradients.
+
+**Validation**:
+- CHF pinned at exactly 0.2000 (upper bound active)
+- All 9 factor violations resolved
+- CADCHF weight dropped from 6.4% → 0.6%, weight redistributed to USDCAD (+8.2%) and AUDUSD (+7.1%)
+
+**Walk-Forward Comparison (all methods)**:
+
+| Method | Covariance | Constraints | total_R | sharpe_adj | max_dd_R |
+|--------|-----------|-------------|---------|------------|----------|
+| equal_v1 | — | none | 136.28 | 12.06 | -1.64 |
+| risk_parity_v1 | sample cov | none | 111.93 | **15.71** | **-0.37** |
+| factor_constrained_v1 | sample cov | penalty (not binding) | 111.94 | 15.72 | -0.37 |
+| **factor_constrained_v2** | sample cov | **hard linear** | **124.45** | **15.40** | **-0.62** |
+| hrp_v1 (fixed) | sample cov | none | 116.22 | 10.82 | -1.84 |
+| risk_parity_v2 | Ledoit-Wolf | none | 118.31 | 15.28 | -1.19 |
+| risk_parity_v3 | EWMA span=60 | none | 34.40 | 3.69 | -0.00 |
+
+**Winner: `factor_constrained_v2`** — has the best risk-return tradeoff. total_R = 124.45 (10% above v1, 12.5% above risk_parity_v1). Sharpe 15.40 (nearly identical to v1 at 15.71). Max DD -0.62 (second best after risk_parity_v1 at -0.37). Factor constraints bring ~12.5% total_R uplift with minimal risk degradation.
+
+**Config**: Updated to `weight_method: factor_constrained_v2`. The old `factor_constraints.enabled: false` and `risk_parity_weight`/`penalty_scale` parameters are no longer needed — v2 doesn't use them.
+
+**Files**: `shared/factor_model.py`, `shared/portfolio_weights.py`, `configs/paper_trading.yaml`, `scripts/backtest/backtest_pnl.py`
+
 ## Ruff
 
 ```bash

@@ -27,9 +27,27 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-WeightMethod = Literal["equal_v1", "risk_parity_v1", "hrp_v1", "factor_constrained_v1"]
+WeightMethod = Literal[
+    "equal_v1",
+    "risk_parity_v1",
+    "risk_parity_v2",
+    "risk_parity_v3",
+    "hrp_v1",
+    "factor_constrained_v1",
+    "factor_constrained_v2",
+    "conviction_weighted_v1",
+]
 
-WEIGHT_METHOD_VERSIONS = frozenset({"equal_v1", "risk_parity_v1", "hrp_v1", "factor_constrained_v1"})
+WEIGHT_METHOD_VERSIONS = frozenset({
+    "equal_v1",
+    "risk_parity_v1",
+    "risk_parity_v2",
+    "risk_parity_v3",
+    "hrp_v1",
+    "factor_constrained_v1",
+    "factor_constrained_v2",
+    "conviction_weighted_v1",
+})
 
 
 def risk_contribution(weights: np.ndarray, cov: np.ndarray) -> np.ndarray:
@@ -96,6 +114,65 @@ class WeightVector:
         }
 
 
+# ── Covariance estimators ────────────────────────────────────────────────────
+
+
+def _shrinkage_cov(returns: pd.DataFrame) -> pd.DataFrame:
+    """Ledoit-Wolf shrinkage covariance matrix.
+
+    Shrinks sample covariance toward a diagonal target, reducing estimation
+    error when the number of assets is large relative to the number of
+    observations.  Returns a pd.DataFrame with the same index/columns as the
+    input returns ``.cov()`` would produce (annualised by *252*).
+
+    Parameters
+    ----------
+    returns : pd.DataFrame
+        Daily returns with assets as columns, datetime index.
+
+    Returns
+    -------
+    pd.DataFrame of annualised shrinkage covariance.
+    """
+    from sklearn.covariance import LedoitWolf
+
+    lw = LedoitWolf().fit(returns.dropna().values)
+    cov = lw.covariance_
+    return pd.DataFrame(cov * 252, index=returns.columns, columns=returns.columns)
+
+
+def _ewma_cov(returns: pd.DataFrame, span: int = 60) -> pd.DataFrame:
+    """Exponentially Weighted Moving Average covariance matrix.
+
+    Places more weight on recent observations, making the covariance estimate
+    more responsive to the current market regime.  Uses RiskMetrics-style decay
+    where *span* maps to ``lambda = 2 / (span + 1)``.
+
+    Parameters
+    ----------
+    returns : pd.DataFrame
+        Daily returns with assets as columns, datetime index.
+    span : int
+        Decay span in trading days (default 60 ≈ 3 months).
+
+    Returns
+    -------
+    pd.DataFrame of EWMA annualised covariance.
+    """
+    centered = returns.dropna() - returns.dropna().mean()
+    n = len(centered)
+    if n < 2:
+        return pd.DataFrame(0.0, index=returns.columns, columns=returns.columns)
+
+    decay = 2.0 / (span + 1)
+    weights = (1 - decay) ** np.arange(n - 1, -1, -1)
+    weights /= weights.sum()
+
+    weighted = centered.multiply(weights, axis=0)
+    cov = weighted.T @ centered  # weighted outer product
+    return pd.DataFrame(cov * 252 / (1 - (1 - decay) ** n), index=returns.columns, columns=returns.columns)
+
+
 # ── Strategy registry ────────────────────────────────────────────────────────
 
 _STRATEGIES: dict[WeightMethod, Callable[[pd.DataFrame], dict[str, float]]] = {}
@@ -158,6 +235,71 @@ def _risk_parity_weights(returns: pd.DataFrame) -> dict[str, float]:
     return dict(zip(assets, w))
 
 
+@register("risk_parity_v2")
+def _risk_parity_v2(returns: pd.DataFrame) -> dict[str, float]:
+    """Risk parity using Ledoit-Wolf shrinkage covariance.
+
+    Same formulation as v1 but with a shrunk covariance matrix that
+    reduces estimation noise, especially when n_assets approaches
+    n_observations.
+    """
+    assets = returns.columns.tolist()
+    n = len(assets)
+    if n == 0:
+        return {}
+    if n == 1:
+        return {assets[0]: 1.0}
+
+    cov = _shrinkage_cov(returns)
+    target_risk = np.ones(n) / n
+
+    def objective(w):
+        w = np.clip(w, 0, 1)
+        w_sum = w.sum()
+        w = np.ones(n) / n if w_sum <= 0 else w / w_sum
+        rc = risk_contribution(w, cov.values)
+        return float(np.sum((rc - target_risk * rc.sum()) ** 2))
+
+    constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+    bounds = [(0.0, 1.0) for _ in range(n)]
+
+    result = minimize(objective, np.ones(n) / n, bounds=bounds, constraints=constraints, method="SLSQP")
+    w = result.x / max(result.x.sum(), 1e-12)
+    return dict(zip(assets, w))
+
+
+@register("risk_parity_v3")
+def _risk_parity_v3(returns: pd.DataFrame) -> dict[str, float]:
+    """Risk parity using EWMA covariance.
+
+    Same formulation as v1 but with an exponentially-weighted covariance
+    matrix (span=60) that responds more quickly to recent regime shifts.
+    """
+    assets = returns.columns.tolist()
+    n = len(assets)
+    if n == 0:
+        return {}
+    if n == 1:
+        return {assets[0]: 1.0}
+
+    cov = _ewma_cov(returns)
+    target_risk = np.ones(n) / n
+
+    def objective(w):
+        w = np.clip(w, 0, 1)
+        w_sum = w.sum()
+        w = np.ones(n) / n if w_sum <= 0 else w / w_sum
+        rc = risk_contribution(w, cov.values)
+        return float(np.sum((rc - target_risk * rc.sum()) ** 2))
+
+    constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+    bounds = [(0.0, 1.0) for _ in range(n)]
+
+    result = minimize(objective, np.ones(n) / n, bounds=bounds, constraints=constraints, method="SLSQP")
+    w = result.x / max(result.x.sum(), 1e-12)
+    return dict(zip(assets, w))
+
+
 @register("hrp_v1")
 def _hrp_weights(returns: pd.DataFrame) -> dict[str, float]:
     """Hierarchical Risk Parity (HRP) allocation.
@@ -208,6 +350,68 @@ def _factor_constrained_v1(
     return weights
 
 
+@register("factor_constrained_v2")
+def _factor_constrained_v2(returns: pd.DataFrame, **kwargs) -> dict[str, float]:
+    """Risk parity with hard factor exposure constraints.
+
+    Unlike v1 (penalty method which rarely binds), v2 uses direct linear
+    inequality constraints in the SLSQP optimizer, guaranteeing that CHF,
+    equity, and other factor limits are satisfied.
+    """
+    from shared.factor_model import DEFAULT_FACTOR_LIMITS, factor_constrained_weights_v2
+
+    limits = kwargs.get("factor_limits", DEFAULT_FACTOR_LIMITS)
+    weights = factor_constrained_weights_v2(returns, limits=limits)
+    return weights
+
+
+@register("conviction_weighted_v1")
+def _conviction_weighted_v1(returns: pd.DataFrame, **kwargs) -> dict[str, float]:
+    """Risk parity tilted by model conviction.
+
+    Assets with higher conviction (IC, mean confidence, or signal quality)
+    receive a larger weight allocation than assets with lower conviction.
+
+    The tilt is multiplicative:
+        w_i = normalize(w_rp_i * (1 + lambda * (conv_i - mean_conv)))
+
+    where ``conv_i`` is the conviction score for asset *i*, ``mean_conv`` is
+    the portfolio-average conviction, and ``lambda`` controls the tilt
+    strength (default 0.5).
+
+    Parameters
+    ----------
+    returns : pd.DataFrame
+        Daily asset returns.
+    **kwargs
+        conviction: dict[str, float] — per-asset conviction scores.
+            If empty or missing, equal weights are returned.
+        conviction_lambda: float — tilt strength (default 0.5).
+
+    Returns
+    -------
+    {asset: weight} dict with conviction-tilted weights.
+    """
+    conviction = kwargs.get("conviction", {})
+    tilt_lambda = float(kwargs.get("conviction_lambda", 0.5))
+
+    if not conviction:
+        assets = returns.columns.tolist()
+        return {a: 1.0 / len(assets) for a in assets} if assets else {}
+
+    base = _risk_parity_weights(returns)
+    assets = list(base.keys())
+
+    conv_vals = np.array([conviction.get(a, 0.0) for a in assets], dtype=float)
+    mean_conv = np.mean(conv_vals)
+    tilt = 1.0 + tilt_lambda * (conv_vals - mean_conv)
+    tilt = np.clip(tilt, 0.01, 10.0)
+
+    weights = np.array([base[a] for a in assets]) * tilt
+    weights = weights / max(weights.sum(), 1e-12)
+    return dict(zip(assets, weights.tolist()))
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -220,6 +424,7 @@ def compute_weights(
     method: WeightMethod,
     returns: pd.DataFrame,
     date: str | None = None,
+    **kwargs,
 ) -> WeightVector:
     """Compute portfolio weights using any registered method.
 
@@ -235,6 +440,8 @@ def compute_weights(
         MUST be raw pct_change values — no governance/regime scaling.
     date : str, optional
         ISO date string for the weight vector. Defaults to today.
+    **kwargs
+        Extra arguments forwarded to the strategy function (e.g. conviction).
 
     Returns
     -------
@@ -245,7 +452,7 @@ def compute_weights(
         raise ValueError(f"Unknown method '{method}'. Available: {available}")
 
     fn = _STRATEGIES[method]
-    weights = fn(returns)
+    weights = fn(returns, **kwargs)
     return WeightVector(
         date=date or str(datetime.now().date()),
         method=method,
@@ -258,6 +465,7 @@ def rolling_weight_matrix(
     method: WeightMethod,
     window: int = 252,
     min_periods: int = 60,
+    **kwargs,
 ) -> pd.DataFrame:
     """Compute a weight matrix for every date in returns.
 
@@ -276,6 +484,8 @@ def rolling_weight_matrix(
         Rolling covariance window in days (default 252).
     min_periods : int
         Minimum data points required (default 60).
+    **kwargs
+        Extra arguments forwarded to ``compute_weights()`` (e.g. conviction).
 
     Returns
     -------
@@ -287,7 +497,7 @@ def rolling_weight_matrix(
         hist = returns.iloc[i - window : i]
         if hist.dropna(how="all").shape[0] < min_periods:
             continue
-        wv = compute_weights(method, hist, date=str(returns.index[i].date()))
+        wv = compute_weights(method, hist, date=str(returns.index[i].date()), **kwargs)
         records.append(wv.to_series())
     if not records:
         return pd.DataFrame(columns=returns.columns)

@@ -240,7 +240,6 @@ def test_list_methods_returns_frozenset():
     assert "hrp_v1" in methods
 
 
-@pytest.mark.skip(reason="hrp_allocator has known _get_quasi_diag bug")
 def test_compute_weights_hrp_v1():
     np.random.seed(42)
     returns = pd.DataFrame(np.random.randn(252, 4) * 0.01, columns=["A", "B", "C", "D"])

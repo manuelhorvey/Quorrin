@@ -152,6 +152,7 @@ class TestHRPHelpers:
         regardless of the metric properties of the distance matrix."""
         import numpy as np
         from scipy.cluster.hierarchy import linkage
+        from scipy.spatial.distance import squareform
 
         np.random.seed(42)
         corr = np.array(
@@ -163,9 +164,10 @@ class TestHRPHelpers:
             ]
         )
         dist = np.sqrt(2 * (1 - corr))
-        link = linkage(dist, method="single")
-        result_a = _get_quasi_diag(link, dist)
-        result_b = _get_quasi_diag(link, dist)
+        condensed = squareform(dist, force="tovector", checks=False)
+        link = linkage(condensed, method="single")
+        result_a = _get_quasi_diag(link, condensed)
+        result_b = _get_quasi_diag(link, condensed)
         assert result_a == result_b, "optimal_leaf_ordering must be deterministic"
 
     def test_hrp_allocation_deterministic(self, asset_returns):

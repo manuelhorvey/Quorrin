@@ -39,7 +39,7 @@ from quantforge.domain.value_objects.statistical_metrics import (
     minimum_track_record_length,
     probabilistic_sharpe_ratio,
 )
-from shared.portfolio_weights import rolling_weight_matrix
+from shared.portfolio_weights import list_methods, rolling_weight_matrix
 
 logger = logging.getLogger("backtest_pnl")
 
@@ -216,8 +216,9 @@ def build_portfolio_daily_r(
     min_assets: int = 15,
     weight_method: str = "equal_v1",
     weight_window: int = 252,
+    conviction: dict[str, float] | None = None,
 ) -> pd.DataFrame:
-    """Build equal-weight portfolio daily R series.
+    """Build portfolio daily R series with configurable weight method.
 
     Parameters
     ----------
@@ -225,6 +226,12 @@ def build_portfolio_daily_r(
         Per-asset daily R series (indexed by datetime).
     min_assets : int
         Minimum number of assets required on a given day to include it.
+    weight_method : str
+        Portfolio weight method.
+    weight_window : int
+        Rolling covariance window in days.
+    conviction : dict[str, float] | None
+        Per-asset conviction scores (used by conviction_weighted_v1).
 
     Returns
     -------
@@ -238,7 +245,12 @@ def build_portfolio_daily_r(
     if weight_method == "equal_v1":
         portfolio_r = combined.mean(axis=1)
     else:
-        weights = rolling_weight_matrix(combined, weight_method, window=weight_window)
+        kwargs = {}
+        if conviction is not None:
+            kwargs["conviction"] = conviction
+            if weight_method == "conviction_weighted_v1":
+                kwargs["conviction_lambda"] = 0.5
+        weights = rolling_weight_matrix(combined, weight_method, window=weight_window, **kwargs)
         weights = weights.reindex(combined.index, method="ffill").bfill().fillna(1.0 / len(combined.columns))
         portfolio_r = (combined * weights.values).sum(axis=1)
 
@@ -354,7 +366,7 @@ def main():
     parser.add_argument(
         "--weight-method",
         default="equal_v1",
-        choices=["equal_v1", "risk_parity_v1", "hrp_v1", "factor_constrained_v1"],
+        choices=sorted(list_methods()),
         help="Portfolio weight method (default 'equal_v1' → legacy equal-weight)",
     )
     parser.add_argument(
@@ -418,6 +430,7 @@ def main():
     # Process each asset
     all_daily_r: dict[str, pd.Series] = {}
     per_asset_rows: list[dict] = []
+    asset_ic: dict[str, float] = {}
 
     for pq in parquets:
         stem = pq.stem  # e.g. EURUSD_wf_signals_base
@@ -453,6 +466,15 @@ def main():
                 if n_override > 0:
                     logger.info("%s: sell-only filter — overrode %d BUY signals to FLAT", asset, n_override)
 
+        # Compute Information Coefficient (IC) — rank correlation of p_long vs label
+        if "p_long" in df.columns and "label" in df.columns and len(df) >= 20:
+            from scipy.stats import spearmanr
+
+            ic_val, _ = spearmanr(df["p_long"].astype(float), df["label"].astype(float))
+            asset_ic[asset] = float(ic_val) if not np.isnan(ic_val) else 0.0
+        else:
+            asset_ic[asset] = 0.0
+
         daily_r = compute_asset_daily_r(df, tp, sl)
         all_daily_r[asset] = daily_r
 
@@ -476,17 +498,19 @@ def main():
     print()
 
     # Portfolio-level
+    conviction = asset_ic if args.weight_method.startswith("conviction") else None
     pf_df = build_portfolio_daily_r(
         all_daily_r,
         min_assets=args.min_assets,
         weight_method=args.weight_method,
+        conviction=conviction,
     )
     pf_metrics = portfolio_metrics(
         pf_df,
         loss_cluster_threshold=args.cluster_threshold,
     )
 
-    print(f"Portfolio (equal-weight, ≥{args.min_assets} assets, DSR num_trials=18)")
+    print(f"Portfolio ({args.weight_method}, ≥{args.min_assets} assets, DSR num_trials=18)")
     print("-" * 72)
     for k, v in pf_metrics.items():
         print(f"  {k:25s} = {v}")
@@ -547,6 +571,7 @@ def main():
             ensemble_map,
             min_assets=args.min_assets,
             weight_method=args.weight_method,
+            conviction=conviction,
         )
         # Align dates
         common_dates = pf_df.index.intersection(pf_ensemble.index)

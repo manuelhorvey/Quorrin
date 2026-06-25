@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, optimal_leaf_ordering
+from scipy.spatial.distance import squareform
 
 
 def _get_quasi_diag(link: np.ndarray, dist: np.ndarray | None = None) -> list[int]:
@@ -20,6 +21,10 @@ def _get_quasi_diag(link: np.ndarray, dist: np.ndarray | None = None) -> list[in
         List of leaf indices in quasi-diagonal order.
     """
     if dist is not None:
+        if dist.ndim == 2 and dist.shape[0] == dist.shape[1]:
+            from scipy.spatial.distance import squareform
+
+            dist = squareform(dist, force="tovector", checks=False)
         link = optimal_leaf_ordering(link, dist)
     return _get_quasi_diag_single(link)
 
@@ -78,11 +83,23 @@ def _hrp_weights(cov: pd.DataFrame, link: np.ndarray) -> pd.Series:
 def hrp_allocation(returns: pd.DataFrame, method: str = "single") -> dict[str, float]:
     cov = returns.cov()
     corr = returns.corr()
+    # Drop assets with undefined correlation (zero-variance columns)
+    valid = corr.columns[corr.notna().all() & (corr.std() > 1e-12)].tolist()
+    if len(valid) < 2:
+        return dict(zip(corr.columns, [1.0 / len(corr.columns)] * len(corr.columns)))
+    corr = corr.loc[valid, valid]
+    cov = cov.loc[valid, valid]
     dist = np.sqrt(2 * (1 - corr.clip(-1, 1)))
-    link = linkage(dist.values, method=method)
-    link = optimal_leaf_ordering(link, dist.values.astype(np.double))
+    condensed = squareform(dist.values, force="tovector", checks=False)
+    link = linkage(condensed, method=method)
+    link = optimal_leaf_ordering(link, condensed)
     w = _hrp_weights(cov, link)
-    return dict(w)
+    result = dict(w)
+    # Fill zero weight for any dropped assets
+    for a in returns.columns:
+        if a not in result:
+            result[a] = 0.0
+    return result
 
 
 def hrp_allocation_with_vol_target(

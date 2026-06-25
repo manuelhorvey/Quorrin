@@ -4,7 +4,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 
 from paper_trading.api.common import (
     _STORE,
@@ -54,7 +54,7 @@ def _fetch_live(name: str, fetch_fn) -> dict:
     try:
         future = _LIVE_EXECUTOR.submit(fetch_fn)
         result = future.result(timeout=LIVE_FETCH_TIMEOUT)
-        result["fetch_time"] = datetime.utcnow().isoformat() + "Z"
+        result["fetch_time"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         result["fetch_age_seconds"] = 0.0
         result["is_fresh"] = True
         _LIVE_CACHE[name] = (result, time.time() + _LIVE_CACHE_TTL, fetch_start, False)
@@ -67,7 +67,7 @@ def _fetch_live(name: str, fetch_fn) -> dict:
     if cached is not None:
         data, _expiry, _fetched_at, _was_fallback = cached
         age = time.time() - _fetched_at
-        data["fetch_time"] = datetime.utcfromtimestamp(_fetched_at).isoformat() + "Z"
+        data["fetch_time"] = datetime.fromtimestamp(_fetched_at, tz=UTC).isoformat().replace("+00:00", "Z")
         data["fetch_age_seconds"] = round(age, 1)
         data["is_fresh"] = age < _MAX_LIVE_AGE_SECONDS
         if age >= _MAX_LIVE_AGE_SECONDS:
@@ -75,7 +75,7 @@ def _fetch_live(name: str, fetch_fn) -> dict:
         return data
 
     logger.warning("bundle live source '%s' has no cached fallback — returning empty", name)
-    now_iso = datetime.utcnow().isoformat() + "Z"
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return {
         "fetch_time": now_iso,
         "fetch_age_seconds": 0.0,
@@ -96,8 +96,8 @@ def handle_state_bundle(path: str, query: dict) -> str:
             return _IN_FLIGHT["result"]
 
     snapshot_obj = _STORE.load_snapshot()
-    now = datetime.utcnow()
-    server_time_iso = now.isoformat() + "Z"
+    now = datetime.now(UTC)
+    server_time_iso = now.isoformat().replace("+00:00", "Z")
     engine_seq = snapshot_obj.sequence_id if snapshot_obj else 0
 
     if snapshot_obj is not None:

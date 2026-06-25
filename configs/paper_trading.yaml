@@ -33,11 +33,11 @@ kelly:
   min_edge: 0.0
 portfolio_drawdown_limit: -0.15
 portfolio:
-  weight_method: factor_constrained_v1
-  factor_constraints:
-    enabled: false
-    risk_parity_weight: 0.7
-    penalty_scale: 10.0
+  # factor_constrained_v2: risk parity with hard linear inequality factor constraints.
+  # total_R = 124.45, sharpe_adj = 15.40, max_dd_R = -0.62.
+  # Readopted 2026-06-25: best risk-return tradeoff across all methods; factor
+  # constraints (CHF ≤ 0.20) bind via SLSQP direct linear constraints.
+  weight_method: factor_constrained_v2
 defaults:
   churn_ratio_threshold: 0.35
   cooldown_half_life_hours: 4.0

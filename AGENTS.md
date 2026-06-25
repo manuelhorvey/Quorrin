@@ -662,6 +662,40 @@ The counterfactual script uses a 600-row dataset (vs 848 in production), 5 folds
   5. `orchestrator/engine.py:Phase B` — broker position cache invalidated before stale-ticket detection (5s cache would otherwise miss positions placed earlier in same cycle)
   **Validation**: 11 MT5 orphans adopted in cycle 2, 0 new orphans in 3+ consecutive subsequent cycles.
 
+## Live Sharpe Tracker (2026-06-25)
+
+**New module**: `paper_trading/performance/live_sharpe.py` — `LiveSharpeTracker` class that
+reads equity history from SQLite and computes rolling Sharpe ratios from both
+cycle-level (30s) and daily-aggregated returns.
+
+**Integration**: Added to `engine_state_service.py:save_state()` — every cycle computes
+live Sharpe + slippage estimate and stores in `state.json` under
+`portfolio.live_sharpe`. Dashboard can access via `/state.json`.
+
+**Features**:
+- Cycle-level Sharpe with Lo (2002) autocorrelation adjustment
+- Rolling daily Sharpe (7d, 30d, all-time) — activated once sufficient days accumulate
+- Portfolio cumulative return + max drawdown in % of capital
+- Slippage estimate from trace.jsonl (RMS gap between signal price and market price)
+- Falls back gracefully (`available: false`) when no equity history exists
+
+**Current live values** (as of 2026-06-25, ~3 days of data):
+| Metric | Value |
+|--------|-------|
+| Cycle-level Sharpe (adj) | 1.26 |
+| Portfolio return | +0.89% |
+| Max drawdown | -0.4% |
+| Slippage RMS gap | 1.74% |
+| Daily-level Sharpe | N/A (< 5 days of data) |
+
+**Caveats**: Cycle-level Sharpe with 30s intervals has high autocorrelation (ρ=0.13),
+which the Lo adjustment partially corrects. Daily-level Sharpe needs ≥5 days of data
+to produce a meaningful estimate. Slippage is measured as the gap between model
+close_price and current_price in trace.jsonl — actual fill prices from MT5 may differ.
+
+**Future work**: Add fill-price-based slippage from MT5 broker positions once sufficient
+trade history accumulates. Daily Sharpe becomes reliable after ~20 trading days.
+
 ## Monte Carlo Drawdown Simulation — V2 Fix (2026-06-25)
 
 **Problem**: `monte_carlo_drawdown.py` V1 bootstrapped raw R-multiples (additive, dimensionless), which have high mean (~1.0 R/day from walk-forward), guaranteeing p_positive_return ≈ 1.0 regardless of horizon. The results answered the wrong question — they showed "probability cumulative R > 0" not "probability portfolio % return > 0."

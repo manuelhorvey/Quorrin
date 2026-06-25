@@ -11,6 +11,7 @@ from paper_trading.execution.decision_pipeline import SELL_ONLY_ASSETS
 from paper_trading.governance.risk import get_sell_tripwire_state
 from paper_trading.ops.experiment_context import ExperimentContext
 from paper_trading.ops.simulation_snapshot import build_asset_snapshot
+from paper_trading.performance.live_sharpe import LiveSharpeTracker
 from paper_trading.state_store import EngineSnapshot
 
 logger = logging.getLogger("quantforge.engine_state_service")
@@ -219,6 +220,16 @@ class EngineStateService:
     def save_state(self):
         engine = self.engine
         state = self.get_state()
+
+        # Live Sharpe from equity history
+        try:
+            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            tracker = LiveSharpeTracker(base_dir=base)
+            sharpe_data = tracker.compute()
+            state["portfolio"]["live_sharpe"] = sharpe_data
+        except Exception as exc:
+            logger.debug("Failed to compute live Sharpe: %s", exc)
+            state["portfolio"]["live_sharpe"] = {"available": False}
 
         # Capture MT5 connection status for the API endpoint
         try:

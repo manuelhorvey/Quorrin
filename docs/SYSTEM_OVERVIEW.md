@@ -43,7 +43,7 @@ Calibration (P1 — BinnedCalibrator, per-asset, config-gated)
         ↓
 Governance Filters (11 layers + P2 Kelly sizing + P3 factor model)
         ↓
-Decision Pipeline Stages (19 stages: first-cycle → bar-jump → calibrate → resolve → sell-only filter → spread → stability → hysteresis → kelly → profit lock → manage → route → poll)
+Decision Pipeline Stages (22 stages: first-cycle → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → sell-only filter → spread gate → session gate → ADX entry gate → confidence gate → stability → hysteresis → meta-label advisory → regime bar counter → conviction gate → kelly sizing → profit lock → manage position → build artifacts → route execution → poll deferred → update prob history)
         ↓
 Portfolio Weight Rebalance (P0 — 4 strategies: equal, risk parity, HRP, factor-constrained)
         ↓
@@ -240,7 +240,7 @@ The live engine executes every 300 seconds.
  13. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
  14. Archetype classification → TradeDecision
  15. Refresh MT5 spread for spread gate
- 16. Decision pipeline stages (20 stages, `DEFAULT_STAGES`):
+ 16. Decision pipeline stages (22 stages, `DEFAULT_STAGES`):
      a. First-cycle suppression — suppress trading on cold-start cycle 1
      b. Bar-jump suppression — suppress 60min if bar count changed >100
      c. Store prediction metadata — record pre-decision signal state
@@ -359,7 +359,7 @@ Persistent state is stored in SQLite WAL mode.
 
 # Portfolio Maturity Framework (P0–P4)
 
-The system implements a 4-layer portfolio maturity framework. All layers are
+The system implements a 5-layer portfolio maturity framework (P0–P4). All layers are
 config-gated and independently enablable.
 
 ## P0 — Portfolio Truth Layer (enabled: `factor_constrained_v1`)

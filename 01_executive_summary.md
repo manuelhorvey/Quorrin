@@ -18,7 +18,7 @@
 
 ## What Is Genuinely Good
 
-The decision pipeline architecture (19-stage composable design), the 11-layer risk governance concept, the write-ahead log with hash-verified causal chains, the documentation culture (AGENTS.md logs falsified hypotheses with evidence), and the ability to close 12 Critical/High items and one open research question in a single 8h session reflect a ship-ready engineering team.
+The decision pipeline architecture (22-stage composable design), the 14-layer risk governance framework, the write-ahead log with hash-verified causal chains, the documentation culture (AGENTS.md logs falsified hypotheses with evidence), and the ability to close 12 Critical/High items and one open research question in a single 8h session reflect a ship-ready engineering team.
 
 ## Current Status
 

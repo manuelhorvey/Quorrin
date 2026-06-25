@@ -827,11 +827,11 @@ RISK_OFF_ASSETS = frozenset({"AUDUSD"})
 
 
 def apply_risk_off_suppression(ctx: DecisionContext) -> None:
-    """Suppress signals for AUDUSD/AUDCHF when market is in risk-off mode.
+    """Suppress signals for AUDUSD when market is in risk-off mode.
 
     During risk-off (VIX rising, SPX falling), the base model's mean-reversion
-    strategy systematically fails on these assets (100% wrong for medium-confidence
-    BUY predictions).  This stage holds them flat until macro conditions normalize.
+    strategy systematically fails on this asset (100% wrong for medium-confidence
+    BUY predictions).  This stage holds it flat until macro conditions normalize.
     """
     engine = ctx.engine
     if engine.name not in RISK_OFF_ASSETS:
@@ -863,11 +863,13 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
 def apply_sell_only_filter(ctx: DecisionContext) -> None:
     """Force FLAT on BUY signals for assets with inverted BUY calibration.
 
-    For these 11 assets, p_long > 0.5 corresponds to ~17% win rate (inverted
+    For these 8 assets, p_long > 0.5 corresponds to ~17% win rate (inverted
     signal), while p_long < 0.425 corresponds to ~77% win rate (well-calibrated
     SELL).  This stage lets SELL signals pass through unchanged but overrides
     BUY signals to FLAT, converting these assets to sell-only.
 
+    AUDUSD, EURNZD, NZDUSD were removed from the filter 2026-06-23 after
+    corrected walk-forward showed BUY WR >50%.
     See the 2026-06-20 diagnostic chain for full evidence.
     """
     if ctx.new_side is None:

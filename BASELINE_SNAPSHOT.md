@@ -1,7 +1,11 @@
 # BASELINE SNAPSHOT — AUTO-GENERATED
 
-Generated: 2026-06-20
+Generated: 2026-06-20 (last updated: 2026-06-26)
 Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
+
+> **WARNING**: This snapshot is a historical reference. Per-asset params, SELL_ONLY filter count,
+> and asset list may have changed since generation. Cross-reference with `LIVE_CONTRACT.md` §9
+> for current values.
 
 ---
 
@@ -17,7 +21,7 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | Data source | MT5 (yfinance fallback) |
 | Ensemble | disabled portfolio-wide (base_weight=1.0; see ADR-026) |
 | Governance layers | 11 + HealthMonitor (validity, feature stability, meta-label, macro narrative, liquidity, PSI drift, sell-only filter, equity cluster alarm, circuit breaker, portfolio drawdown, entry deviation, profit lock) |
-| Decision pipeline stages | 19 stages (`DEFAULT_STAGES`: first-cycle suppression, bar-jump, store metadata, update MAE/MFE, resolve signal, risk-off, sell-only filter, spread gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, profit lock, manage position, build artifacts, route execution, poll deferred) |
+| Decision pipeline stages | 22 stages (`DEFAULT_STAGES`: first-cycle suppression, bar-jump, store metadata, update MAE/MFE, resolve signal, risk-off, sell-only filter, spread gate, session gate, ADX entry gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, kelly sizing, profit lock, manage position, build artifacts, route execution, poll deferred, update prob history) |
 | Position sizing guardrails | drawdown taper, per-position cap, risk-per-trade cap, leverage budget, backstop multiplier |
 | Spread gate tiers | fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps |
 | Circuit breaker | max_consecutive_losses=7 (was 15) |
@@ -39,24 +43,26 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | GBPCAD | GBPCAD=X | 5.0% | 2.50 | 2.50 | 2 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 2.5% | 2.50 | 1.50 | 5 |
+| NZDUSD     | NZDUSD=X     | 2.5% | 2.50 | 2.00 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
 | AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
-| EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
+| EURCAD     | EURCAD=X     | 2.0% | 1.00 | 1.50 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
-| GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
-| EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
+| GBPCHF     | GBPCHF=X     | 3.0% | 1.00 | 2.00 | 2 |
+| GBPUSD     | GBPUSD=X     | 4.0% | 0.52 | 1.97 | 2 |
+| EURAUD     | EURAUD=X     | 1.0% | 0.54 | 1.77 | 2 |
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability). USDCAD/NZDUSD halved 5%→2.5%.
+**Added 2026-06-22:** GBPUSD (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
 
 ---
 
 ## 3. MODEL FILES
 
-**Directory:** `paper_trading/models/` — 18 `.json` models (AUDCHF, EURUSD, AUDNZD, GBPNZD removed)
+**Directory:** `paper_trading/models/` — 19 `.json` models (AUDCHF, EURUSD, AUDNZD, GBPNZD removed; GBPUSD added)
 
 - `GC_model.json`
 - `USDCHF_model.json`
@@ -75,6 +81,7 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 - `EURCAD_model.json`
 - `EURNZD_model.json`
 - `GBPCHF_model.json`
+- `GBPUSD_model.json`
 - `EURAUD_model.json`
 
 ---
@@ -89,7 +96,7 @@ Source: `configs/paper_trading.yaml`, `LIVE_CONTRACT.md`
 | Flip gate | enabled |
 | Meta-labeling | enabled |
 | PSI drift | enabled |
-| Sell-only filter | enabled (11 assets: CADCHF, AUDUSD, ES, NQ, NZDCHF, EURAUD, ^DJI, USDCHF, EURCHF, NZDUSD, EURNZD) |
+| Sell-only filter | enabled (8 assets: CADCHF, ES, NQ, NZDCHF, EURAUD, ^DJI, USDCHF, EURCHF) |
 | Equity cluster alarm | enabled (ES/NQ/^DJI same-side detection, 60s throttle) |
 | Circuit breaker | enabled (max_consecutive_losses=7) |
 | HealthMonitor | enabled (Phase 3g: VaR, CVaR, vol, halt ratio) |
@@ -129,12 +136,12 @@ Key invariants from the contract:
 - Daily OHLCV from MT5 / yfinance
 - Triple-barrier labeling with per-asset pt_sl
 - Fixed-threshold signal strategy at 0.45
-- 18 promoted assets with risk-parity weights
+- 19 promoted assets with risk-parity weights
 - Per-asset max_depth (2–5)
 - Dynamic SL/TP with trailing stops and per-asset min_rr_ratio
 - Ensemble disabled portfolio-wide (base_weight=1.0)
-- Decision pipeline: 19 stages (first-cycle, bar-jump, store metadata, update MAE/MFE, resolve signal, risk-off, sell-only filter, spread gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, profit lock, manage position, build artifacts, route execution, poll deferred)
-- Sell-only filter for 11 inverted-BUY assets
+- Decision pipeline: 22 stages (first-cycle, bar-jump, store metadata, update MAE/MFE, resolve signal, risk-off, sell-only filter, spread gate, session gate, ADX entry gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, Kelly sizing, profit lock, manage position, build artifacts, route execution, poll deferred, update prob history)
+- Sell-only filter for 8 inverted-BUY assets
 - HealthMonitor with VaR(95)/CVaR in Phase 3g
 - Schema migration at DB_SCHEMA_VERSION=2.0.0
 - Exit reasons canonicalized to UPPERCASE (including SELL_ONLY_FILTER)

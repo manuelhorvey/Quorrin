@@ -176,8 +176,8 @@ The script:
 3. Downloads macro data (DXY, VIX, SPX, WTI, TNX) via yfinance
 4. Computes alpha + regime + archetype features
 5. Runs inference on all assets (base model — ensemble disabled portfolio-wide)
-6. Applies decision pipeline stages (19 stages: first-cycle suppression → bar-jump → resolve signal → risk-off → sell-only filter → spread gate → stability → hysteresis → conviction → profit lock → manage position → route execution → poll deferred)
-7. Routes through 11 governance layers + HealthMonitor (circuit breaker, VaR/CVaR, equity cluster alarm) + RecoveryScheduler
+6. Applies decision pipeline stages (22 stages: first-cycle suppression → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → sell-only filter → spread gate → session gate → ADX entry gate → confidence gate → stability → hysteresis → meta-label advisory → regime bar counter → conviction gate → kelly sizing → profit lock → manage position → build artifacts → route execution → poll deferred → update prob history)
+7. Routes through 14 governance layers + HealthMonitor (circuit breaker, VaR/CVaR, equity cluster alarm) + RecoveryScheduler
 8. Opens/closes positions based on signal vs current position (MT5 bridge + paper)
 9. Serves dashboard on port 5000
 10. Repeats every refresh interval (default 30s, configurable via `QUANTFORGE_REFRESH_INTERVAL` env var)

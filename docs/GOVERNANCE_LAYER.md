@@ -1,8 +1,8 @@
 # QuantForge — Risk & Governance Layer
 
-11 independent governance mechanisms, plus decision pipeline suppression stages, position sizing guardrails, and HealthMonitor circuit breaker, operating at different frequencies and granularities.
+14 independent governance mechanisms, plus decision pipeline suppression stages, position sizing guardrails, and HealthMonitor circuit breaker, operating at different frequencies and granularities.
 
-## Governance Layers (11 + HealthMonitor)
+## Governance Layers (14 + HealthMonitor)
 
 | Layer | Frequency | Scope | Effect |
 |---|---|---|---|
@@ -14,6 +14,9 @@
 | | | | STRESSED: SL +30%, size −30%, halt |
 | PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE |
 | Sell-only filter | Per decision | Per asset | Override BUY→FLAT for 8 inverted-BUY assets |
+| Calibration (P1) | Per inference | Per asset | Remap raw p_long via BinnedCalibrator, ECE 0.36→0.02 |
+| Kelly sizing (P2) | Per decision | Per asset | Scale position by Kelly criterion (config-gated, disabled) |
+| Factor model (P3) | Per cycle | Portfolio | Factor exposures via 9 groups in state.json (monitoring only) |
 | Equity cluster alarm | Per cycle | Global | Flags ES/NQ/^DJI all same side (recommendation, 60s throttle) |
 | Circuit breaker | Per cycle | Portfolio | Multi-condition: dd, vol spike, halt ratio, consecutive losses (threshold=7) |
 | Portfolio drawdown | Per cycle | Global | Circuit breaker at −15% |
@@ -36,6 +39,8 @@
 | Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 |
 | Sell-only filter | Override BUY→FLAT for `SELL_ONLY_ASSETS` (8 assets) |
 | Spread gate | Block entry if spread > per-class threshold (observe 720 cycles first) |
+| Session gate | Block entry outside market session hours per asset-class tier (observe 720 cycles first) |
+| ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) |
 | Confidence gate | Abort if net confidence below threshold |
 | Signal stability filter | Require >0.65 max(prob_long, prob_short) to proceed |
 | Signal hysteresis | 2-of-3 agreement required before flip |
@@ -48,6 +53,7 @@
 | Build entry artifacts | Construct TradeDecision for execution |
 | Route execution policy | Direct to PaperBroker or MT5Broker |
 | Poll deferred entries | Execute pending deferred orders |
+| Update prob history | Record probability history for drift monitoring |
 
 ## Position Sizing Guardrails
 

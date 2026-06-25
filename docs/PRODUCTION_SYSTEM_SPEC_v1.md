@@ -8,7 +8,7 @@
 
 ## 1. System Identity
 
-QuantForge is a **factor-based asset allocation system** with a **walk-forward validated screening pipeline**, **per-asset binary XGBoost models**, a **4-layer portfolio maturity framework (P0–P4)**, and a **paper trading execution layer**.
+QuantForge is a **factor-based asset allocation system** with a **walk-forward validated screening pipeline**, **per-asset binary XGBoost models**, a **5-layer portfolio maturity framework (P0–P4)**, and a **paper trading execution layer**.
 
 It is NOT a directional prediction system. It does NOT attempt to forecast price movements. It ranks assets on weak but positive IC signals and constructs a long/short equity-style basket.
 
@@ -77,7 +77,7 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 │              ┌───────────────────┐                ▼                    │
 │              │ Archetype         │   ┌─────────────────────┐            │
 │              │ classification   │   │ Decision Pipeline   │            │
-│              │ 5 types from OHLCV│   │ (20 stages, incl.  │            │
+│              │ 5 types from OHLCV│   │ (22 stages, incl.  │            │
 │              └───────────────────┘   │  P2 Kelly sizing)   │            │
 │                        │             └─────────────────────┘            │
 │                        ▼                        │                       │
@@ -102,7 +102,7 @@ It is NOT a directional prediction system. It does NOT attempt to forecast price
 │  SQLite state store (WAL mode, schema v2.0.0): trades, attribution,    │
 │    equity_history, strategy_metadata                                    │
 │  PaperBroker → StateStore → state.json + state.db → dashboard           │
-│  11-layer governance + HealthMonitor + VaR/CVaR + sell-only filter      │
+│  14-layer governance + HealthMonitor + VaR/CVaR + sell-only filter      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -229,7 +229,7 @@ Format: XGBoost `.json` (not pickle)
 
 ### 5.1 Pipeline (`paper_trading/inference/pipeline.py`)
 
-**Frequency**: Every 300 seconds (configurable via `QUANTFORGE_REFRESH_INTERVAL`)
+**Frequency**: Every 30 seconds (configurable via `QUANTFORGE_REFRESH_INTERVAL`)
 
 **Parallel execution**: 19 AssetEngine instances run via ThreadPoolExecutor (max_workers=8) in phases: REFRESH+Signal (parallel), VALIDITY (sequential), PORTFOLIO health, PERSIST.
 
@@ -254,29 +254,31 @@ Format: XGBoost `.json` (not pickle)
 14. `FixedThresholdStrategy(threshold=0.45)` → SignalType (BUY/SELL/FLAT)
 15. Archetype classification → `TradeDecision(close_price, confidence, probs, ...)`
 16. Refresh MT5 spread for spread gate
-17. Decision pipeline (20 stages, `DEFAULT_STAGES`):
+17. Decision pipeline (22 stages, `DEFAULT_STAGES`):
     a. First-cycle suppression — suppress trading on cold-start cycle 1
     b. Bar-jump suppression — suppress 60min if bar count changed >100
     c. Store prediction metadata — record pre-decision signal state
     d. Update MAE/MFE — update max adverse/favorable excursion
     e. Resolve signal — map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45)
-    f. Calibrate probabilities — BinnedCalibrator from registry (config-gated)
-    g. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-    h. Sell-only filter — override BUY→FLAT for 8 inverted-BUY assets
-    i. Spread gate — block entry if spread > per-class tier (observe 720 cycles)
-    j. Confidence gate — abort if net confidence below threshold
-    k. Signal stability filter — require >0.65 max(prob_long, prob_short)
-    l. Signal hysteresis — 2-of-3 agreement before flip
-    m. Meta-label advisory — record meta-label recommendation (no enforcement)
-    n. Update regime bar counter — track bars since last regime shift
-    o. Conviction gate — flip gate based on regime conviction
-    p. Kelly sizing (P2) — scale position by Kelly criterion (config-gated, disabled)
-    q. Profit lock gate — block flip if unrealized PnL > threshold
-    r. Manage position — close/re-open with entry gate check
-    s. Build entry artifacts — construct TradeDecision for execution
-    t. Route execution policy — direct to PaperBroker or MT5Broker
-    u. Poll deferred entries — execute pending deferred orders
-18. Governance (11 layers + HealthMonitor + VaR/CVaR): validity, feature stability, meta-label, macro narrative, liquidity, PSI drift, sell-only filter, equity cluster alarm, circuit breaker, portfolio drawdown, entry deviation, profit lock
+    f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
+    g. Sell-only filter — override BUY→FLAT for 8 inverted-BUY assets
+    h. Spread gate — block entry if spread > per-class tier (observe 720 cycles)
+    i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles)
+    j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
+    k. Confidence gate — abort if net confidence below threshold
+    l. Signal stability filter — require >0.65 max(prob_long, prob_short)
+    m. Signal hysteresis — 2-of-3 agreement before flip
+    n. Meta-label advisory — record meta-label recommendation (no enforcement)
+    o. Update regime bar counter — track bars since last regime shift
+    p. Conviction gate — flip gate based on regime conviction
+    q. Kelly sizing (P2) — scale position by Kelly criterion (config-gated, disabled)
+    r. Profit lock gate — block flip if unrealized PnL > threshold
+    s. Manage position — close/re-open with entry gate check
+    t. Build entry artifacts — construct TradeDecision for execution
+    u. Route execution policy — direct to PaperBroker or MT5Broker
+    v. Poll deferred entries — execute pending deferred orders
+    w. Update prob history — record probability history for drift monitoring
+18. Governance (14 mechanisms + HealthMonitor + VaR/CVaR): validity, feature stability, meta-label, macro narrative, liquidity, PSI drift, sell-only filter, calibration (P1), Kelly sizing (P2), factor model (P3), equity cluster alarm, circuit breaker, portfolio drawdown, entry deviation, profit lock
 19. Position sizing chain (P2 Kelly multiplier → drawdown taper → position cap → risk cap → leverage budget → backstop) + independent MT5 sizing
 20. MT5 lifecycle: open → bridge `place_order` with SL/TP; close → bridge `close_position`; SL/TP adjust → bridge `modify_position`
 
@@ -381,7 +383,7 @@ final_size = base × kelly_multiplier × governance_scalar × meta_confidence_sc
 **Live VaR/CVaR**: Rolling 60-period portfolio returns → VaR(95)=5th percentile, CVaR=mean of tail.
 **Schema migration**: SQLite at `DB_SCHEMA_VERSION = "2.0.0"`. Auto-migrates at connect time — adds `cycle_id` to trades, `vol_spike`/`var_95` to equity_history, and indexes.
 
-Plus decision pipeline stages (20 stages: first-cycle, bar-jump, store metadata, update MAE/MFE, resolve signal, calibrate probabilities, risk-off, sell-only filter, spread gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, kelly sizing, profit lock, manage position, build artifacts, route execution, poll deferred) and position sizing guardrails (drawdown taper, per-position cap, risk-per-trade cap, leverage budget, backstop multiplier).
+Plus decision pipeline stages (22 stages: first-cycle, bar-jump, store metadata, update MAE/MFE, resolve signal, risk-off, sell-only filter, spread gate, session gate, ADX entry gate, confidence gate, stability, hysteresis, meta-label advisory, regime bar counter, conviction gate, kelly sizing, profit lock, manage position, build artifacts, route execution, poll deferred, update prob history) and position sizing guardrails (drawdown taper, per-position cap, risk-per-trade cap, leverage budget, backstop multiplier).
 
 ---
 
@@ -462,7 +464,7 @@ In-memory TTL cache per download type:
 | `paper_trading/orchestrator/engine.py` | EngineOrchestrator (ThreadPoolExecutor, 3 phases + VaR/CVaR in Phase 3g) |
 | `paper_trading/models/` | Trained models (.json) — 19 assets |
 | `paper_trading/state_store.py` | SQLite state persistence + schema migration (DB_SCHEMA_VERSION=2.0.0) |
-| `paper_trading/execution/decision_pipeline.py` | DEFAULT_STAGES (19 stages), SELL_ONLY_ASSETS frozenset |
+| `paper_trading/execution/decision_pipeline.py` | DEFAULT_STAGES (22 stages), SELL_ONLY_ASSETS frozenset |
 | `shared/portfolio_weights.py` | P0 portfolio truth layer — 4 weight strategies |
 | `shared/calibration/` | P1 calibration — BinnedCalibrator, CalibrationRegistry, ECETracker |
 | `shared/kelly.py` | P2 fractional Kelly sizing |

@@ -9,7 +9,7 @@
 
 ---
 
-Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 11-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 11 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 14-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 8 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
 
 ---
 
@@ -46,9 +46,9 @@ Per-Asset Model Training (XGBoost, per-asset depth)
         ↓
         Live Inference (every 30s)
         ↓
-Decision Pipeline Stages (first-cycle → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → sell-only filter → spread gate → confidence gate → stability → hysteresis → meta-label → conviction → profit lock → manage position → build artifacts → route execution → poll deferred)
+Decision Pipeline Stages (first-cycle → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → sell-only filter → spread gate → session gate → ADX entry gate → confidence gate → stability → hysteresis → meta-label → conviction → kelly → profit lock → manage position → build artifacts → route execution → poll deferred → update prob history)
         ↓
-Governance Filters (11 layers + HealthMonitor + VaR/CVaR)
+Governance Filters (14 mechanisms + HealthMonitor + VaR/CVaR)
         ↓
 Position Sizing Guardrails (5 multiplicative)
         ↓
@@ -77,13 +77,13 @@ State Persistence + Replay
 | GBPCAD     | GBPCAD=X     | 2.50    | 2.50    | 5.0%       | 2         |
 | NZDCAD     | NZDCAD=X     | 2.50    | 4.00    | 5.0%       | 2         |
 | ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
-| NZDUSD     | NZDUSD=X     | 2.50    | 1.50    | 2.5%       | 5         |
+| NZDUSD     | NZDUSD=X     | 2.50    | 2.00    | 2.5%       | 5         |
 | GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 5.0%       | 3         |
 | NZDCHF     | NZDCHF=X     | 1.00    | 4.00    | 7.0%       | 2         |
 | CADCHF     | CADCHF=X     | 1.00    | 4.00    | 5.0%       | 2         |
 | AUDUSD     | AUDUSD=X     | 1.50    | 4.00    | 4.0%       | 2         |
 | EURCHF     | EURCHF=X     | 1.00    | 3.00    | 5.0%       | 4         |
-| EURCAD     | EURCAD=X     | 1.00    | 1.00    | 2.0%       | 3         |
+| EURCAD     | EURCAD=X     | 1.00    | 1.50    | 2.0%       | 3         |
 | EURNZD     | EURNZD=X     | 1.50    | 2.50    | 3.0%       | 3         |
 | GBPCHF     | GBPCHF=X     | 1.00    | 2.00    | 3.0%       | 2         |
 | GBPUSD     | GBPUSD=X     | 0.52    | 1.97    | 4.0%       | 2         |
@@ -162,7 +162,7 @@ Paper and MT5 positions are sized through separate guardrail chains:
 
 Each asset runs an independent XGBoost model with per-asset configuration.
 
-**Training** (backtest): `multi:softprob` — 3-class (SELL/HOLD/BUY), HOLD dropped for training.
+**Training** (backtest): `binary:logistic` — binary classifier trained on {-1, 1} labels after dropping HOLD. Legacy research scripts use `multi:softprob`.
 **Live inference**: `binary:logistic` — trained on {-1, 1} labels after dropping HOLD.
 
 ```text
@@ -196,7 +196,7 @@ No shared multi-asset model exists.
 
 ## Portfolio Maturity Framework (P0–P4)
 
-The system implements a 4-layer portfolio maturity framework. Each layer is
+The system implements a 5-layer portfolio maturity framework (P0–P4). Each layer is
 config-gated — no behavior change until explicitly enabled.
 
 ### P0 — Portfolio Truth Layer (enabled: `factor_constrained_v1`)
@@ -329,20 +329,24 @@ Derived from OHLCV for execution conditioning:
      d. Update MAE/MFE — update max adverse/favorable excursion
      e. Resolve signal — map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45)
      f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-     g. Sell-only filter — override BUY→FLAT for 11 assets with inverted BUY calibration
-     h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles)
-     i. Confidence gate — abort if net confidence below threshold
-     j. Signal stability filter — require >0.65 max(prob_long, prob_short)
-     k. Signal hysteresis — 2-of-3 agreement before flip
-     l. Meta-label advisory — record meta-label recommendation (no enforcement)
-     m. Update regime bar counter — track bars since last regime shift
-     n. Conviction gate — flip gate based on regime conviction
-     o. Profit lock gate — block flip if unrealized PnL > threshold
-     p. Manage position — close/re-open with entry gate check
-     q. Build entry artifacts — construct TradeDecision for execution
-     r. Route execution policy — direct to PaperBroker or MT5Broker
-     s. Poll deferred entries — execute pending deferred orders
- 17. Route through 11 governance layers + HealthMonitor + VaR/CVaR
+      g. Sell-only filter — override BUY→FLAT for 8 assets with inverted BUY calibration
+      h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles)
+      i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles)
+      j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
+      k. Confidence gate — abort if net confidence below threshold
+      l. Signal stability filter — require >0.65 max(prob_long, prob_short)
+      m. Signal hysteresis — 2-of-3 agreement before flip
+      n. Meta-label advisory — record meta-label recommendation (no enforcement)
+      o. Update regime bar counter — track bars since last regime shift
+      p. Conviction gate — flip gate based on regime conviction
+      q. Kelly sizing — apply fractional Kelly multiplier (config-gated, disabled by default)
+      r. Profit lock gate — block flip if unrealized PnL > threshold
+      s. Manage position — close/re-open with entry gate check
+      t. Build entry artifacts — construct TradeDecision for execution
+      u. Route execution policy — direct to PaperBroker or MT5Broker
+      v. Poll deferred entries — execute pending deferred orders
+      w. Update prob history — record probability history for drift monitoring
+  17. Route through 14 governance mechanisms + HealthMonitor + VaR/CVaR
  18. Position sizing guardrails (drawdown taper → cap → risk cap → leverage budget → backstop)
  19. Independent MT5 sizing (same chain with broker equity)
  20. Execute or defer (MT5 bridge for real broker)
@@ -415,7 +419,7 @@ Persistent state is stored in SQLite WAL mode with append-oriented semantics.
 QuantForge uses independently configurable governance layers with worst-wins aggregation,
 plus decision pipeline suppression stages, position sizing guardrails, and HealthMonitor circuit breaker.
 
-## Governance Layers (11 + HealthMonitor)
+## Governance Layers (14 + HealthMonitor)
 
 | Layer                      | Frequency   | Scope     | Effect                              |
 | -------------------------- | ----------- | --------- | ----------------------------------- |
@@ -425,7 +429,10 @@ plus decision pipeline suppression stages, position sizing guardrails, and Healt
 | Macro regime overlay       | Weekly      | Global    | Exposure + SL adjustments           |
 | Liquidity regime           | Per signal  | Per asset | Exposure + halt logic               |
 | PSI drift                  | Per cycle   | Per asset | Penalty + halt                      |
-| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 11 inverted-BUY assets |
+| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 8 inverted-BUY assets |
+| Calibration (P1)           | Per inference| Per asset | Remap raw p_long via BinnedCalibrator (config-gated, enabled) |
+| Kelly sizing (P2)          | Per decision| Per asset | Scale position by Kelly criterion (config-gated, disabled) |
+| Factor model (P3)          | Per cycle   | Portfolio | Factor exposures via 9 groups in state.json (monitoring only) |
 | Equity cluster alarm       | Per cycle   | Global    | Flags ES/NQ/^DJI all same side (recommendation only) |
 | Circuit breaker            | Per cycle   | Portfolio | Multi-condition: dd, vol spike, halt ratio, consecutive losses (threshold=7) |
 | Portfolio drawdown         | Global      | Portfolio | Global throttling                   |
@@ -450,19 +457,23 @@ Applied in order within the decision pipeline (`DEFAULT_STAGES`):
 | Update MAE/MFE            | Update max adverse/favorable excursion  |
 | Resolve signal            | Map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45) |
 | Risk-off suppression      | Flat AUDUSD when VIX>0 & SPX<0          |
-| Sell-only filter          | Override BUY→FLAT for 11 inverted-BUY assets |
+| Sell-only filter          | Override BUY→FLAT for 8 inverted-BUY assets |
 | Spread gate               | Block entry if spread > per-class threshold (observe 720 cycles) |
+| Session gate              | Block entry outside market session hours per asset-class tier (observe 720 cycles) |
+| ADX entry gate            | Block entry if ADX below threshold (observe-only, disabled by default) |
 | Confidence gate           | Abort if net confidence below threshold |
 | Signal stability filter   | Require >0.65 max(prob_long, prob_short) |
 | Signal hysteresis         | 2-of-3 agreement before flip allowed    |
 | Meta-label advisory       | Record meta-label recommendation (no enforcement) |
 | Update regime bar counter | Track bars since last regime shift      |
 | Conviction gate           | Flip gate based on regime conviction    |
+| Kelly sizing (P2)         | Apply fractional Kelly multiplier (config-gated, disabled by default) |
 | Profit lock gate          | Blocks flip if unrealized PnL > threshold |
 | Manage position           | Close/re-open with entry gate check     |
 | Build entry artifacts     | Construct TradeDecision for execution   |
 | Route execution policy    | Direct to PaperBroker or MT5Broker      |
 | Poll deferred entries     | Execute pending deferred orders         |
+| Update prob history       | Record probability history for drift monitoring |
 
 ## Position Sizing Guardrails (5 multiplicative)
 
@@ -671,7 +682,7 @@ tests/                        # Test suite
 * Dashboard requires `yarn build` after asset list changes
 * MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 * **GBPNZD removed** (2026-06-20) — tp/sl=1.0/3.0 (ratio 0.33), breakeven WR 75%, achieved 72.3%. Net-negative (-37R total, -71R max_dd).
-* **SELL_ONLY filter active for 11 assets** — BUY calibration is inverted (17% WR at p_long>0.5 vs 77% WR on SELL). Root cause unknown; two leading hypotheses (carry, DXY) falsified by walk-forward ablation. Filter is empirically grounded, not a temporary stopgap.
+* **SELL_ONLY filter active for 8 assets** — BUY calibration is inverted (17% WR at p_long>0.5 vs 77% WR on SELL). Root cause unknown; two leading hypotheses (carry, DXY) falsified by walk-forward ablation. Filter is empirically grounded, not a temporary stopgap.
 * **Equity cluster alarm** flags ES/NQ/^DJI all on same side — recommendation only, not a forced flatten.
 * **Circuit breaker threshold lowered to 7** consecutive portfolio losses (was 15). Crisis replay showed max 4 consecutive losses — 15 would never trip.
 * **THIN liquidity regime** is a soft warning (SL/size adjustment, no halt);

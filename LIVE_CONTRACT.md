@@ -250,22 +250,25 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
     c. Store prediction metadata — record pre-decision signal state
     d. Update MAE/MFE — update max adverse/favorable excursion
     e. Resolve signal — map proba to BUY/SELL/FLAT
-    f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed from trading)
+    f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
     g. Sell-only filter — override BUY→FLAT for 8 SELL_ONLY assets (inverted BUY calibration)
     h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
-    i. Confidence gate — abort if net confidence below threshold
-    j. Signal stability filter — require >0.65 max(prob_long, prob_short)
-    k. Signal hysteresis — 2-of-3 agreement before flip
-    l. Meta-label advisory — record meta-label recommendation without enforcement
-    m. Update regime bar counter — track bars since last regime shift
-    n. Conviction gate — flip gate based on regime conviction
-    o. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 16.2 (P2).
-    p. Profit lock gate — block flip if unrealized PnL > threshold
-    q. Manage position — close/re-open with entry gate check
-    r. Build entry artifacts — construct TradeDecision for execution
-    s. Route execution policy — direct to PaperBroker or MT5Broker
-    t. Poll deferred entries — execute previously deferred pending orders
-18. Route through governance layers (9 layers)
+    i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles first)
+    j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
+    k. Confidence gate — abort if net confidence below threshold
+    l. Signal stability filter — require >0.65 max(prob_long, prob_short)
+    m. Signal hysteresis — 2-of-3 agreement before flip
+    n. Meta-label advisory — record meta-label recommendation without enforcement
+    o. Update regime bar counter — track bars since last regime shift
+    p. Conviction gate — flip gate based on regime conviction
+    q. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 15.3 (P2).
+    r. Profit lock gate — block flip if unrealized PnL > threshold
+    s. Manage position — close/re-open with entry gate check
+    t. Build entry artifacts — construct TradeDecision for execution
+    u. Route execution policy — direct to PaperBroker or MT5Broker
+    v. Poll deferred entries — execute previously deferred pending orders
+    w. Update prob history — record probability history for drift monitoring
+18. Route through governance layers (14 mechanisms)
 19. Position sizing chain: Kelly multiplier → drawdown taper → cap → risk cap → leverage budget → backstop
 20. Independent MT5 sizing (`_compute_mt5_qty` with broker equity)
 21. Execute position lifecycle:
@@ -317,13 +320,13 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 | GBPCAD | GBPCAD=X | 5.0% | 2.50 | 2.50 | 2 |
 | NZDCAD | NZDCAD=X | 5.0% | 2.50 | 4.00 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 2.5% | 2.50 | 1.50 | 5 |
+| NZDUSD | NZDUSD=X | 2.5% | 2.50 | 2.00 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 2.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
 | AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
-| EURCAD | EURCAD=X | 2.0% | 1.00 | 1.00 | 3 |
+| EURCAD | EURCAD=X | 2.0% | 1.00 | 1.50 | 3 |
 | EURNZD | EURNZD=X | 3.0% | 1.50 | 2.50 | 3 |
 | GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
 | GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
@@ -414,6 +417,34 @@ desired-vs-actual notional diverge wildly for small accounts).
 - `MT5Broker._peak_equity` updated on every `get_account_summary()` call
 - `MT5Broker.current_mt5_drawdown_pct()` returns negative fraction from peak
 
+### 10b. STACKING CONTRACT (Pyramiding)
+
+**Status:** Disabled by default (`defaults.stacking.enabled: false`), dry_run mode (`dry_run: true`).
+
+**Purpose:** Add incremental layers to existing winning positions (pyramiding), tracked via `PositionIntent.layers` (StackLayer dataclass) with avg_price invariant enforcement.
+
+**Entry gate:** `manage_position` evaluates `_should_stack(ctx)` when already in same-side position. Stacking is bypassed for `OrderType.STACK` in MT5 orphan detection.
+
+**Sizing:** Volatility-adjusted diminishing schedule anchored to `base_entry_size`:
+```
+layer_multipliers: [0.8, 0.5, 0.3]  # fraction of base size per layer
+max_layers: 3
+```
+
+**Layer conditions (all must pass):**
+- `stacking.enabled: true`
+- Position has unrealized PnL > 0
+- Confidence >= `min_confidence` (default 0.60)
+- ADX >= `adx_threshold` (default 25, ensures trending regime)
+- Not at `max_layers` capacity
+- Stack size >= `min_stack_size_factor` of base entry
+- Not in risk-off/STRESSED liquidity regime
+- Net leverage after stack stays within `stack_max_risk_growth` (default 1.0x)
+
+**Layer protection:** Each layer gets a tightened SL (`stack_sl_tighten: 0.5`). Breakeven SL activates after `breakeven_threshold_r: 0.4`. Trailing stop activates after `trail_activate_r: 0.8`.
+
+**Config keys:** `paper_trading.yaml` → `defaults.stacking.*` (20+ parameters controlling layer geometry, cooldown, micro-threshold).
+
 ---
 
 ## 11. ASSET SCREENING & PROMOTION CONTRACT
@@ -434,7 +465,7 @@ desired-vs-actual notional diverge wildly for small accounts).
 
 ## 12. GOVERNANCE CONTRACT
 
-11 layered governance mechanisms plus position sizing guardrails, decision pipeline suppression stages, circuit breaker, and HealthMonitor, each independently configurable:
+14 layered governance mechanisms plus position sizing guardrails, decision pipeline suppression stages, circuit breaker, and HealthMonitor, each independently configurable:
 
 | Layer | Frequency | Effect | Config key |
 |---|---|---|---|---|---|
@@ -474,9 +505,11 @@ desired-vs-actual notional diverge wildly for small accounts).
 | Store prediction metadata | Record pre-decision signal state | — |
 | Update MAE/MFE | Update max adverse/favorable excursion | — |
 | Resolve signal | Map proba to BUY/SELL/FLAT via `FixedThresholdStrategy(0.45)` | `threshold` (default 0.45) |
-| Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 (AUDCHF removed) | (hardcoded, per-asset pair) |
+| Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 | (hardcoded, per-asset pair) |
 | Sell-only filter | Override BUY→FLAT for `SELL_ONLY_ASSETS` | (hardcoded frozenset, 8 assets) |
 | Spread gate | Block entry if spread > per-class tier (observe 720 cycles first) | `spread_gate_tiers` (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
+| Session gate | Block entry outside market session hours per asset-class tier (observe 720 cycles first) | `session_gate.tiers` (fx_major=[7,17], fx_cross=[7,17], indices=[13,20], metals=[8,18]) |
+| ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) | `adx_entry_gate` (adx_threshold=18) |
 | Confidence gate | Abort if net confidence below threshold | `min_confidence` (default 50) |
 | Signal stability filter | Require >0.65 max(prob_long, prob_short) | `stability_margin` (default 0.15) |
 | Signal hysteresis | 2-of-3 agreement before flip allowed | HYSTERESIS_WINDOW=3, HYSTERESIS_MIN_AGREE=2 |
@@ -489,6 +522,7 @@ desired-vs-actual notional diverge wildly for small accounts).
 | Build entry artifacts | Construct `TradeDecision` for execution | — |
 | Route execution policy | Direct to PaperBroker or MT5Broker | — |
 | Poll deferred entries | Execute pending deferred orders | — |
+| Update prob history | Record probability history for drift monitoring | — |
 
 See `docs/GOVERNANCE_LAYER.md` for full detail.
 
@@ -561,7 +595,7 @@ Where:
 
 ## 15. PORTFOLIO MATURITY FRAMEWORK — P0–P4
 
-The system implements a 4-layer portfolio maturity framework. Each layer is
+The system implements a 5-layer portfolio maturity framework (P0–P4). Each layer is
 config-gated — no behavior change until explicitly enabled.
 
 ### 15.1 P0 — Portfolio Truth Layer (live: enabled)

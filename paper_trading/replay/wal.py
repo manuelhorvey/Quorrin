@@ -145,9 +145,7 @@ class WalWriter:
             try:
                 os.fsync(f.fileno())
             except OSError:
-                logger.exception(
-                    "WAL batch fsync failed for %s seq=%d", self._source, seq_low
-                )
+                logger.exception("WAL batch fsync failed for %s seq=%d", self._source, seq_low)
 
     @property
     def current_sequence(self) -> int:

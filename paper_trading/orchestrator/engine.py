@@ -258,10 +258,7 @@ class EngineOrchestrator:
             except Exception as e:
                 return f"{name}: {e}"
 
-        validity_futures = {
-            self._pool.submit(_run_validity, n, a): n
-            for n, a in self._actors.items()
-        }
+        validity_futures = {self._pool.submit(_run_validity, n, a): n for n, a in self._actors.items()}
         for future in as_completed(validity_futures):
             err = future.result()
             if err is not None:

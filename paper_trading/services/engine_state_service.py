@@ -284,6 +284,20 @@ class EngineStateService:
             }
             or None,
         )
+
+        # Capture orchestrator emergency halt state for restart recovery.
+        # peak_portfolio_value from the orchestrator is authoritative
+        # (updated every cycle via run_once peak tracking).
+        # breaker_daily_pnl is only available from CircuitBreaker.
+        orch = getattr(engine, "_orchestrator", None)
+        if orch is not None:
+            snapshot.emergency_halt = orch._emergency_halt
+            snapshot.halt_reason = orch._halt_reason.value if orch._halt_reason is not None else ""
+            snapshot.halt_detail = orch._halt_detail
+            snapshot.peak_portfolio_value = orch._peak_portfolio_value
+            breaker = getattr(orch, "_circuit_breaker", None)
+            if breaker is not None:
+                _, snapshot.breaker_daily_pnl = breaker.snapshot_state()
         for name, asset in engine.assets.items():
             if asset.pos_mgr.has_position():
                 pos = asset.pos_mgr.position

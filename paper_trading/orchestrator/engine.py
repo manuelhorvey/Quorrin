@@ -34,10 +34,26 @@ from paper_trading.orchestrator.actor import (
     compute_health_snapshot,
 )
 from paper_trading.orchestrator.correlation import CorrelationMonitor
-from paper_trading.orchestrator.health import CircuitBreaker, HealthMonitor, RecoveryScheduler
+from paper_trading.orchestrator.health import CircuitBreaker, HaltReason, HealthMonitor, RecoveryScheduler
 from paper_trading.replay.wal import WalWriter
+from paper_trading.state_store import EngineSnapshot
 
 logger = logging.getLogger("quantforge.orchestrator.engine")
+
+# Drawdown recovery threshold for automatic unhalt (must be above trip threshold to avoid flapping).
+# Named separate constant — must NOT be derived from the drawdown_limit passed to
+# check_drawdown_circuit_breaker so that the hysteresis gap is explicit.
+DRAWDOWN_AUTO_UNHALT_THRESHOLD = -0.05  # -5% — recover above this to be eligible
+DRAWDOWN_AUTO_UNHALT_MIN_CYCLES = 10  # must show recovery for N consecutive cycles
+
+# Reasons that are eligible for automatic unhalt when drawdown recovers.
+# halt_ratio and vol_spike require manual EngineOrchestrator.reset_emergency_halt().
+HALT_REASON_AUTO_UNHALT_ALLOWED: frozenset[HaltReason] = frozenset(
+    {
+        HaltReason.DRAWDOWN,
+        HaltReason.CONSECUTIVE_LOSSES,
+    }
+)
 
 
 class EnginePhase:
@@ -62,6 +78,7 @@ class EngineOrchestrator:
         max_halt_ratio: float = 0.5,
         wal_writer: WalWriter | None = None,
         max_workers: int = 8,
+        snapshot: EngineSnapshot | None = None,
     ):
         self._actors = actors
         self._max_halt_ratio = max_halt_ratio
@@ -70,6 +87,10 @@ class EngineOrchestrator:
         self._peak_portfolio_value: float | None = None
         self._last_pnl_date: datetime.date | None = None
         self._emergency_halt: bool = False
+        self._halt_reason: HaltReason | None = None
+        self._halt_detail: str = ""
+        self._unhalt_recovery_cycles: int = 0
+        self._cycles_elapsed: int = 0
         self._wal = wal_writer
         self._last_health: dict | None = None
 
@@ -80,6 +101,28 @@ class EngineOrchestrator:
 
         # Portfolio circuit breaker (vol spike + consecutive loss)
         self._circuit_breaker = CircuitBreaker()
+
+        # Restore emergency halt state from snapshot (if any)
+        if snapshot is not None and snapshot.emergency_halt:
+            self._emergency_halt = True
+            if snapshot.halt_reason:
+                try:
+                    self._halt_reason = HaltReason(snapshot.halt_reason)
+                except ValueError:
+                    self._halt_reason = None
+            self._halt_detail = snapshot.halt_detail
+            if snapshot.peak_portfolio_value is not None:
+                self._peak_portfolio_value = snapshot.peak_portfolio_value
+            self._circuit_breaker.restore_state(
+                snapshot.peak_portfolio_value,
+                snapshot.breaker_daily_pnl,
+            )
+            logger.warning(
+                "EngineOrchestrator: restored emergency halt from snapshot (reason=%s detail=%s peak=%.2f)",
+                snapshot.halt_reason,
+                snapshot.halt_detail,
+                snapshot.peak_portfolio_value or 0.0,
+            )
 
         # Cross-asset correlation monitor
         self._correlation_monitor = CorrelationMonitor()
@@ -132,8 +175,10 @@ class EngineOrchestrator:
         }
 
         if self._emergency_halt:
-            results["circuit_breaker"] = {"triggered": True, "reason": "emergency_halt_persistent"}
-            return results
+            self._check_auto_unhalt_eligibility()
+            if self._emergency_halt:
+                results["circuit_breaker"] = {"triggered": True, "reason": "emergency_halt_persistent"}
+                return results
 
         t0 = time.monotonic()
 
@@ -163,6 +208,7 @@ class EngineOrchestrator:
         # Mutable list so all actors share the same budget object — each
         # atomic decrement is visible to all readers.
         budget_ref = [leverage_budget]
+        self._cycles_elapsed += 1  # non-zero → stable equity sample available for auto-unhalt
 
         # Exposure multiplier: computed from current drawdown BEFORE entries
         # so Phase 2 sizing uses the correct multiplier (not one cycle late).
@@ -249,6 +295,8 @@ class EngineOrchestrator:
                 if hasattr(actor._engine, "pos_mgr"):
                     actor._engine.pos_mgr.exposure_multiplier = 0.0
             self._emergency_halt = True
+            self._halt_reason = HaltReason.DRAWDOWN
+            self._halt_detail = f"dd={dd_result['drawdown']:.4f}"
             results["circuit_breaker"] = {
                 "triggered": True,
                 "reason": f"drawdown_{dd_result['drawdown']:.4f}",
@@ -262,6 +310,8 @@ class EngineOrchestrator:
                 self._max_halt_ratio,
             )
             self._emergency_halt = True
+            self._halt_reason = HaltReason.HALT_RATIO
+            self._halt_detail = f"halt_ratio={health.halt_ratio:.4f}"
             results["circuit_breaker"] = {
                 "triggered": True,
                 "halt_ratio": health.halt_ratio,
@@ -291,6 +341,10 @@ class EngineOrchestrator:
         }
         if breaker_result.trip:
             self._emergency_halt = True
+            self._halt_reason = (
+                HaltReason.VOL_SPIKE if "vol_spike" in breaker_result.reason else HaltReason.CONSECUTIVE_LOSSES
+            )
+            self._halt_detail = breaker_result.reason
             logger.error(
                 "VOLATILITY CIRCUIT BREAKER TRIGGERED: %s — flattening and halting",
                 breaker_result.reason,
@@ -545,6 +599,8 @@ class EngineOrchestrator:
                 "has_position": actor._engine.pos_mgr.has_position() if hasattr(actor._engine, "pos_mgr") else False,
             }
         snapshot["emergency_halt"] = self._emergency_halt
+        snapshot["halt_reason"] = self._halt_reason.value if self._halt_reason else ""
+        snapshot["halt_detail"] = self._halt_detail
         try:
             self._wal.write("state_committed", snapshot)
         except Exception:
@@ -559,6 +615,50 @@ class EngineOrchestrator:
     @property
     def emergency_halt(self) -> bool:
         return self._emergency_halt
+
+    def _check_auto_unhalt_eligibility(self) -> None:
+        """Check if emergency halt can be automatically lifted.
+
+        Eligible reasons: DRAWDOWN, CONSECUTIVE_LOSSES.
+        Must show sustained recovery above DRAWDOWN_AUTO_UNHALT_THRESHOLD
+        for DRAWDOWN_AUTO_UNHALT_MIN_CYCLES consecutive cycles.
+
+        On first cycle after restart (_cycles_elapsed < 1), the equity
+        snapshot is unstable — skip to avoid a noisy first read.
+        """
+        if not self._emergency_halt:
+            return
+        if self._halt_reason not in HALT_REASON_AUTO_UNHALT_ALLOWED:
+            return
+        if self._cycles_elapsed < 1:
+            return
+        if self._peak_portfolio_value is None or self._peak_portfolio_value <= 0:
+            return
+
+        total_equity = sum(a._engine.mtm_value for a in self._actors.values() if hasattr(a._engine, "mtm_value"))
+        current_dd = (total_equity - self._peak_portfolio_value) / self._peak_portfolio_value
+
+        if current_dd >= DRAWDOWN_AUTO_UNHALT_THRESHOLD:
+            self._unhalt_recovery_cycles += 1
+            if self._unhalt_recovery_cycles >= DRAWDOWN_AUTO_UNHALT_MIN_CYCLES:
+                logger.warning(
+                    "AUTO-UNHALT: drawdown recovered from %s to %.2f%% "
+                    "(threshold %.2f%%) after %d cycles — resuming normal operation",
+                    self._halt_detail,
+                    current_dd * 100,
+                    DRAWDOWN_AUTO_UNHALT_THRESHOLD * 100,
+                    self._unhalt_recovery_cycles,
+                )
+                self._emergency_halt = False
+                self._halt_reason = None
+                self._halt_detail = ""
+                self._unhalt_recovery_cycles = 0
+                for actor in self._actors.values():
+                    actor.reset()
+                    if hasattr(actor._engine, "pos_mgr"):
+                        actor._engine.pos_mgr.exposure_multiplier = 1.0
+        else:
+            self._unhalt_recovery_cycles = 0
 
     def flatten_positions(self, reason: str = "circuit_breaker") -> list[str]:
         """Close all open positions across all actors immediately.
@@ -597,6 +697,9 @@ class EngineOrchestrator:
     def reset_emergency_halt(self) -> None:
         """Reset emergency halt (e.g., after manual review)."""
         self._emergency_halt = False
+        self._halt_reason = None
+        self._halt_detail = ""
+        self._unhalt_recovery_cycles = 0
         for actor in self._actors.values():
             actor.reset()
         logger.warning("Emergency halt reset — all actors restored to GREEN")
@@ -863,6 +966,10 @@ class EngineOrchestrator:
         return math.sqrt(var)
 
     def shutdown(self) -> None:
-        """Shut down the persistent thread pool (called on exit via atexit)."""
-        self._pool.shutdown(wait=False)
+        """Shut down the persistent thread pool (called on exit via atexit).
+
+        Uses wait=True to drain in-flight actor work before exit,
+        ensuring WAL events are not truncated mid-write.
+        """
+        self._pool.shutdown(wait=True)
         logger.debug("EngineOrchestrator thread pool shut down")

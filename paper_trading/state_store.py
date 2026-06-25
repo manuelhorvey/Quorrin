@@ -19,7 +19,7 @@ ET = pytz.timezone("US/Eastern")
 SCHEMA_VERSION = "1.0.0"  # JSON snapshot schema
 DB_SCHEMA_VERSION = "2.0.0"  # SQLite DB schema (bumped from implicit v1)
 
-CONTRACT_VERSION = 1  # Increment when state.json contract changes incompatibly
+CONTRACT_VERSION = 2  # Increment when state.json contract changes incompatibly
 
 
 @dataclass
@@ -36,6 +36,11 @@ class EngineSnapshot:
     risk_signals: dict | None = None
     shadow_actions: dict | None = None
     risk_parity: dict | None = None
+    emergency_halt: bool = False
+    halt_reason: str = ""
+    halt_detail: str = ""
+    peak_portfolio_value: float | None = None
+    breaker_daily_pnl: list[float] | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "EngineSnapshot":
@@ -52,6 +57,11 @@ class EngineSnapshot:
             risk_signals=d.get("risk_signals"),
             shadow_actions=d.get("shadow_actions"),
             risk_parity=d.get("risk_parity"),
+            emergency_halt=d.get("emergency_halt", False),
+            halt_reason=d.get("halt_reason", ""),
+            halt_detail=d.get("halt_detail", ""),
+            peak_portfolio_value=d.get("peak_portfolio_value"),
+            breaker_daily_pnl=d.get("breaker_daily_pnl"),
         )
 
 

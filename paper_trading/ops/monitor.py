@@ -59,23 +59,20 @@ def main():
     logger.info("Signals refresh every %d minutes from live yfinance data.", REFRESH_INTERVAL // 60)
     logger.info("Press Ctrl+C to stop.")
 
-    while not _shutdown.is_set():
-        interrupted = _shutdown.wait(REFRESH_INTERVAL)
-        if interrupted:
-            break
-        logger.info("Refreshing signals...")
-        try:
-            engine.run_once()
-            engine.save_state()
-            logger.info("Done.")
-        except Exception as e:
-            logger.error("Error: %s", e)
-
     try:
-        engine.save_state()
-        logger.info("State saved on shutdown.")
-    except Exception as e:
-        logger.error("Failed to save state on shutdown: %s", e)
+        while not _shutdown.is_set():
+            interrupted = _shutdown.wait(REFRESH_INTERVAL)
+            if interrupted:
+                break
+            logger.info("Refreshing signals...")
+            try:
+                engine.run_once()
+                engine.save_state()
+                logger.info("Done.")
+            except Exception as e:
+                logger.error("Error: %s", e)
+    finally:
+        engine.shutdown()
     server_thread.join(timeout=3)
     logger.info("Server stopped.")
 

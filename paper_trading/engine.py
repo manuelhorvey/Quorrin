@@ -154,11 +154,24 @@ class PaperTradingEngine:
         )
 
         # Fault-isolated actor orchestrator (Phase 5)
+        # Pass snapshot so emergency halt state survives a restart.
         self._orchestrator = EngineOrchestrator(
             actors={name: AssetActor(name, asset, wal_writer=self._wal) for name, asset in self.assets.items()},
             wal_writer=self._wal,
+            snapshot=snapshot,
         )
         self._narrative_api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
+
+    def shutdown(self) -> None:
+        """Graceful shutdown: drain actor pool, flush background writer, persist state.
+
+        Order matters: futures may still be producing WAL events, so the pool
+        must be drained BEFORE the background writer, and state must be saved
+        last so the final snapshot includes all persisted data.
+        """
+        self._orchestrator.shutdown()
+        self._background_writer.shutdown()
+        self.save_state()
 
     def _create_mt5_broker(self, cfg):
         import yaml

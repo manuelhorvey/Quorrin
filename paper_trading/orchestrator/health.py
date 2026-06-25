@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 
 from paper_trading.orchestrator.actor import (
     AssetActor,
@@ -250,10 +251,31 @@ class CircuitBreaker:
 
         return BreakerDecision(trip=False, reason="ok", severity="info")
 
+    def restore_state(self, peak_value: float | None, daily_pnl: list[float] | None) -> None:
+        if peak_value is not None:
+            self._peak_value = peak_value
+        if daily_pnl is not None:
+            self._daily_pnl_history = list(daily_pnl)
+
+    def snapshot_state(self) -> tuple[float | None, list[float]]:
+        return (self._peak_value, list(self._daily_pnl_history))
+
     def record_daily_pnl(self, pnl: float) -> None:
         self._daily_pnl_history.append(pnl)
         if len(self._daily_pnl_history) > 252 * 3:
             self._daily_pnl_history = self._daily_pnl_history[-(252 * 3) :]
+
+
+class HaltReason(Enum):
+    """Reason a circuit breaker or emergency halt was triggered.
+
+    Used to gate auto-unhalt eligibility in EngineOrchestrator.
+    """
+
+    DRAWDOWN = "drawdown"
+    HALT_RATIO = "halt_ratio"
+    VOL_SPIKE = "vol_spike"
+    CONSECUTIVE_LOSSES = "consecutive_losses"
 
 
 # ── RecoveryScheduler ─────────────────────────────────────────────────────────

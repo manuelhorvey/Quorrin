@@ -4,12 +4,36 @@ Monte Carlo drawdown simulation — bootstraps daily portfolio returns from
 walk-forward OOS signal parquets to estimate drawdown risk over
 1-year, 3-year, and 5-year horizons.
 
-Uses block bootstrap (entire days sampled together) to preserve the
-cross-asset correlation structure.
+V2: Converts R-multiples to % portfolio returns using per-asset ATR_pct
+and allocation weights. The old R-space version (p_positive_return ~ 1.0)
+answered the wrong question. This version reports actual % capital outcomes.
+
+Methodology
+-----------
+For each asset on each day with an active signal:
+
+    return_pct = daily_R * ATR_pct * allocation_pct
+
+Where:
+    daily_R     = compute_trade_pnl(signal, label, tp, sl)  -- +/-tp_mult or +/-sl_mult
+    ATR_pct     = ATR / close_price  (14-day ATR from OHLCV data)
+    allocation  = 1 / N_active       (equal-weight across active assets)
+
+The portfolio daily % return is the sum of per-asset % returns.
+Then we block-bootstrap these daily % returns to estimate drawdown risk.
+
+Still NOT captured (conservative estimates):
+    - Slippage, spread costs, commissions
+    - Position sizing guardrails (drawdown taper, position caps, leverage budget)
+    - MT5 lot quantization (0.01 lot minimum)
+    - Partial fills and execution delay
+    - Intraday risk (all returns assumed daily close-to-close)
+
+Results are optimistic — use as upper-bound estimate.
 
 Usage:
-    PYTHONPATH=$PYTHONPATH:. python scripts/monte_carlo_drawdown.py
-    PYTHONPATH=$PYTHONPATH:. python scripts/monte_carlo_drawdown.py --n-sim 50000 --output data/mc_results.json
+    PYTHONPATH=$PYTHONPATH:. python scripts/backtest/monte_carlo_drawdown.py
+    PYTHONPATH=$PYTHONPATH:. python scripts/backtest/monte_carlo_drawdown.py --n-sim 50000 --output mc_results.json
 """
 
 from __future__ import annotations
@@ -25,15 +49,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from shared.volatility import compute_atr_pct
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("monte_carlo")
 
 WALKDIR = Path(__file__).resolve().parent.parent / "walkforward"
+RAWDIR = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 
 SELL_ONLY_ASSETS: frozenset[str] = frozenset(
     {
         "CADCHF",
-        "AUDUSD",
         "ES",
         "NQ",
         "NZDCHF",
@@ -41,17 +67,13 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
         "^DJI",
         "USDCHF",
         "EURCHF",
-        "NZDUSD",
-        "EURNZD",
     }
 )
 
 SELL_ONLY_ACTIVE = True
 
-# ── Core R computation (same as backtest) ────────────────────────────────
 
-
-def compute_r(signal: int, label: int, tp: float, sl: float) -> float:
+def compute_trade_pnl(signal: int, label: int, tp: float, sl: float) -> float:
     if signal == 1:
         return tp if label == 1 else -sl
     if signal == -1:
@@ -59,7 +81,17 @@ def compute_r(signal: int, label: int, tp: float, sl: float) -> float:
     return 0.0
 
 
-# ── Load data ────────────────────────────────────────────────────────────
+def _resolve_ohlcv_path(asset_name: str) -> str | None:
+    base = asset_name.replace("^", "").replace("=X", "").replace("=F", "")
+    candidates = [
+        os.path.join(RAWDIR, f"{asset_name}_X_1d.parquet"),
+        os.path.join(RAWDIR, f"{base}_1d.parquet"),
+        os.path.join(RAWDIR, f"{base}_F_1d.parquet"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def load_pt_sl() -> dict[str, tuple[float, float]]:
@@ -76,33 +108,51 @@ def load_pt_sl() -> dict[str, tuple[float, float]]:
 
 def load_daily_portfolio_returns(
     sell_only: bool = True,
-) -> pd.Series:
-    """Load all signal parquets and compute daily equal-weighted portfolio
-    return (mean R-multiple across all assets with active signals).
-
-    Returns a Series indexed by date with daily portfolio return.
-    """
+) -> tuple[pd.Series, pd.Series]:
     pattern = os.path.join(WALKDIR, "*_wf_signals.parquet")
-    files = glob.glob(pattern)
+    files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No signal parquets found in {WALKDIR}")
 
     pt_sl = load_pt_sl()
 
-    # Load all assets
-    asset_dfs: dict[str, pd.DataFrame] = {}
+    asset_signals: dict[str, pd.DataFrame] = {}
+    asset_atr: dict[str, pd.Series] = {}
     for fpath in files:
         name = os.path.basename(fpath).replace("_wf_signals.parquet", "")
-        df = pd.read_parquet(fpath)
-        asset_dfs[name] = df
+        if name not in pt_sl:
+            logger.warning("No pt_sl config for %s — skipping", name)
+            continue
 
-    # Compute daily portfolio return
-    all_dates = sorted(set(d for df in asset_dfs.values() for d in df.index))
-    daily_rs: list[float] = []
+        df = pd.read_parquet(fpath)
+        # Normalise to timezone-naive UTC date for cross-asset alignment
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert("UTC").tz_localize(None)
+        asset_signals[name] = df
+
+        ohlcv_path = _resolve_ohlcv_path(name)
+        if ohlcv_path is None:
+            logger.warning("No OHLCV data for %s — ATR_pct set to 0", name)
+            asset_atr[name] = pd.Series(0.0, index=df.index)
+        else:
+            ohlcv = pd.read_parquet(ohlcv_path)
+            atr_pct = compute_atr_pct(ohlcv, period=14)
+            if atr_pct.index.tz is not None:
+                atr_pct.index = atr_pct.index.tz_convert("UTC").tz_localize(None)
+            atr_aligned = atr_pct.reindex(df.index, method="ffill").fillna(0.0)
+            asset_atr[name] = atr_aligned
+
+        logger.info("  %s: loaded %d signals + ATR_pct", name, len(df))
+
+    all_dates = sorted(set(d for df in asset_signals.values() for d in df.index))
+    r_daily: list[float] = []
+    pct_daily: list[float] = []
 
     for d in all_dates:
         day_rs: list[float] = []
-        for name, df in asset_dfs.items():
+        day_pcts: list[float] = []
+
+        for name, df in asset_signals.items():
             if d not in df.index:
                 continue
             row = df.loc[d]
@@ -111,17 +161,25 @@ def load_daily_portfolio_returns(
                 sig = 0
             if sig == 0:
                 continue
+
             lbl = int(row["label"])
             tp, sl = pt_sl.get(name, (2.0, 2.0))
-            r = compute_r(sig, lbl, tp, sl)
+            r = compute_trade_pnl(sig, lbl, tp, sl)
+
             day_rs.append(r)
 
-        daily_rs.append(float(np.mean(day_rs)) if day_rs else 0.0)
+            atr_p = asset_atr[name].loc[d] if d in asset_atr[name].index else 0.0
+            day_pcts.append(r * atr_p)
 
-    return pd.Series(daily_rs, index=pd.DatetimeIndex(all_dates))
+        if day_rs:
+            r_daily.append(float(np.mean(day_rs)))
+            pct_daily.append(float(np.mean(day_pcts)))
+        else:
+            r_daily.append(0.0)
+            pct_daily.append(0.0)
 
-
-# ── Monte Carlo simulation ───────────────────────────────────────────────
+    idx = pd.DatetimeIndex(all_dates)
+    return pd.Series(r_daily, index=idx), pd.Series(pct_daily, index=idx)
 
 
 def simulate_equity_curves(
@@ -130,15 +188,8 @@ def simulate_equity_curves(
     horizons_days: list[int] | None = None,
     block_size: int = 10,
     seed: int = 42,
+    is_pct: bool = False,
 ) -> dict:
-    """Run Monte Carlo simulation using block bootstrap.
-
-    Samples blocks of consecutive days (block_size) to preserve temporal
-    dependence (e.g., clusters of consecutive loss days). Within each
-    horizon, draws N/block_size blocks with replacement.
-
-    Returns a dict of horizon -> list of (total_return, max_drawdown, n_up_days).
-    """
     if horizons_days is None:
         horizons_days = [252, 756, 1260]
 
@@ -146,12 +197,15 @@ def simulate_equity_curves(
     n_obs = len(daily_returns)
     n_blocks_total = n_obs - block_size + 1
 
-    results: dict[int, list[dict]] = {}
-    for h in horizons_days:
-        results[h] = []
+    results: dict[int, list[dict]] = {h: [] for h in horizons_days}
 
+    units = "%" if is_pct else "R"
     logger.info(
-        "Running %d simulations across %d horizons (block_size=%d)...", n_simulations, len(horizons_days), block_size
+        "Running %d simulations across %d horizons (%s-space, block_size=%d)...",
+        n_simulations,
+        len(horizons_days),
+        units,
+        block_size,
     )
     t0 = time.monotonic()
 
@@ -163,7 +217,6 @@ def simulate_equity_curves(
             logger.info("  %d/%d simulations (%.1f/s, ETA %.0fs)", sim_idx, n_simulations, rate, eta)
 
         for h in horizons_days:
-            # Block bootstrap: sample blocks of consecutive days with replacement
             n_blocks_needed = int(np.ceil(h / block_size))
             n_total = n_blocks_needed * block_size
             sampled = np.empty(n_total, dtype=daily_returns.dtype)
@@ -174,20 +227,25 @@ def simulate_equity_curves(
 
             sampled_returns = sampled[:h]
 
-            # R-multiples are additive, not multiplicative.
-            # Equity = cumulative sum of R, peak = running max.
-            # Drawdown in R-units = equity - peak (negative = below peak).
-            equity = np.cumsum(sampled_returns)
-            peak = np.maximum.accumulate(equity)
-            drawdown = equity - peak
+            if is_pct:
+                growth = 1.0 + sampled_returns
+                equity = np.cumprod(growth)
+                peak = np.maximum.accumulate(equity)
+                drawdown = (equity - peak) / peak
+                total_return = float(equity[-1] - 1.0)
+                max_dd = float(np.min(drawdown))
+            else:
+                equity = np.cumsum(sampled_returns)
+                peak = np.maximum.accumulate(equity)
+                drawdown = equity - peak
+                total_return = float(np.sum(sampled_returns))
+                max_dd = float(np.min(drawdown))
 
-            total_r = float(np.sum(sampled_returns))
-            max_dd = float(np.min(drawdown))
             n_up = int(np.sum(sampled_returns > 0))
 
             results[h].append(
                 {
-                    "total_r": total_r,
+                    "total_return": total_return,
                     "max_dd": max_dd,
                     "n_up": n_up,
                     "n_total": h,
@@ -196,63 +254,51 @@ def simulate_equity_curves(
 
     elapsed = time.monotonic() - t0
     logger.info("Done — %d simulations in %.1fs (%.1f/s)", n_simulations, elapsed, n_simulations / elapsed)
-
     return results
 
 
-# ── Analysis ─────────────────────────────────────────────────────────────
-
-
 def compute_dd_var(values: list[float], percentile: float) -> float:
-    """Compute Value at Risk at given percentile (e.g. 0.05 for 95% VaR)."""
     sorted_v = sorted(values)
     idx = int(len(sorted_v) * percentile)
     return sorted_v[idx]
 
 
 def analyze_results(results: dict[int, list[dict]]) -> dict:
-    """Compute summary statistics for each horizon."""
     summary: dict = {}
     for horizon, sims in results.items():
         dd_values = [s["max_dd"] for s in sims]
-        tr_values = [s["total_r"] for s in sims]
+        tr_values = [s["total_return"] for s in sims]
         up_ratios = [s["n_up"] / s["n_total"] for s in sims]
 
         year_label = f"{horizon // 252}y" if horizon % 252 == 0 else f"{horizon}d"
         summary[year_label] = {
             "horizon_days": horizon,
             "n_simulations": len(sims),
-            "expected_total_r": round(float(np.mean(tr_values)), 2),
-            "median_total_r": round(float(np.median(tr_values)), 2),
-            "std_total_r": round(float(np.std(tr_values)), 2),
-            "expected_max_dd": round(float(np.mean(dd_values)), 4),
-            "median_max_dd": round(float(np.median(dd_values)), 4),
-            "std_max_dd": round(float(np.std(dd_values)), 4),
-            "var_95_dd": round(compute_dd_var(dd_values, 0.05), 4),
-            "var_99_dd": round(compute_dd_var(dd_values, 0.01), 4),
-            "worst_dd": round(float(np.min(dd_values)), 4),
-            "best_dd": round(float(np.max(dd_values)), 4),
-            "p_dd_lt_minus_5r": round(float(np.mean([v < -5.0 for v in dd_values])), 4),
-            "p_dd_lt_minus_10r": round(float(np.mean([v < -10.0 for v in dd_values])), 4),
-            "p_dd_lt_minus_20r": round(float(np.mean([v < -20.0 for v in dd_values])), 4),
-            "p_dd_lt_minus_50r": round(float(np.mean([v < -50.0 for v in dd_values])), 4),
-            "p_positive_return": round(float(np.mean([v > 0 for v in tr_values])), 4),
-            "expected_up_ratio": round(float(np.mean(up_ratios)), 4),
+            "expected_total_return": round(float(np.mean(tr_values)), 6),
+            "median_total_return": round(float(np.median(tr_values)), 6),
+            "std_total_return": round(float(np.std(tr_values)), 6),
+            "expected_max_dd": round(float(np.mean(dd_values)), 6),
+            "median_max_dd": round(float(np.median(dd_values)), 6),
+            "std_max_dd": round(float(np.std(dd_values)), 6),
+            "var_95_dd": round(compute_dd_var(dd_values, 0.05), 6),
+            "var_99_dd": round(compute_dd_var(dd_values, 0.01), 6),
+            "worst_dd": round(float(np.min(dd_values)), 6),
+            "best_dd": round(float(np.max(dd_values)), 6),
+            "p_positive_return": round(float(np.mean([v > 0 for v in tr_values])), 6),
+            "expected_up_ratio": round(float(np.mean(up_ratios)), 6),
         }
 
     return summary
 
 
-# ── Report ───────────────────────────────────────────────────────────────
-
-
-def format_report(summary: dict) -> str:
+def format_report(summary: dict, units: str) -> str:
     lines: list[str] = []
     lines.append("=" * 72)
-    lines.append("MONTE CARLO DRAWDOWN SIMULATION")
+    lines.append(f"MONTE CARLO DRAWDOWN SIMULATION ({units}-space)")
     lines.append("=" * 72)
     lines.append(f"SELL_ONLY filter active: {SELL_ONLY_ACTIVE}")
-    lines.append("Assets: 18 (11 SELL_ONLY, 7 full)")
+    lines.append(f"Assets: 19 ({len(SELL_ONLY_ASSETS)} SELL_ONLY, {19 - len(SELL_ONLY_ASSETS)} full two-way)")
+    lines.append(f"Units: {units} of capital")
     lines.append("")
 
     for label in sorted(summary.keys()):
@@ -261,86 +307,128 @@ def format_report(summary: dict) -> str:
         lines.append(f"Horizon: {label} ({s['horizon_days']} trading days)")
         lines.append(f"Simulations: {s['n_simulations']:,}")
         lines.append("")
-        lines.append("  ── Return ──")
-        lines.append(f"  Expected total R:   {s['expected_total_r']:>8.2f}")
-        lines.append(f"  Median total R:     {s['median_total_r']:>8.2f}")
-        lines.append(f"  Std total R:        {s['std_total_r']:>8.2f}")
+        lines.append(f"  -- Return ({units}) --")
+        lines.append(f"  Expected total:     {s['expected_total_return']:>10.4f}")
+        lines.append(f"  Median total:       {s['median_total_return']:>10.4f}")
+        lines.append(f"  Std total:          {s['std_total_return']:>10.4f}")
         lines.append(f"  P(positive return): {s['p_positive_return']:>7.1%}")
         lines.append("")
-        lines.append("  ── Drawdown ──")
-        lines.append(f"  Expected max DD:    {s['expected_max_dd']:>8.2f}R")
-        lines.append(f"  Median max DD:      {s['median_max_dd']:>8.2f}R")
-        lines.append(f"  95% VaR of DD:      {s['var_95_dd']:>8.2f}R  (5% chance of worse)")
-        lines.append(f"  99% VaR of DD:      {s['var_99_dd']:>8.2f}R  (1% chance of worse)")
-        lines.append(f"  Worst DD observed:  {s['worst_dd']:>8.2f}R")
-        lines.append("")
-        lines.append("  ── Tail probabilities ──")
-        lines.append(f"  P(DD < -5R):  {s['p_dd_lt_minus_5r']:>7.1%}")
-        lines.append(f"  P(DD < -10R): {s['p_dd_lt_minus_10r']:>7.1%}")
-        lines.append(f"  P(DD < -20R): {s['p_dd_lt_minus_20r']:>7.1%}")
-        lines.append(f"  P(DD < -50R): {s['p_dd_lt_minus_50r']:>7.1%}")
+        lines.append(f"  -- Drawdown ({units}) --")
+        lines.append(f"  Expected max DD:    {s['expected_max_dd']:>10.4f}")
+        lines.append(f"  Median max DD:      {s['median_max_dd']:>10.4f}")
+        lines.append(f"  95%% VaR of DD:      {s['var_95_dd']:>10.4f}  (5%% chance of worse)")
+        lines.append(f"  99%% VaR of DD:      {s['var_99_dd']:>10.4f}  (1%% chance of worse)")
+        lines.append(f"  Worst DD observed:  {s['worst_dd']:>10.4f}")
         lines.append("")
 
     lines.append("=" * 72)
-    lines.append("NOTE: R-multiples are NOT currency. 1R = ATR * sl_mult per asset.")
-    lines.append("Drawdowns are in R-units, not % of capital.")
+    lines.append("NOTES:")
+    if units == "R":
+        lines.append("  R-multiples are additive, dimensionless. P~1.0 expected.")
+        lines.append("  This is the LEGACY methodology. Use %-space for real drawdown estimates.")
+    else:
+        lines.append("  %-space uses geometric compounding (cumulative product).")
+        lines.append("  Still NOT captured: slippage, spread, commissions, position sizing guardrails,")
+        lines.append("  MT5 lot quantization, partial fills, intraday risk.")
+        lines.append("  Results are optimistic -- use as upper-bound estimate.")
     lines.append("=" * 72)
     return "\n".join(lines)
 
 
-# ── Main ─────────────────────────────────────────────────────────────────
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Monte Carlo drawdown simulation from walk-forward OOS data")
+    parser = argparse.ArgumentParser(description="Monte Carlo drawdown simulation with ATR_pct conversion")
     parser.add_argument("--n-sim", type=int, default=10_000, help="Number of simulations (default: 10,000)")
     parser.add_argument("--output", default=None, help="Path to save JSON results (optional)")
-    parser.add_argument("--no-sell-only", action="store_true", help="Disable SELL_ONLY filter for comparison")
+    parser.add_argument("--no-sell-only", action="store_true", help="Disable SELL_ONLY filter")
+    parser.add_argument("--r-space", action="store_true", help="Also run legacy R-space version")
 
     args = parser.parse_args()
 
     global SELL_ONLY_ACTIVE
     SELL_ONLY_ACTIVE = not args.no_sell_only
 
-    logger.info("Loading daily portfolio returns...")
-    daily_returns = load_daily_portfolio_returns(sell_only=SELL_ONLY_ACTIVE)
-    logger.info("Loaded %d daily returns (%.4f ± %.4f)", len(daily_returns), daily_returns.mean(), daily_returns.std())
+    logger.info("Loading daily portfolio returns with ATR_pct conversion...")
+    r_series, pct_series = load_daily_portfolio_returns(sell_only=SELL_ONLY_ACTIVE)
 
-    # Print empirical stats (R-multiples are additive)
-    emp_equity = np.cumsum(daily_returns.values)
-    emp_peak = np.maximum.accumulate(emp_equity)
-    emp_dd = emp_equity - emp_peak
-    emp_sharpe = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if daily_returns.std() > 0 else 0
+    logger.info("Loaded %d daily returns", len(r_series))
+    logger.info("  R-space:   mean=%.6f  std=%.6f  total=%.2f", r_series.mean(), r_series.std(), r_series.sum())
     logger.info(
-        "Empirical portfolio: total_R=%.2f  max_dd=%.2fR  Sharpe=%.2f", daily_returns.sum(), emp_dd.min(), emp_sharpe
+        "  %%-space:   mean=%.6f  std=%.6f  total=%.4f%%", pct_series.mean(), pct_series.std(), pct_series.sum() * 100
     )
 
-    results = simulate_equity_curves(
-        daily_returns=daily_returns.values,
+    for is_pct, series, label in [(False, r_series, "R-space"), (True, pct_series, "%-space")]:
+        vals = series.values
+        if is_pct:
+            growth = 1.0 + vals
+            equity = np.cumprod(growth)
+            peak = np.maximum.accumulate(equity)
+            dd = (equity - peak) / peak
+            total_ret = equity[-1] - 1.0
+            max_dd_val = dd.min()
+        else:
+            equity = np.cumsum(vals)
+            peak = np.maximum.accumulate(equity)
+            dd = equity - peak
+            total_ret = vals.sum()
+            max_dd_val = dd.min()
+
+        sharpe = (vals.mean() / vals.std() * np.sqrt(252)) if vals.std() > 0 else 0
+        logger.info("Empirical %s: total=%.4f  max_dd=%.4f  Sharpe=%.2f", label, total_ret, max_dd_val, sharpe)
+
+    logger.info("Running %%-space Monte Carlo...")
+    pct_results = simulate_equity_curves(
+        daily_returns=pct_series.values,
         n_simulations=args.n_sim,
         horizons_days=[252, 756, 1260],
+        is_pct=True,
     )
+    pct_summary = analyze_results(pct_results)
+    print(format_report(pct_summary, units="%"))
 
-    summary = analyze_results(results)
-    report = format_report(summary)
-    print(report)
+    if args.r_space:
+        logger.info("Running R-space Monte Carlo (legacy, comparison only)...")
+        r_results = simulate_equity_curves(
+            daily_returns=r_series.values,
+            n_simulations=args.n_sim,
+            horizons_days=[252, 756, 1260],
+            is_pct=False,
+        )
+        r_summary = analyze_results(r_results)
+        print(format_report(r_summary, units="R"))
 
     if args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w") as f:
-            json.dump(
-                {
-                    "sell_only_active": SELL_ONLY_ACTIVE,
-                    "n_simulations": args.n_sim,
-                    "n_empirical_days": len(daily_returns),
-                    "empirical_total_r": round(float(daily_returns.sum()), 2),
-                    "empirical_max_dd": round(float(emp_dd.min()), 4),
-                    "summary": summary,
+
+        combined = {
+            "sell_only_active": SELL_ONLY_ACTIVE,
+            "n_simulations": args.n_sim,
+            "n_empirical_days": len(r_series),
+            "empirical": {
+                "r_space": {
+                    "total": round(float(r_series.sum()), 4),
+                    "mean": round(float(r_series.mean()), 6),
+                    "std": round(float(r_series.std()), 6),
+                    "sharpe": round(float(r_series.mean() / r_series.std() * np.sqrt(252)), 4)
+                    if r_series.std() > 0
+                    else 0,
                 },
-                f,
-                indent=2,
-            )
+                "pct_space": {
+                    "total_pct": round(float(pct_series.sum() * 100), 4),
+                    "mean_pct": round(float(pct_series.mean() * 100), 6),
+                    "std_pct": round(float(pct_series.std() * 100), 6),
+                    "sharpe": round(float(pct_series.mean() / pct_series.std() * np.sqrt(252)), 4)
+                    if pct_series.std() > 0
+                    else 0,
+                },
+            },
+            "pct_space": pct_summary,
+        }
+        if args.r_space:
+            combined["r_space"] = r_summary
+
+        with open(out_path, "w") as f:
+            json.dump(combined, f, indent=2)
         logger.info("Results saved to %s", out_path)
 
 

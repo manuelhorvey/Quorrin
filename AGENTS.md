@@ -662,6 +662,36 @@ The counterfactual script uses a 600-row dataset (vs 848 in production), 5 folds
   5. `orchestrator/engine.py:Phase B` — broker position cache invalidated before stale-ticket detection (5s cache would otherwise miss positions placed earlier in same cycle)
   **Validation**: 11 MT5 orphans adopted in cycle 2, 0 new orphans in 3+ consecutive subsequent cycles.
 
+## Monte Carlo Drawdown Simulation — V2 Fix (2026-06-25)
+
+**Problem**: `monte_carlo_drawdown.py` V1 bootstrapped raw R-multiples (additive, dimensionless), which have high mean (~1.0 R/day from walk-forward), guaranteeing p_positive_return ≈ 1.0 regardless of horizon. The results answered the wrong question — they showed "probability cumulative R > 0" not "probability portfolio % return > 0."
+
+**Fix**: Convert each daily R-multiple to % portfolio return using per-asset ATR_pct (from `shared.volatility.compute_atr_pct`) and implicit equal-weight allocation:
+
+```
+return_pct = R × ATR_pct  (per asset),  portfolio_return = mean(return_pct) across active assets
+```
+
+**Results from 10k sims (walk-forward data, 447 OOS days)**:
+| Metric | 1y | 3y | 5y |
+|--------|------|------|------|
+| Expected total return | +13.9× (1300%) | +3440× | +771,680× |
+| P(positive return) | 100% | 100% | 100% |
+| VaR(95) max DD | -2.3% | -2.8% | -3.0% |
+| Worst DD observed | -4.2% | -4.5% | -4.5% |
+
+**Interpretation**: Drawdown metrics are now in % of capital (meaningful). P(positive return)=100% persists because the walk-forward signals are genuinely high-quality (empirical Sharpe ~17 in %-space, ~20 in R-space). The total returns are unrealistically high because the walk-forward data itself is optimistic — this is the known caveat from AGENTS.md (Sharpe=9.66, "R-multiple portfolio Sharpe"). The fix correctly converts R to %, but the underlying signal quality is a separate concern.
+
+**What the fix enabled**:
+- Drawdown in % of capital (now interpretable — VaR(95) DD ≈ -2.3% at 1y)
+- Geometric compounding for multi-year horizons (was additive cumsum)
+- SELL_ONLY list updated to current 8 assets
+- Both %-space and legacy R-space output for comparison (use `--r-space`)
+
+**What remains unaddressed** (optimistic bias): slippage, spread, commissions, position sizing guardrails, MT5 lot quantization, partial fills, intraday risk. Results are upper-bound estimates. Future work: bootstrap from live equity curve once sufficient trading history accumulates.
+
+**Files**: `scripts/backtest/monte_carlo_drawdown.py`, `mc_results_v2.json`
+
 ## Ruff
 
 ```bash

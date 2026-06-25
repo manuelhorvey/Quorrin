@@ -100,7 +100,7 @@ class AssetEngine:
             position_size if position_size is not None else engine_cfg.position_size,
         )
 
-        # ── Runtime state ────────────────────────────────────────────
+        # ── Runtime state (extracted to keep __init__ readable) ──────
         self.start_time = datetime.now(tz=ET)
         self.model = None
         self.signal_data = None
@@ -110,17 +110,14 @@ class AssetEngine:
         self.trades = []
         self.trade_log = []
         self.prob_history = []
-        self._trained = False
-        self._cycle_counter: int = 0
-        self._kelly_multiplier = 1.0
         self._research_mode = engine_cfg.research_mode
         self._retrain_window = retrain_window if retrain_window is not None else engine_cfg.retrain_window
         self.model_path = os.path.join(BASE, "paper_trading", "models", f"{contract.name}_model.json")
         self._wal_writer = wal_writer
         self._model_hash = self._load_model_hash()
         self._calibration_registry: CalibrationRegistry | None = None
-        self._calibration_applied = False
         self._load_calibration_registry()
+        self._init_working_state()
 
         # ── Infrastructure dependencies ──────────────────────────────
         self.execution_bridge = ctx.get_execution_bridge()
@@ -144,101 +141,14 @@ class AssetEngine:
         # ── SL/TP & entry machinery ──────────────────────────────────
         self._sltp_engine = build_dynamic_sltp_from_config(self.config)
         self._scale_out_engine = build_scale_out_from_config(self.config)
-        self._scale_out_plan = None
         self._entry = EntryService()
         self._entry_optimizer = EntryOptimizer()
         self._execution_policy = ExecutionPolicyLayer()
         self._structure_detector = MarketStructureDetector()
         self._archetype_classifier = ArchetypeClassifier()
-        self._pending_entries: dict[str, object] = {}
-        self._deferred_entry = None
-
-        # ── Working state for entry/exit logic ───────────────────────
-        self._entry_price: float | None = None
-        self._entry_vol = None
-        self._entry_signal_dir: int = 0
-        self._entry_archetype = "UNKNOWN"
-        self._entry_pressure = None
-        self._entry_validity_state = "YELLOW"
-        self._bars_at_entry = 0
-        self._last_adjust_bar = 0
-        self._initial_sl = None
-        self._initial_tp = None
-        self._last_entry_slippage = 0.0
-        self._last_policy_hash = ""
-        self._regime_adjusted_entry = False
-        self._cooldown_score = 0.0
-        self._last_cooldown_update_cycle = -999
-        self._last_stop_out_side = None
-        self._last_stop_out_cycle = -999
-        self._last_stop_out_price = None
-        self._last_signal_flip_cycle = -self.config.get("min_flip_interval_bars", 3) * 2
-        self._min_flip_interval_bars = self.config.get("min_flip_interval_bars", 3)
-        self._churn_ratio_threshold = self.config.get("churn_ratio_threshold", 0.50)
-        self._initial_settlement_done = False
-
-        # ── MT5 orphan cleanup ────────────────────────────────────────
-        self._mt5_cleanup_queue: list[tuple[str, int]] = []
-        self._mt5_cleanup_retries: int = 0
-
-        # ── Spread gate state ───────────────────────────────────────────
-        self._last_spread_bps: float | None = None
-        self._last_spread_time: float = 0.0
-        self._spread_tier: str = self.config.get("spread_tier", "fx_cross")
-
-        # ── Inference & training state ───────────────────────────────
-        self._last_feature_vector: dict[str, float] | None = None
-        self._last_feature_hash: str = ""
-        self._last_feature_schema: list[str] | None = None
-        self._last_label = None
-        self._last_confidence = 0.0
-        self._last_prob_long = 0.0
-        self._last_prob_short = 0.0
-        self._last_prob_neutral = 0.0
-        self._last_meta_proba = None
-        self._last_macro_dir = None
-        self._last_blend_dir = None
-        self._last_regime_row = None
-        self._regime_bar_counter = 0
-        self._last_regime_label = None
-        self._current_regime = "neutral"
-        self._alpha_feature_cols = None
-        self.regime_feature_names = []
-        self._ensemble = None
-        self._regime_model = None
-        self._meta_label_model = None
-        self._ensemble_breakdown = {}
-        self._window_id_counter = 0
-        self._current_window_train_start = ""
-        self._current_window_train_end = ""
-        self._last_stability = None
-        self._last_psi_drift = None
-        self._last_gates_trace: dict[str, bool] | None = None
-        self._last_sizing_chain: dict[str, float] | None = None
-        self._truncate_inference = False
-        self._psi_drift_initialized = False
-        self._signal_chain: list = []
-        self._last_bar_count: int | None = None
-        self._suppress_until: float = 0.0
-
-        # ── Regime raw output logging ───────────────────────────────────
-        self._last_regime_raw_probas: tuple[float, float] | None = None  # (P_SHORT, P_LONG)
-        self._last_regime_long_prob: float | None = None
-        self._last_regime_features: dict[str, float] | None = None  # regime input feature values
-
-        # ── Shadow engine ────────────────────────────────────────────
-        self._shadow_sltp = None
-        self._risk_signal = None
-        self._shadow_action = None
-        self._shadow_drift_intel = None
-        self._shadow_learning = None
 
         # ── Attribution ──────────────────────────────────────────────
         self._attribution = AttributionCollector()
-        self._experiment_id = ""
-        self._attribution_export_dir = None
-        self._current_trade_id = None
-        self._attribution_buffer = []
 
         # ── Sub-pipelines (training, inference, PnL, position) ──────
         self._training = AssetTrainingPipeline(self)
@@ -313,6 +223,100 @@ class AssetEngine:
         else:
             self._calibration_registry = None
             logger.debug("%s: no calibration models found in %s", self.name, cal_dir)
+
+    def _init_working_state(self) -> None:
+        self._trained = False
+        self._cycle_counter = 0
+        self._kelly_multiplier = 1.0
+        self._calibration_applied = False
+
+        # ── Entry/exit working state ─────────────────────────────────────
+        self._entry_price: float | None = None
+        self._entry_vol = None
+        self._entry_signal_dir = 0
+        self._entry_archetype = "UNKNOWN"
+        self._entry_pressure = None
+        self._entry_validity_state = "YELLOW"
+        self._bars_at_entry = 0
+        self._last_adjust_bar = 0
+        self._initial_sl = None
+        self._initial_tp = None
+        self._last_entry_slippage = 0.0
+        self._last_policy_hash = ""
+        self._regime_adjusted_entry = False
+        self._cooldown_score = 0.0
+        self._last_cooldown_update_cycle = -999
+        self._last_stop_out_side = None
+        self._last_stop_out_cycle = -999
+        self._last_stop_out_price = None
+        self._last_signal_flip_cycle = -self.config.get("min_flip_interval_bars", 3) * 2
+        self._min_flip_interval_bars = self.config.get("min_flip_interval_bars", 3)
+        self._churn_ratio_threshold = self.config.get("churn_ratio_threshold", 0.50)
+        self._initial_settlement_done = False
+        self._scale_out_plan = None
+        self._pending_entries: dict[str, object] = {}
+        self._deferred_entry = None
+
+        # ── MT5 orphan cleanup ──────────────────────────────────────────
+        self._mt5_cleanup_queue: list[tuple[str, int]] = []
+        self._mt5_cleanup_retries = 0
+
+        # ── Spread gate state ───────────────────────────────────────────
+        self._last_spread_bps: float | None = None
+        self._last_spread_time = 0.0
+        self._spread_tier = self.config.get("spread_tier", "fx_cross")
+
+        # ── Inference & training state ──────────────────────────────────
+        self._last_feature_vector: dict[str, float] | None = None
+        self._last_feature_hash = ""
+        self._last_feature_schema: list[str] | None = None
+        self._last_label = None
+        self._last_confidence = 0.0
+        self._last_prob_long = 0.0
+        self._last_prob_short = 0.0
+        self._last_prob_neutral = 0.0
+        self._last_meta_proba = None
+        self._last_macro_dir = None
+        self._last_blend_dir = None
+        self._last_regime_row = None
+        self._regime_bar_counter = 0
+        self._last_regime_label = None
+        self._current_regime = "neutral"
+        self._alpha_feature_cols = None
+        self.regime_feature_names = []
+        self._ensemble = None
+        self._regime_model = None
+        self._meta_label_model = None
+        self._ensemble_breakdown = {}
+        self._window_id_counter = 0
+        self._current_window_train_start = ""
+        self._current_window_train_end = ""
+        self._last_stability = None
+        self._last_psi_drift = None
+        self._last_gates_trace: dict[str, bool] | None = None
+        self._last_sizing_chain: dict[str, float] | None = None
+        self._truncate_inference = False
+        self._psi_drift_initialized = False
+        self._signal_chain: list = []
+        self._last_bar_count: int | None = None
+        self._suppress_until = 0.0
+
+        # ── Regime raw output logging ───────────────────────────────────
+        self._last_regime_raw_probas: tuple[float, float] | None = None
+        self._last_regime_long_prob: float | None = None
+        self._last_regime_features: dict[str, float] | None = None
+
+        # ── Shadow engine state ─────────────────────────────────────────
+        self._risk_signal = None
+        self._shadow_action = None
+        self._shadow_drift_intel = None
+        self._shadow_learning = None
+
+        # ── Attribution ─────────────────────────────────────────────────
+        self._experiment_id = ""
+        self._attribution_export_dir = None
+        self._current_trade_id = None
+        self._attribution_buffer = []
 
     def set_experiment_context(self, experiment_id: str, export_dir: str | None = None) -> None:
         self._attribution_export_dir = _AttributionService.set_experiment_context(

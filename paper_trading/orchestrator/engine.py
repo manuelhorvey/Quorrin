@@ -161,9 +161,10 @@ class EngineOrchestrator:
         """Execute one orchestrator cycle.  Returns phased results dict.
 
         Phases:
+            PRE    — equity snapshot, leverage budget, exposure multiplier
             1. REFRESH  — parallel actor cycles (price + PnL + signal)
             2. VALIDITY — parallel validity updates
-            3. PORTFOLIO — aggregate health, circuit breakers
+            3. PORTFOLIO — aggregate health, circuit breakers, VaR, recovery
             4. PERSIST  — flush all persist queues to WAL
 
         Returns a dict with keys for each phase plus aggregated health.
@@ -183,10 +184,31 @@ class EngineOrchestrator:
 
         t0 = time.monotonic()
 
-        # ── Pre-phase: equity snapshot for sizing guardrails ────────────
-        # All actors see the same total_equity and drawdown derived from
-        # end-of-previous-cycle values, avoiding intra-cycle races.  The
-        # leverage budget is decremented atomically via Lock.
+        # ── Pre-phase ────────────────────────────────────────────────────
+        defaults, max_leverage, budget_ref = self._pre_phase_equity_snapshot()
+
+        # ── Phase 1 ──────────────────────────────────────────────────────
+        self._phase_1_refresh_signal(market_data, results)
+
+        # ── Phase 2 ──────────────────────────────────────────────────────
+        self._phase_2_validity(results)
+
+        # ── Phase 3 ──────────────────────────────────────────────────────
+        halted = self._phase_3_portfolio_health(results, defaults, max_leverage)
+        if halted:
+            return results
+
+        # ── Phase 4 ──────────────────────────────────────────────────────
+        self._phase_4_persist(results)
+
+        results["cycle_duration_ms"] = round((time.monotonic() - t0) * 1000.0, 2)
+        return results
+
+    # ── Phase helpers ───────────────────────────────────────────────────────────
+
+    def _pre_phase_equity_snapshot(self) -> tuple[dict, float, list]:
+        """Compute equity snapshot, leverage budget, and exposure multiplier
+        for the current cycle.  Returns (defaults, max_leverage, budget_ref)."""
         defaults = get_config().defaults or {}
         max_leverage = defaults.get("portfolio_max_leverage", 2.0)
         total_equity = sum(a._engine.mtm_value for a in self._actors.values() if hasattr(a._engine, "mtm_value"))
@@ -196,24 +218,15 @@ class EngineOrchestrator:
             if self._peak_portfolio_value is not None and self._peak_portfolio_value > 0
             else 0.0
         )
-        # Leverage budget: max_leverage × equity × backstop_multiplier.
-        # _backstop_multiplier and exposure_multiplier (drawdown/risk) are
-        # independent dampers that compound multiplicatively — intentional
-        # since they respond to different triggers (notional overshoot vs PnL).
         leverage_budget = max_leverage * total_equity * self._backstop_multiplier
         self._backstop_initial_budget = leverage_budget
         self._backstop_initial_equity = total_equity
         with self._leverage_lock:
             self._leverage_budget_remaining = leverage_budget
-        # Mutable list so all actors share the same budget object — each
-        # atomic decrement is visible to all readers.
         budget_ref = [leverage_budget]
-        self._cycles_elapsed += 1  # non-zero → stable equity sample available for auto-unhalt
+        self._cycles_elapsed += 1
 
-        # Exposure multiplier: computed from current drawdown BEFORE entries
-        # so Phase 2 sizing uses the correct multiplier (not one cycle late).
         exp_mult, _ = compute_exposure_multiplier(current_dd)
-
         for actor in self._actors.values():
             actor._engine._cycle_total_equity = total_equity
             actor._engine._cycle_drawdown_pct = current_dd
@@ -221,8 +234,10 @@ class EngineOrchestrator:
             actor._engine._leverage_lock = self._leverage_lock
             if hasattr(actor._engine, "pos_mgr"):
                 actor._engine.pos_mgr.exposure_multiplier = exp_mult
+        return defaults, max_leverage, budget_ref
 
-        # ── Phase 1: Refresh + Signal (parallel, isolated) ──────────────
+    def _phase_1_refresh_signal(self, market_data: dict | None, results: dict) -> None:
+        """Parallel actor refresh + signal generation (Phase 1)."""
         results["phasetimestamps"][EnginePhase.REFRESH] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         asset_results: dict[str, AssetResult] = {}
 
@@ -246,7 +261,8 @@ class EngineOrchestrator:
             else:
                 results["assets"][name] = {"error": result.error}
 
-        # ── Phase 2: Validity updates (parallel) ────────────────────────
+    def _phase_2_validity(self, results: dict) -> None:
+        """Parallel validity updates (Phase 2)."""
         results["phasetimestamps"][EnginePhase.VALIDITY] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
         def _run_validity(name: str, actor: AssetActor) -> str | None:
@@ -264,7 +280,13 @@ class EngineOrchestrator:
             if err is not None:
                 logger.warning("%s validity update failed: %s", err.split(":")[0], err)
 
-        # ── Phase 3: Portfolio health aggregation ────────────────────────
+    def _phase_3_portfolio_health(self, results: dict, defaults: dict, max_leverage: float) -> bool:
+        """Aggregate health, circuit breakers, position concentration,
+        correlation, VaR, and recovery scheduling (Phase 3).
+
+        Returns True if a circuit breaker halted the engine (results dict
+        already populated with the halt reason).
+        """
         results["phasetimestamps"][EnginePhase.PORTFOLIO] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         health = compute_health_snapshot(self._actors)
         results["health"] = {
@@ -278,22 +300,20 @@ class EngineOrchestrator:
         }
         self._write_health_events(health)
 
-        # ── Drawdown circuit breaker ──────────────────────────────────────
+        # ── Compute total value (shared by several sub-phases) ───────────
         total_value = sum(
             actor._engine.current_value for actor in self._actors.values() if hasattr(actor._engine, "current_value")
         )
+
+        # ── 3a: Drawdown circuit breaker ─────────────────────────────────
         if self._peak_portfolio_value is None:
             self._peak_portfolio_value = total_value
         self._peak_portfolio_value = max(self._peak_portfolio_value, total_value)
-        dd_result = check_drawdown_circuit_breaker(
-            total_value,
-            self._peak_portfolio_value,
-            drawdown_limit=-0.15,
-        )
+        dd_result = check_drawdown_circuit_breaker(total_value, self._peak_portfolio_value, drawdown_limit=-0.15)
         results["drawdown"] = dd_result
         if dd_result["halted"]:
             logger.error(
-                "DRAWDOWN CIRCUIT BREAKER TRIGGERED: dd=%.2f%% — flattening and halting all actors",
+                "DRAWDOWN CIRCUIT BREAKER TRIGGERED: dd=%.2f%% \u2014 flattening and halting all actors",
                 dd_result["drawdown"] * 100,
             )
             self.flatten_positions(reason="drawdown_circuit_breaker")
@@ -303,15 +323,13 @@ class EngineOrchestrator:
             self._emergency_halt = True
             self._halt_reason = HaltReason.DRAWDOWN
             self._halt_detail = f"dd={dd_result['drawdown']:.4f}"
-            results["circuit_breaker"] = {
-                "triggered": True,
-                "reason": f"drawdown_{dd_result['drawdown']:.4f}",
-            }
-            return results
-        # ── Halt ratio circuit breaker ──────────────────────────────────────
+            results["circuit_breaker"] = {"triggered": True, "reason": f"drawdown_{dd_result['drawdown']:.4f}"}
+            return True
+
+        # ── 3b: Halt ratio circuit breaker ────────────────────────────────
         if not health.is_system_healthy:
             logger.error(
-                "PORTFOLIO CIRCUIT BREAKER: halt_ratio=%.2f exceeds max=%.2f — initiating emergency shutdown",
+                "PORTFOLIO CIRCUIT BREAKER: halt_ratio=%.2f exceeds max=%.2f \u2014 initiating emergency shutdown",
                 health.halt_ratio,
                 self._max_halt_ratio,
             )
@@ -323,9 +341,9 @@ class EngineOrchestrator:
                 "halt_ratio": health.halt_ratio,
                 "threshold": self._max_halt_ratio,
             }
-            return results
+            return True
 
-        # ── Phase 3b: Portfolio circuit breaker (vol spike + losses) ──────
+        # ── 3c: Vol spike + consecutive losses breaker ────────────────────
         prev_value = getattr(self, "_prev_portfolio_value", None)
         if prev_value is None:
             prev_value = total_value
@@ -336,10 +354,7 @@ class EngineOrchestrator:
                 self._last_pnl_date = today
         self._prev_portfolio_value = total_value
 
-        breaker_result = self._circuit_breaker.check(
-            portfolio_value=total_value,
-            actors=self._actors,
-        )
+        breaker_result = self._circuit_breaker.check(portfolio_value=total_value, actors=self._actors)
         results["circuit_breaker_full"] = {
             "trip": breaker_result.trip,
             "reason": breaker_result.reason,
@@ -352,29 +367,14 @@ class EngineOrchestrator:
             )
             self._halt_detail = breaker_result.reason
             logger.error(
-                "VOLATILITY CIRCUIT BREAKER TRIGGERED: %s — flattening and halting",
+                "VOLATILITY CIRCUIT BREAKER TRIGGERED: %s \u2014 flattening and halting",
                 breaker_result.reason,
             )
             self.flatten_positions(reason=f"circuit_breaker_{breaker_result.reason}")
-            results["circuit_breaker"] = {
-                "triggered": True,
-                "reason": breaker_result.reason,
-            }
-            return results
+            results["circuit_breaker"] = {"triggered": True, "reason": breaker_result.reason}
+            return True
 
-        # ── Phase 3d: Portfolio leverage backstop ─────────────────────────
-        # Should never fire in normal operation: the atomic Lock decrement
-        # in _submit_to_broker() prevents overshoot.  If it does fire,
-        # the equity snapshot was stale (intra-cycle PnL move) or there
-        # is a wiring/ordering bug.  The backstop ratchets down and decays
-        # exponentially toward 1.0 on subsequent breach-free cycles.
-        #
-        # The correction uses the fair budget (max_leverage × equity) as its
-        # denominator — NOT the backstop-compounded budget — so consecutive
-        # breaches of the same severity don't feed back into themselves and
-        # produce runaway decay toward zero.  The min() ratchet still provides
-        # "memory" across cycles: the worst correction ever seen is retained
-        # until decay gradually loosens it.
+        # ── 3d: Portfolio leverage backstop ───────────────────────────────
         total_entered = sum(getattr(actor._engine, "_last_entry_notional", 0.0) for actor in self._actors.values())
         tolerance = defaults.get("portfolio_leverage_tolerance", 0.001)
         fair_budget = max_leverage * self._backstop_initial_equity
@@ -391,15 +391,35 @@ class EngineOrchestrator:
                 self._backstop_multiplier,
             )
         else:
-            # Exponential decay of the penalty (1 - multiplier) toward 1.0.
-            # Decay rate 10%/cycle → 37 cycles to recover from 0.5 to 0.99.
             self._backstop_decay_cycles += 1
             penalty = 1.0 - self._backstop_multiplier
             penalty *= 0.9
             self._backstop_multiplier = 1.0 - penalty
 
-        # ── Phase 3e: Position concentration check ────────────────────────
-        # Warns when open positions are heavily skewed to one side.
+        # ── 3e: Position concentration check ─────────────────────────────
+        conc = self._compute_position_concentration()
+        results["position_concentration"] = conc
+        self._position_concentration = conc
+        if self._wal is not None:
+            try:
+                self._wal.write("position_concentration", conc)
+            except Exception:
+                logger.exception("WAL write failed for position_concentration")
+
+        # ── 3f: Cross-asset correlation ───────────────────────────────────
+        corr = self._compute_cross_asset_correlation()
+        results["correlation"] = corr
+
+        # ── 3g: MT5 orphan reconciliation ────────────────────────────────
+        self._reconcile_mt5_orphans()
+
+        # ── 3h: HealthMonitor + VaR + RecoveryScheduler ──────────────────
+        self._phase_3h_health_var_recovery(results)
+
+        return False
+
+    def _compute_position_concentration(self) -> dict:
+        """Count open positions per side and compute skew ratio."""
         long_count = 0
         short_count = 0
         for name, actor in self._actors.items():
@@ -416,33 +436,9 @@ class EngineOrchestrator:
                 long_count += 1
             elif side == "short":
                 short_count += 1
-        total_positions = long_count + short_count
-        if total_positions > 0:
-            long_ratio = long_count / total_positions
-            skew = max(long_ratio, 1.0 - long_ratio)
-            threshold = (get_config().defaults or {}).get("net_short_concentration_threshold", 0.75)
-            if skew > threshold:
-                side_label = "LONG" if long_ratio > 0.5 else "SHORT"
-                logger.warning(
-                    "POSITION_CONCENTRATION: %d/%d positions on %s side (skew=%.1f%% threshold=%.0f%%)",
-                    max(long_count, short_count),
-                    total_positions,
-                    side_label,
-                    skew * 100,
-                    threshold * 100,
-                )
-            results["position_concentration"] = {
-                "long": long_count,
-                "short": short_count,
-                "total": total_positions,
-                "skew": round(skew, 4),
-                "dominant_side": side_label if total_positions > 0 and skew > threshold else "balanced",
-                "threshold": threshold,
-                "alert": skew > threshold,
-            }
-            self._position_concentration = results["position_concentration"]
-        else:
-            results["position_concentration"] = {
+        total = long_count + short_count
+        if total == 0:
+            return {
                 "long": 0,
                 "short": 0,
                 "total": 0,
@@ -451,16 +447,31 @@ class EngineOrchestrator:
                 "threshold": 0.75,
                 "alert": False,
             }
-            self._position_concentration = results["position_concentration"]
+        long_ratio = long_count / total
+        skew = max(long_ratio, 1.0 - long_ratio)
+        threshold = (get_config().defaults or {}).get("net_short_concentration_threshold", 0.75)
+        side_label = "LONG" if long_ratio > 0.5 else "SHORT"
+        if skew > threshold:
+            logger.warning(
+                "POSITION_CONCENTRATION: %d/%d positions on %s side (skew=%.1f%% threshold=%.0f%%)",
+                max(long_count, short_count),
+                total,
+                side_label,
+                skew * 100,
+                threshold * 100,
+            )
+        return {
+            "long": long_count,
+            "short": short_count,
+            "total": total,
+            "skew": round(skew, 4),
+            "dominant_side": side_label if skew > threshold else "balanced",
+            "threshold": threshold,
+            "alert": skew > threshold,
+        }
 
-        # ── WAL: position concentration event ──────────────────────────────
-        if self._wal is not None:
-            try:
-                self._wal.write("position_concentration", results["position_concentration"])
-            except Exception:
-                logger.exception("WAL write failed for position_concentration")
-
-        # ── Phase 3f: Cross-asset correlation monitoring ──────────────────
+    def _compute_cross_asset_correlation(self) -> dict:
+        """Build price/position snapshot and update correlation monitor."""
         prices: dict[str, float] = {}
         positions: dict[str, dict] = {}
         for name, actor in self._actors.items():
@@ -476,17 +487,12 @@ class EngineOrchestrator:
                 positions[name] = {"side": side.value if hasattr(side, "value") else side}
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         corr_report = self._correlation_monitor.update(prices, positions, today_str)
-        results["correlation"] = {
-            "n_high_pairs": len(corr_report["high_pairs"]),
-            "cluster_alerts": corr_report["cluster_alerts"],
-        }
         if any("cluster" in a for a in corr_report["cluster_alerts"]):
             logger.warning("Correlation cluster alert: %s", corr_report["cluster_alerts"])
+        return {"n_high_pairs": len(corr_report["high_pairs"]), "cluster_alerts": corr_report["cluster_alerts"]}
 
-        # ── Phase 3g: MT5 orphan reconciliation ───────────────────────────
-        self._reconcile_mt5_orphans()
-
-        # ── Phase 3h: HealthMonitor + VaR + RecoveryScheduler ─────────────
+    def _phase_3h_health_var_recovery(self, results: dict) -> None:
+        """HealthMonitor observation, VaR/CVaR computation, and RecoveryScheduler."""
         pv = None
         try:
             pv_raw = self.get_total_portfolio_value()
@@ -510,26 +516,21 @@ class EngineOrchestrator:
             "n_halted": health_summary.n_halted,
             "recommendations": health_summary.recommendations,
         }
-        # Track portfolio value for VaR computation
-        # Uses _var_prev_value (separate from Phase 3b's _prev_portfolio_value
-        # which is overwritten by total_value sum).
         if pv is not None and pv > 0:
             if self._var_prev_value is not None and self._var_prev_value > 0 and pv != self._var_prev_value:
                 r = (pv - self._var_prev_value) / self._var_prev_value
                 self._portfolio_returns.append(r)
                 if len(self._portfolio_returns) > 252:
                     self._portfolio_returns = self._portfolio_returns[-252:]
-                # Compute VaR/CVaR at 60 periods
                 if len(self._portfolio_returns) >= 60:
                     rets = sorted(self._portfolio_returns[-60:])
-                    var_95 = rets[2]  # 3rd smallest of 60 = 5th percentile
+                    var_95 = rets[2]
                     loss_idx = [r for r in rets if r <= var_95]
                     cvar_95 = sum(loss_idx) / max(len(loss_idx), 1)
                     results["var_95"] = round(var_95, 6)
                     results["cvar_95"] = round(cvar_95, 6)
             self._var_prev_value = pv
 
-        # RecoveryScheduler: probe HALTED actors for recovery
         recovered: list[str] = []
         for name, actor in self._actors.items():
             eng = getattr(actor, "_engine", None)
@@ -540,7 +541,6 @@ class EngineOrchestrator:
                 continue
             is_halted = getattr(pos_mgr, "halted", False) or getattr(eng, "_halted", False)
             if is_halted and self._recovery_scheduler.is_due(name):
-                # Attempt recovery by resetting halt state
                 logger.info("RecoveryScheduler: attempting recovery for %s", name)
                 try:
                     if hasattr(pos_mgr, "halted"):
@@ -556,7 +556,8 @@ class EngineOrchestrator:
             results["actors_recovered"] = recovered
             logger.info("RecoveryScheduler: recovered %d actor(s): %s", len(recovered), recovered)
 
-        # ── Phase 4: Persist all queues ───────────────────────────────────
+    def _phase_4_persist(self, results: dict) -> None:
+        """Flush persist queues to buffer and commit WAL state snapshot."""
         results["phasetimestamps"][EnginePhase.PERSIST] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         persist_count = 0
         for name, actor in self._actors.items():
@@ -565,12 +566,7 @@ class EngineOrchestrator:
                 self._persist_buffer.append(cmd.__dict__)
                 persist_count += 1
         results["persist_count"] = persist_count
-
-        # ── WAL: commit state snapshot ────────────────────────────────────
         self._write_state_committed()
-
-        results["cycle_duration_ms"] = round((time.monotonic() - t0) * 1000.0, 2)
-        return results
 
     # ── WAL event emission ──────────────────────────────────────────────────────
 

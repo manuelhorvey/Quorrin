@@ -20,8 +20,8 @@ import pandas as pd
 
 from shared.volatility import (
     VolatilityPrimitive,
+    compute_atr_series,
     compute_latest_atr,
-    compute_latest_atr_pct,
     estimate_ewm_vol,
     estimate_gap_risk,
 )
@@ -82,6 +82,9 @@ class DynamicSLTPEngine:
         Minimum bars between post-entry adjustments.
     max_sl_widen_pct : float
         Maximum allowed SL widening fraction (0 = never widen).
+    max_sl_tighten_pct : float
+        Maximum allowed SL tightening fraction (0.20 = at most 20% tighter).
+        Applied after vol-spike tightening to cap how much SL can be pulled in.
     use_gap_protection : bool
         If True, widen SL by expected gap during high-vol sessions.
     calibration_scale : float
@@ -100,6 +103,7 @@ class DynamicSLTPEngine:
         trailing_distance_mult: float = 2.0,
         post_adjust_interval_bars: int = 3,
         max_sl_widen_pct: float = 0.10,
+        max_sl_tighten_pct: float = 0.20,
         use_gap_protection: bool = True,
         calibration_scale: float = 1.0,
         confidence_sl_adjust: float = 0.0,
@@ -114,6 +118,7 @@ class DynamicSLTPEngine:
         self.trailing_distance_mult = trailing_distance_mult
         self.post_adjust_interval_bars = post_adjust_interval_bars
         self.max_sl_widen_pct = max_sl_widen_pct
+        self.max_sl_tighten_pct = max_sl_tighten_pct
         self.use_gap_protection = use_gap_protection
         self.calibration_scale = calibration_scale
         self.confidence_sl_adjust = confidence_sl_adjust
@@ -185,19 +190,24 @@ class DynamicSLTPEngine:
         """Auto-calibrate ``atr_mult_sl`` so ATR-based barriers match
         EWM vol-based barriers in current market conditions.
 
+        Uses the mean ATR over the last 20 bars (not the single latest value)
+        to avoid single-bar sensitivity inflating/deflating the calibration ratio.
+
         Call once per asset at init to set the scale factor.
         """
         with np.errstate(all="ignore"):
             ewm_vol = estimate_ewm_vol(df["close"], span=100)
-        atr_pct = compute_latest_atr_pct(df, self.atr_period)
-        if ewm_vol > 0 and atr_pct > 0:
-            ratio = ewm_vol / atr_pct
+        atr_series = compute_atr_series(df, self.atr_period)
+        atr_close_ratio = atr_series / df["close"].where(df["close"] > 0)
+        mean_atr_pct = float(atr_close_ratio.tail(20).mean())
+        if ewm_vol > 0 and mean_atr_pct > 0:
+            ratio = ewm_vol / mean_atr_pct
             self.atr_mult_sl = ratio * self.calibration_scale
             logger.info(
-                "ATR calibrated: atr_mult_sl=%.3f (ewm_vol=%.4f, atr_pct=%.4f, scale=%.2f)",
+                "ATR calibrated: atr_mult_sl=%.3f (ewm_vol=%.4f, mean_atr_pct=%.4f, window=20, scale=%.2f)",
                 self.atr_mult_sl,
                 ewm_vol,
-                atr_pct,
+                mean_atr_pct,
                 self.calibration_scale,
             )
 
@@ -280,7 +290,16 @@ class DynamicSLTPEngine:
                         cooldown,
                     )
                 else:
-                    new_sl = self._propose_tighter_sl(side, entry_price, current_sl, 1.0 / vol_ratio)
+                    tighten_factor = 1.0 / vol_ratio
+                    capped = max(tighten_factor, 1.0 - self.max_sl_tighten_pct)
+                    if capped != tighten_factor:
+                        logger.info(
+                            "vol_spike tighten_factor %.3f capped to %.3f (max_sl_tighten_pct=%.2f)",
+                            tighten_factor,
+                            capped,
+                            self.max_sl_tighten_pct,
+                        )
+                    new_sl = self._propose_tighter_sl(side, entry_price, current_sl, capped)
                     if new_sl is not None:
                         self._last_vol_tighten_bars = bars_since_entry
                         return PostEntryAdjustment(
@@ -479,6 +498,7 @@ def build_dynamic_sltp_from_config(asset_config: dict, df: pd.DataFrame | None =
         trailing_distance_mult=sltp_cfg.get("trailing_distance_mult", 2.0),
         post_adjust_interval_bars=sltp_cfg.get("post_adjust_interval_bars", 3),
         max_sl_widen_pct=sltp_cfg.get("max_sl_widen_pct", 0.0),
+        max_sl_tighten_pct=sltp_cfg.get("max_sl_tighten_pct", 0.20),
         use_gap_protection=sltp_cfg.get("use_gap_protection", True),
         calibration_scale=sltp_cfg.get("calibration_scale", 1.0),
         confidence_sl_adjust=sltp_cfg.get("confidence_sl_adjust", 0.0),

@@ -728,6 +728,20 @@ class EntryService:
                 regime=getattr(asset, "_current_regime", "neutral"),
                 meta_confidence=getattr(asset, "_last_meta_proba", None),
             )
+        sl_pct = abs(avg_price - intent.stop_loss) / (avg_price + 1e-9) * 100
+        tp_pct = abs(intent.take_profit - avg_price) / (avg_price + 1e-9) * 100
+        logger.info(
+            "%s: ENTRY %s sz=%.4f entry=%.4f SL=%.4f (%.2f%%) TP=%.4f (%.2f%%) RR=%.2f",
+            asset.name,
+            intent.side,
+            total_sz,
+            avg_price,
+            intent.stop_loss,
+            sl_pct,
+            intent.take_profit,
+            tp_pct,
+            tp_pct / (sl_pct + 1e-9),
+        )
         new_position = {
             "side": intent.side,
             "entry": avg_price,

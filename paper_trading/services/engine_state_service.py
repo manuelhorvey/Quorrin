@@ -105,6 +105,11 @@ class EngineStateService:
                 "soft_warnings": halt.get("soft_warnings", []),
                 "stop_out_last_side": getattr(asset, "_last_stop_out_side", None),
                 "stop_out_last_cycle": getattr(asset, "_last_stop_out_cycle", None),
+                "total_exits": getattr(asset, "_total_exits", 0),
+                "sl_exits": getattr(asset, "_sl_exits", 0),
+                "sl_hit_rate": (
+                    asset._sl_exits / asset._total_exits if getattr(asset, "_total_exits", 0) > 0 else None
+                ),
                 "last_regime_long_prob": getattr(asset, "_last_regime_long_prob", None),
                 "last_regime_raw_probas": getattr(asset, "_last_regime_raw_probas", None),
                 "last_regime_label": (

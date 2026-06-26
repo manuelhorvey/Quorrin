@@ -34,7 +34,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from paper_trading.api.common import (
@@ -46,6 +46,8 @@ from paper_trading.api.common import (
 )
 from paper_trading.governance.health import compute_all as compute_health_all
 from paper_trading.ops.market_hours import is_market_closed
+
+UTC = timezone.utc
 
 logger = logging.getLogger("quantforge.bundle")
 

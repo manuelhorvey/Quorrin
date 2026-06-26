@@ -110,6 +110,8 @@ class AssetEngine:
         self.trades = []
         self.trade_log = []
         self.prob_history = []
+        self._total_exits = 0
+        self._sl_exits = 0
         self._research_mode = engine_cfg.research_mode
         self._retrain_window = retrain_window if retrain_window is not None else engine_cfg.retrain_window
         self.model_path = os.path.join(BASE, "paper_trading", "models", f"{contract.name}_model.json")
@@ -446,6 +448,9 @@ class AssetEngine:
         )
         if not mutations:
             return False
+        self._total_exits += 1
+        if reason == "SL":
+            self._sl_exits += 1
         self.position = mutations.get("position", self.position)
         self.current_value = mutations.get("current_value", self.current_value)
         self.trade_log = mutations.get("trade_log", self.trade_log)

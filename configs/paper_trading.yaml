@@ -186,13 +186,13 @@ assets:
     max_depth: 4
     regime_geometry:
       GREEN:
-        sl_mult: 1.76
+        sl_mult: 1.0
         tp_mult: 1.0
       YELLOW:
-        sl_mult: 1.58
+        sl_mult: 0.9
         tp_mult: 0.9
       RED:
-        sl_mult: 1.41
+        sl_mult: 0.8
         tp_mult: 0.8
     config:
       shadow_sltp:
@@ -411,7 +411,7 @@ assets:
   GBPAUD:
     ticker: GBPAUD=X
     allocation: 0.05
-    sl_mult: 1.0
+    sl_mult: 1.5
     tp_mult: 2.0
     max_depth: 3
     regime_geometry:

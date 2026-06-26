@@ -28,7 +28,7 @@ ASSET_LABEL_PARAMS: dict[str, dict] = {
     "EURGBP": {"pt": 2.0, "sl": 2.0},
     "EURJPY": {"pt": 2.0, "sl": 2.0},
     "EURCHF": {"pt": 3.0, "sl": 1.0},
-    "GBPAUD": {"pt": 2.0, "sl": 1.0},
+    "GBPAUD": {"pt": 2.0, "sl": 1.5},
     "AUDCAD": {"pt": 2.0, "sl": 2.0},
     "AUDNZD": {"pt": 1.0, "sl": 2.0},
     "EURNZD": {"pt": 2.74, "sl": 1.37},

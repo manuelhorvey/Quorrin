@@ -775,7 +775,7 @@ def handle_asset_detail(path: str, query: dict) -> tuple[str, int]:
                 }
                 for i, (f, v) in enumerate(sorted(importance.items(), key=lambda x: -x[1]))
             ]
-        except Exception as exc:
+        except Exception:
             feature_importance = [{"error": "Model parse error"}]
 
     # Trade history with MAE/MFE estimates

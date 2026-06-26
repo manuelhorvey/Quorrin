@@ -6,7 +6,6 @@ import os
 
 from paper_trading.api.common import (
     MIME_TYPES,
-    _load_auth_token,
     _with_state_meta,
     auth_headers,
     cache_get,

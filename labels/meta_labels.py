@@ -221,7 +221,7 @@ class MetaLabelModel:
                 content = f.read()
             sig_path = path + ".sig"
             if os.path.exists(sig_path):
-                with open(sig_path, "r") as sf:
+                with open(sig_path) as sf:
                     expected = sf.read().strip()
                 actual = hashlib.sha256(content).hexdigest()
                 if not hmac.compare_digest(expected, actual):

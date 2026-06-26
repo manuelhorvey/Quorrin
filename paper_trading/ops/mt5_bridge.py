@@ -38,7 +38,6 @@ import logging
 import os
 import socket
 import struct
-import sys
 import threading
 import time
 from datetime import datetime

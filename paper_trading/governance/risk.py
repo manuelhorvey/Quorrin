@@ -239,7 +239,9 @@ def _recommend(risk_level: str, risk_flags: list) -> str:
     return "NORMAL"
 
 
-def _generate_explanations(drift_scores: dict, risk_flags: list, sl_rate: float | None = None, sell_wr: float | None = None) -> list:
+def _generate_explanations(
+    drift_scores: dict, risk_flags: list, sl_rate: float | None = None, sell_wr: float | None = None
+) -> list:
     templates = {
         "MODEL_DRIFT": "Model probability distribution deviates significantly from baseline (KL {score:.2f})",
         "SIGNAL_INSTABILITY": "Signal flip rate increased beyond historical percentile (mismatch rate {score:.2f})",
@@ -250,7 +252,9 @@ def _generate_explanations(drift_scores: dict, risk_flags: list, sl_rate: float 
         ),
         "ELEVATED_SL_HITS": "SL hit rate elevated ({score:.1%}) — consider wider stops or lower sizing",
         "EXCESSIVE_SL_HITS": "SL hit rate critical ({score:.1%}) — halting, stops too tight or model broken",
-        "SELL_TRIPWIRE": "SELL win rate below threshold ({score:.1%}) — possible calibration shift or directional inversion",
+        "SELL_TRIPWIRE": (
+            "SELL win rate below threshold ({score:.1%}) — possible calibration shift or directional inversion"
+        ),
     }
     key_map = {
         "MODEL_DRIFT": "model_drift",

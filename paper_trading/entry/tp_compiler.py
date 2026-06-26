@@ -9,8 +9,10 @@ logger = logging.getLogger("quantforge.paper_trading.tp_compiler")
 # At 5.0 R:R even MOMENTUM_IGNITION (base convexity 6.0) gets capped.
 MAX_RR = 5.0
 
+
 def _load_tp_config() -> tuple[dict[str, float], dict[str, float]]:
     from paper_trading.config_manager import get_config
+
     cfg = get_config().defaults.get("tp_compiler", {})
     archetype_convexity = {
         "BREAKOUT_TEST": cfg.get("breakout_test_convexity", 5.0),

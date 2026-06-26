@@ -829,8 +829,7 @@ class EngineOrchestrator:
                         )
                     except Exception:
                         logger.exception(
-                            "MT5_STALE_TICKET: %s failed to close paper position — "
-                            "position may be a ghost",
+                            "MT5_STALE_TICKET: %s failed to close paper position — position may be a ghost",
                             name,
                         )
 

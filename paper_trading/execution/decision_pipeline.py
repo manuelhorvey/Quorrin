@@ -887,14 +887,28 @@ def apply_sell_only_filter(ctx: DecisionContext) -> None:
     SELL).  This stage lets SELL signals pass through unchanged but overrides
     BUY signals to FLAT, converting these assets to sell-only.
 
+    Also force-closes any existing LONG position on SELL_ONLY assets to
+    prevent stale positions from a pre-filter era remaining open.
+
     AUDUSD, EURNZD, NZDUSD were removed from the filter 2026-06-23 after
     corrected walk-forward showed BUY WR >50%.
     See the 2026-06-20 diagnostic chain for full evidence.
     """
-    if ctx.new_side is None:
-        return
     engine = ctx.engine
     if engine.name not in SELL_ONLY_ASSETS:
+        return
+
+    # Force-close any existing LONG position (stale from pre-filter era)
+    if engine.pos_mgr.has_position() and engine.pos_mgr.current_side() == PositionSide.LONG:
+        close_price = ctx.decision.close_price or engine.current_price
+        if close_price is not None and close_price > 0:
+            ok = engine._close_position(close_price, ctx.decision.timestamp, "SELL_ONLY_FLATTEN")
+            if ok:
+                logger.info("%s: sell-only filter — force-closed LONG position", engine.name)
+            ctx.new_side = None
+            return
+
+    if ctx.new_side is None:
         return
     if ctx.new_side == PositionSide.LONG:
         logger.info(

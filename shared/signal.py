@@ -36,9 +36,11 @@ class FixedThresholdStrategy(SignalStrategy):
     ) -> SignalResult:
         probs_long = proba[:, 2]
         probs_short = proba[:, 0]
+        long_cond = (probs_long > threshold) & (probs_long >= probs_short)
+        short_cond = (probs_short > threshold) & (probs_short > probs_long)
         signals = pd.Series(1, index=index)
-        signals[probs_long > threshold] = 2
-        signals[probs_short > threshold] = 0
+        signals[long_cond] = 2
+        signals[short_cond] = 0
 
         signal_data = pd.DataFrame(
             {

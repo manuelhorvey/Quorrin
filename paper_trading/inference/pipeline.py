@@ -199,6 +199,9 @@ class AssetInferencePipeline:
             index=hist_prices.index,
         )
 
+        # Fetch OHLCV for trend-exhaustion features (Tier 1+2)
+        ohlcv = fetch_asset_ohlcv(asset.ticker)
+
         alpha_df = build_alpha_features(
             hist_prices,
             rate_diffs,
@@ -208,10 +211,10 @@ class AssetInferencePipeline:
             commodities=commodities,
             cot_data=cot_data,
             shared_features=shared_features,
+            ohlcv=ohlcv,
         )
         alpha_idx = alpha_df.index
 
-        ohlcv = fetch_asset_ohlcv(asset.ticker)
         if not ohlcv.empty:
             if self._truncate_inference:
                 ohlcv = ohlcv.iloc[-_trunc_rows:]

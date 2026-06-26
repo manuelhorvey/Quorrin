@@ -9,7 +9,7 @@
 
 ---
 
-Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 15-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 8 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 15-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 5 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
 
 ---
 
@@ -264,7 +264,7 @@ Three feature sets feed the inference pipeline: alpha, regime, and archetype.
 ## Alpha Features
 
 Built in `features/alpha_features.py:build_alpha_features()`.
-13 features per asset (9 per-asset + 4 cross-asset):
+19 features per asset (15 per-asset + 4 cross-asset, includes 6 trend-exhaustion features added 2026-06-26):
 
 | Feature | Description |
 |---------|-------------|
@@ -277,6 +277,12 @@ Built in `features/alpha_features.py:build_alpha_features()`.
 | `{ASSET}_vol_ratio` | Short/long-term vol ratio |
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in CFTC data) |
+| `{ASSET}_macd_hist` | MACD histogram / close — trend exhaustion |
+| `{ASSET}_stoch_k` | Stochastic %K — overbought/oversold |
+| `{ASSET}_stoch_d` | Stochastic %D — signal line confirmation |
+| `{ASSET}_bb_pct_b` | Bollinger Band %B — extreme range detection |
+| `{ASSET}_adx_slope` | ADX rate of change — trend acceleration/deceleration |
+| `{ASSET}_rsi_divergence` | RSI divergence (-1/0/+1) — bullish/bearish exhaustion |
 | `dxy_mom_21d` | DXY 21-day return |
 | `vix_mom_5d` | VIX 5-day return |
 | `spx_mom_5d` | SPX 5-day return |
@@ -333,7 +339,7 @@ Derived from OHLCV for execution conditioning:
      d. Update MAE/MFE — update max adverse/favorable excursion
      e. Resolve signal — map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45)
      f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-      g. Sell-only filter — override BUY→FLAT for 8 assets with inverted BUY calibration
+      g. Sell-only filter — override BUY→FLAT for 5 assets with inverted BUY calibration (reduced from 10 on 2026-06-26)
       h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles)
       i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles)
       j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
@@ -686,7 +692,7 @@ tests/                        # Test suite
 * Dashboard requires `yarn build` after asset list changes
 * MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 * **GBPNZD removed** (2026-06-20) — tp/sl=1.0/3.0 (ratio 0.33), breakeven WR 75%, achieved 72.3%. Net-negative (-37R total, -71R max_dd).
-* **SELL_ONLY filter active for 8 assets** — BUY calibration is inverted (17% WR at p_long>0.5 vs 77% WR on SELL). Root cause unknown; two leading hypotheses (carry, DXY) falsified by walk-forward ablation. Filter is empirically grounded, not a temporary stopgap.
+* **SELL_ONLY filter active for 5 assets** (CADCHF, ES, NQ, NZDCHF, EURAUD) — reduced from 10 on 2026-06-26 after Step 3 trend-exhaustion features improved BuyWR above breakeven for GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI. Remaining 5 are confirmed permanent SELL_ONLY.
 * **Equity cluster alarm** flags ES/NQ/^DJI all on same side — recommendation only, not a forced flatten.
 * **Circuit breaker threshold lowered to 7** consecutive portfolio losses (was 15). Crisis replay showed max 4 consecutive losses — 15 would never trip.
 * **THIN liquidity regime** is a soft warning (SL/size adjustment, no halt);

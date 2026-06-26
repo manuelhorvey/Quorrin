@@ -2,8 +2,11 @@ import logging
 
 import numpy as np
 import pandas as pd
+import ta
 
 from data.loaders.cot_loader import FX_COT_CONTRACTS
+
+logger = logging.getLogger("quantforge.alpha_features")
 
 logger = logging.getLogger("quantforge.alpha_features")
 
@@ -152,6 +155,78 @@ def cot_net_positioning(
     return z.clip(-3, 3)
 
 
+def macd_histogram(close: pd.Series) -> pd.Series:
+    """
+    MACD histogram — difference between MACD line and signal line,
+    normalized by close price to produce a percentage-like measure.
+
+    Positive = bullish momentum, negative = bearish momentum.
+    Histogram expanding = momentum accelerating.
+    Histogram contracting after extreme values = momentum exhausting.
+
+    Normalization: ``(macd - signal) / close`` gives a %-of-price measure
+    that is comparable across assets regardless of price level
+    (CADCHF at 0.68 vs NQ at 18,000).
+
+    Returns a Series with the same index as *close*, clipped to [-0.05, 0.05]
+    (i.e. ±5% of price).
+    """
+    macd = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
+    hist = (macd.macd() - macd.macd_signal()) / close.replace(0, pd.NA)
+    return hist.clip(-0.05, 0.05)
+
+
+def stochastic_oscillator(high: pd.Series, low: pd.Series, close: pd.Series) -> tuple[pd.Series, pd.Series]:
+    """
+    Stochastic Oscillator %K and %D lines.
+
+    %K > 80 = overbought (SELL opportunity in uptrend).
+    %K < 20 = oversold (BUY opportunity in downtrend).
+    %K flat at extreme = exhaustion signal.
+    %K/%D crossover in extreme zones = reversal confirmation.
+
+    Returns (%K, %D) tuple with same index as *close*.
+    """
+    stoch = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3)
+    pct_k = stoch.stoch()
+    pct_d = stoch.stoch_signal()
+    return pct_k / 100.0, pct_d / 100.0  # Normalize to [0, 1]
+
+
+def bb_pct_b(close: pd.Series, window: int = 20, std_dev: int = 2) -> pd.Series:
+    """
+    Bollinger Band %B — normalized position within the bands.
+
+    %B = (close - lower) / (upper - lower).
+    0 = at lower band, 1 = at upper band, >1 = above upper, <0 = below lower.
+    Prolonged stay above 1 (strong trend) or below 0 (strong downtrend)
+    followed by re-entry suggests trend exhaustion.
+
+    Returns a Series with the same index as *close*.
+    """
+    bb = ta.volatility.BollingerBands(close, window=window, window_dev=std_dev)
+    upper = bb.bollinger_hband()
+    lower = bb.bollinger_lband()
+    pct_b = (close - lower) / (upper - lower).replace(0, pd.NA)
+    return pct_b.clip(-2, 3)
+
+
+def adx_slope(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.Series:
+    """
+    ADX slope — rate of change of ADX over 5 days.
+
+    ADX > 25 = trending market.
+    ADX > 25 with negative slope = trend losing momentum (exhaustion).
+    ADX < 20 with rising slope = trend about to start.
+
+    Returns a Series with the same index as *close*.
+    """
+    adx_indicator = ta.trend.ADXIndicator(high, low, close, window=window)
+    adx = adx_indicator.adx()
+    slope = adx.diff(5)
+    return slope.clip(-10, 10)
+
+
 def day_of_week_signal(price: pd.Series) -> pd.Series:
     """
     Rolling day-of-week effect — mean forward return by weekday.
@@ -224,6 +299,7 @@ def build_alpha_features(
     commodities: pd.DataFrame | None = None,
     cot_data: pd.DataFrame | None = None,
     shared_features: dict[str, pd.Series] | None = None,
+    ohlcv: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Assembles alpha features for all assets into a single DataFrame.
@@ -234,6 +310,11 @@ def build_alpha_features(
     Pass pre-computed *shared_features* (from _compute_shared_features)
     to avoid recomputing cross-asset features for every asset in the
     same inference cycle.
+
+    When *ohlcv* is provided (DataFrame with 'open', 'high', 'low',
+    'close', 'volume' columns), additional trend-exhaustion features
+    are computed: MACD histogram, Stochastic %K/%D, BB %B, ADX slope,
+    and RSI divergence.
 
     Returns a DataFrame with no NaN rows (ffill then dropna at end).
     """
@@ -263,6 +344,34 @@ def build_alpha_features(
         # COT coverage flag — 1 if asset has CFTC COT data, 0 otherwise
         has_cot = int(asset_upper in _COT_COVERED_NAMES)
         features[f"{asset_upper}_has_cot"] = has_cot
+
+        # ── Trend-exhaustion indicators (Tier 1) ─────────────────────
+        # These require OHLCV data.  If ohlcv is provided, use its
+        # high/low/close aligned to the current pair's price index.
+        if ohlcv is not None and not ohlcv.empty:
+            _h = ohlcv["high"].reindex(close.index).ffill()
+            _l = ohlcv["low"].reindex(close.index).ffill()
+            _c = ohlcv["close"].reindex(close.index).ffill()
+
+            features[f"{asset_upper}_macd_hist"] = macd_histogram(_c)
+
+            _k, _d = stochastic_oscillator(_h, _l, _c)
+            features[f"{asset_upper}_stoch_k"] = _k
+            features[f"{asset_upper}_stoch_d"] = _d
+
+            features[f"{asset_upper}_bb_pct_b"] = bb_pct_b(_c)
+
+            features[f"{asset_upper}_adx_slope"] = adx_slope(_h, _l, _c)
+
+            # RSI divergence (Tier 2) — requires high/low/close
+            try:
+                from features.divergence import rsi_divergence
+
+                _div = rsi_divergence(_h, _l, _c)
+                features[f"{asset_upper}_rsi_divergence"] = _div
+            except Exception:
+                logger.debug("RSI divergence unavailable for %s", asset_upper)
+                features[f"{asset_upper}_rsi_divergence"] = 0
 
     # Cross-asset features (reuse pre-computed if provided)
     if shared_features is not None:

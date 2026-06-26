@@ -245,3 +245,186 @@ class BetaCalibrator(CalibrationMethod):
         cal.b = float(data["b"])
         cal.fitted = True
         return cal
+
+
+class DirectionalCalibrator(CalibrationMethod):
+    """Direction-conditional probability calibrator.
+
+    Trains separate BinnedCalibrator instances on BUY-prediction and
+    SELL-prediction subsets of the training data.  At inference time,
+    applies the direction-appropriate calibrator based on the raw
+    prediction.
+
+    This directly addresses the finding that "wrong BUY is more confident
+    than correct BUY" (GBPJPY, USDJPY, NZDUSD) — by fitting the
+    calibrator only on BUY predictions, it learns the true
+    P(UP | model says BUY) without contamination from SELL predictions
+    that happen to produce high p_long.
+
+    The SELL-side calibrator flips perspective: it calibrates
+    P(DOWN | model says SELL) using ``1 - p_long`` as the input and
+    ``1 - outcome`` as the target.  At inference, the calibrated sell
+    probability is ``1 - calibrator_sell(1 - p_long)``.
+
+    Reference: The original BUY/SELL Information Audit (2026-06-25)
+    found ECE(buy) ≈ 0.288 vs ECE(sell) ≈ 0.051 across 6 assets —
+    the 5.6x gap is the primary failure mode this calibrator targets.
+    """
+
+    def __init__(self, n_bins: int = 10, min_samples_per_bin: int = 5):
+        self.n_bins = n_bins
+        self.min_samples_per_bin = min_samples_per_bin
+        self.buy_calibrator = BinnedCalibrator(n_bins=n_bins, min_samples_per_bin=min_samples_per_bin)
+        self.sell_calibrator = BinnedCalibrator(n_bins=n_bins, min_samples_per_bin=min_samples_per_bin)
+        self._buy_fitted = False
+        self._sell_fitted = False
+        self.fitted = False
+
+    def fit(self, p_long: np.ndarray, outcomes: np.ndarray, predictions: np.ndarray | None = None) -> Self:
+        """Fit direction-conditional calibrators.
+
+        Parameters
+        ----------
+        p_long : np.ndarray
+            Raw model probabilities (P(class=1)).
+        outcomes : np.ndarray
+            Actual outcomes (0 or 1).  1 = TP / up-move, 0 = SL / down-move.
+        predictions : np.ndarray | None
+            Model's directional signal (-1 = SELL, 0 = FLAT, 1 = BUY).
+            If None, inferred from p_long: p_long > 0.5 → BUY, else SELL.
+        """
+        p_long = np.asarray(p_long, dtype=float)
+        outcomes = np.asarray(outcomes, dtype=int)
+
+        if predictions is not None:
+            predictions = np.asarray(predictions, dtype=int)
+            buy_mask = predictions == 1
+            sell_mask = predictions == -1
+        else:
+            buy_mask = p_long > 0.5
+            sell_mask = p_long < 0.5
+
+        # ── Fit BUY calibrator on BUY-prediction subset ─────────────
+        buy_idx = np.where(buy_mask)[0]
+        if len(buy_idx) >= self.min_samples_per_bin * 3:
+            self.buy_calibrator.fit(p_long[buy_idx], outcomes[buy_idx])
+            self._buy_fitted = True
+        else:
+            logger.warning(
+                "DirectionalCalibrator: too few BUY predictions (%d) to fit — skip BUY side",
+                len(buy_idx),
+            )
+
+        # ── Fit SELL calibrator on SELL-prediction subset ────────────
+        # Flip perspective: calibrate P(DOWN | model says SELL)
+        # using 1 - p_long as input and 1 - outcome as target.
+        sell_idx = np.where(sell_mask)[0]
+        if len(sell_idx) >= self.min_samples_per_bin * 3:
+            sell_p = 1.0 - p_long[sell_idx]      # P(DOWN) raw estimate
+            sell_outcome = 1 - outcomes[sell_idx]  # 1 if SELL was correct
+            self.sell_calibrator.fit(sell_p, sell_outcome)
+            self._sell_fitted = True
+        else:
+            logger.warning(
+                "DirectionalCalibrator: too few SELL predictions (%d) to fit — skip SELL side",
+                len(sell_idx),
+            )
+
+        self.fitted = self._buy_fitted or self._sell_fitted
+        return self
+
+    def calibrate(self, p_long: np.ndarray) -> np.ndarray:
+        """Apply direction-conditional calibration.
+
+        For each prediction, applies the BUY calibrator when p_long > 0.5
+        and the SELL calibrator (inverse perspective) when p_long < 0.5.
+        Predictions at exactly 0.5 pass through unchanged.
+
+        If a direction's calibrator was not fitted (insufficient data),
+        falls back to returning the raw p_long for that subset.
+        """
+        if not self.fitted:
+            logger.warning("DirectionalCalibrator not fitted — returning raw probabilities")
+            return np.asarray(p_long, dtype=float)
+
+        p_long = np.asarray(p_long, dtype=float).ravel()
+        result = p_long.copy()
+
+        buy_mask = p_long > 0.5
+        sell_mask = p_long < 0.5
+        neutral_mask = p_long == 0.5
+
+        # Apply BUY calibrator
+        if self._buy_fitted and buy_mask.any():
+            result[buy_mask] = self.buy_calibrator.calibrate(p_long[buy_mask])
+
+        # Apply SELL calibrator (inverse perspective)
+        if self._sell_fitted and sell_mask.any():
+            sell_p = 1.0 - p_long[sell_mask]  # P(DOWN) input
+            cal_sell_p = self.sell_calibrator.calibrate(sell_p)
+            result[sell_mask] = 1.0 - cal_sell_p  # Convert back to P(UP)
+
+        # Neutral predictions (p_long == 0.5) pass through unchanged
+
+        return np.clip(result, 0.001, 0.999)
+
+    def save(self, path: str | Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Serialize each sub-calibrator's internal state
+        buy_data = None
+        if self._buy_fitted and self.buy_calibrator.bin_centers is not None:
+            buy_data = {
+                "bin_centers": self.buy_calibrator.bin_centers.tolist(),
+                "bin_empirical_probs": self.buy_calibrator.bin_empirical_probs.tolist() if self.buy_calibrator.bin_empirical_probs is not None else None,
+            }
+        sell_data = None
+        if self._sell_fitted and self.sell_calibrator.bin_centers is not None:
+            sell_data = {
+                "bin_centers": self.sell_calibrator.bin_centers.tolist(),
+                "bin_empirical_probs": self.sell_calibrator.bin_empirical_probs.tolist() if self.sell_calibrator.bin_empirical_probs is not None else None,
+            }
+
+        data = {
+            "type": "DirectionalCalibrator",
+            "n_bins": self.n_bins,
+            "min_samples_per_bin": self.min_samples_per_bin,
+            "buy_fitted": self._buy_fitted,
+            "sell_fitted": self._sell_fitted,
+            "buy_calibrator": buy_data,
+            "sell_calibrator": sell_data,
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+        logger.info("Saved DirectionalCalibrator to %s", path)
+
+    @classmethod
+    def load(cls, path: str | Path) -> Self:
+        path = Path(path)
+        with open(path) as f:
+            data = json.load(f)
+        n_bins = int(data["n_bins"])
+        min_samples = int(data.get("min_samples_per_bin", 5))
+        cal = cls(n_bins=n_bins, min_samples_per_bin=min_samples)
+
+        # Restore BUY calibrator
+        buy_raw = data.get("buy_calibrator")
+        if buy_raw is not None and buy_raw.get("bin_centers"):
+            cal.buy_calibrator.bin_centers = np.array(buy_raw["bin_centers"], dtype=float)
+            if buy_raw.get("bin_empirical_probs"):
+                cal.buy_calibrator.bin_empirical_probs = np.array(buy_raw["bin_empirical_probs"], dtype=float)
+            cal.buy_calibrator.fitted = True
+            cal._buy_fitted = data.get("buy_fitted", False)
+
+        # Restore SELL calibrator
+        sell_raw = data.get("sell_calibrator")
+        if sell_raw is not None and sell_raw.get("bin_centers"):
+            cal.sell_calibrator.bin_centers = np.array(sell_raw["bin_centers"], dtype=float)
+            if sell_raw.get("bin_empirical_probs"):
+                cal.sell_calibrator.bin_empirical_probs = np.array(sell_raw["bin_empirical_probs"], dtype=float)
+            cal.sell_calibrator.fitted = True
+            cal._sell_fitted = data.get("sell_fitted", False)
+
+        cal.fitted = cal._buy_fitted or cal._sell_fitted
+        return cal

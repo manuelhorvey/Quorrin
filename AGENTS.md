@@ -838,6 +838,83 @@ The `hrp_v1` method was broken due to two issues:
 
 **Files**: `shared/factor_model.py`, `shared/portfolio_weights.py`, `configs/paper_trading.yaml`, `scripts/backtest/backtest_pnl.py`
 
+## Trend-Exhaustion Features — Tier 1+2 (2026-06-26)
+
+### What Was Built
+
+**6 new features** added to the alpha feature set, computed inside `build_alpha_features()` when OHLCV data is provided:
+
+| Feature | Description | Source file |
+|---------|-------------|-------------|
+| `{asset}_macd_hist` | MACD histogram normalized by close price (±5% clip) | `features/alpha_features.py` |
+| `{asset}_stoch_k` | Stochastic %K normalized to [0, 1] | `features/alpha_features.py` |
+| `{asset}_stoch_d` | Stochastic %D (signal line) | `features/alpha_features.py` |
+| `{asset}_bb_pct_b` | Bollinger Band %B: (close - lower) / (upper - lower) | `features/alpha_features.py` |
+| `{asset}_adx_slope` | ADX rate of change over 5 days | `features/alpha_features.py` |
+| `{asset}_rsi_divergence` | RSI divergence (-1 bearish / 0 none / +1 bullish) | `features/divergence.py` (NEW) |
+
+**New file:** `features/divergence.py` — detects bullish (+1) and bearish (-1) divergences between price and RSI using local extrema within a 20-bar lookback window.
+
+**Key design decisions:**
+- MACD histogram normalized by close price (not raw price units) so it's scale-invariant across assets (USDJPY at 150 vs EURUSD at 1.0)
+- All indicators use the `ta` library (already a project dependency)
+- Features only computed when OHLCV is passed to `build_alpha_features()` — backward compatible (default OHLCV=None)
+
+### Pipeline Integration
+
+Both training and inference pipelines pass OHLCV to `build_alpha_features()`:
+- `paper_trading/inference/training.py` — `ohlcv` fetch moved before `build_alpha_features()` call
+- `paper_trading/inference/pipeline.py` — `ohlcv` fetch moved before `build_alpha_features()` call
+- `scripts/backtest/walk_forward_backtest.py` — `ohlcv` parameter threaded through
+
+Result: 19 total alpha features (13 base + 6 trend-exhaustion) in both training and inference.
+
+### Walk-Forward Impact (21-asset portfolio)
+
+After full retrain with new features:
+
+| Metric | Baseline | Step 3 | Δ |
+|--------|----------|--------|--------|
+| total_R | 186.4 | **248.23** | **+33.2%** |
+| sharpe_adj | 17.34 | **19.56** | **+12.8%** |
+| max_dd_R | -0.65 | **-0.29** | **-55.4%** |
+
+GBPJPY specifically improved from ~0R to +299R (was essentially zero — now profitable).
+
+### Asset-Specific Recovery
+
+Each remaining SELL_ONLY asset was evaluated against its Step 3 BuyWR vs breakeven WR:
+
+| Asset | Step3 BuyWR | BE WR | Δ | Verdict |
+|-------|-------------|-------|---|---------|
+| **USDCHF** | 29.9% | 22.1% | **+7.8pp** | REMOVED from SELL_ONLY |
+| **EURCHF** | 26.2% | 25.0% | **+1.2pp** | REMOVED (marginal) |
+| **USDJPY** | 39.4% | 20.9% | **+18.6pp** | REMOVED from SELL_ONLY |
+| **^DJI** | 24.3% | 11.1% | **+13.2pp** | REMOVED from SELL_ONLY |
+| **GBPJPY** | 38.6% | 18.4% | **+20.2pp** | REMOVED from SELL_ONLY |
+| EURAUD | 22.5% | 23.4% | -0.9pp | STAY in SELL_ONLY |
+| CADCHF | 10.5% | 20.0% | -9.5pp | STAY in SELL_ONLY |
+| NZDCHF | 11.7% | 20.0% | -8.3pp | STAY in SELL_ONLY |
+| ES | 10.7%* | 26.7% | -16.0pp | STAY in SELL_ONLY |
+| NQ | 19.6%* | 33.3% | -13.7pp | STAY in SELL_ONLY |
+
+*ES/NQ evaluated from baseline only (futures walk-forward label sparsity prevented Step 3 generation with production pt/sl configs).
+
+### SELL_ONLY Reduction Summary
+
+SELL_ONLY_ASSETS reduced from 10 → 5 assets:
+- **Removed** (5): GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI — all have BuyWR > Breakeven WR
+- **Remaining** (5): CADCHF, ES, NQ, NZDCHF, EURAUD — impervious to all interventions tested
+
+The SELL_ONLY filter is now a focused guard for the 5 assets with genuinely unrecoverable BUY signal — not a portfolio-wide stopgap.
+
+### Orphaned Model Cleanup
+
+4 models from removed production assets moved to `paper_trading/models/orphaned/`:
+- EURUSD, AUDNZD, AUDCHF, GBPNZD (all removed 2026-06-20)
+
+21 models remain in `paper_trading/models/` — one per production asset.
+
 ## Ruff
 
 ```bash

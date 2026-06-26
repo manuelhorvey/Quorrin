@@ -18,13 +18,14 @@ from typing import Any
 
 import numpy as np
 
-from shared.calibration.calibrator import BetaCalibrator, BinnedCalibrator, CalibrationMethod
+from shared.calibration.calibrator import BetaCalibrator, BinnedCalibrator, CalibrationMethod, DirectionalCalibrator
 
 logger = logging.getLogger("quantforge.calibration.registry")
 
 CALIBRATOR_TYPES = {
     "BinnedCalibrator": BinnedCalibrator,
     "BetaCalibrator": BetaCalibrator,
+    "DirectionalCalibrator": DirectionalCalibrator,
 }
 
 

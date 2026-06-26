@@ -872,9 +872,6 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
         "NQ",
         "NZDCHF",
         "EURAUD",
-        "^DJI",
-        "USDCHF",
-        "EURCHF",
     }
 )
 
@@ -882,7 +879,7 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
 def apply_sell_only_filter(ctx: DecisionContext) -> None:
     """Force FLAT on BUY signals for assets with inverted BUY calibration.
 
-    For these 8 assets, p_long > 0.5 corresponds to ~17% win rate (inverted
+    For a subset of assets, p_long > 0.5 corresponds to ~17% win rate (inverted
     signal), while p_long < 0.425 corresponds to ~77% win rate (well-calibrated
     SELL).  This stage lets SELL signals pass through unchanged but overrides
     BUY signals to FLAT, converting these assets to sell-only.
@@ -893,6 +890,23 @@ def apply_sell_only_filter(ctx: DecisionContext) -> None:
     AUDUSD, EURNZD, NZDUSD were removed from the filter 2026-06-23 after
     corrected walk-forward showed BUY WR >50%.
     See the 2026-06-20 diagnostic chain for full evidence.
+
+    USDJPY added 2026-06-26, removed 2026-06-26 — Step3 BuyWR=39.4% vs
+    BE WR=20.9% (+18.6pp). BUY now profitable. SELL_ONLY no longer needed.
+
+    GBPJPY added 2026-06-26, removed same-day — Step 3 trend-exhaustion features
+    (MACD hist, Stoch %K/%D, BB %B, ADX slope, RSI divergence) improved BuyWR to
+    38.6% (+7.8pp). With tp/sl=2.22/0.50 (BE WR=18.4%), BUY signals are now
+    profitable despite being below 50% WR.
+
+    USDCHF removed 2026-06-26 — Step3 BuyWR=29.9% vs BE WR=22.1% (+7.8pp).
+    BUY now profitable. SELL_ONLY no longer needed.
+
+    EURCHF removed 2026-06-26 — Step3 BuyWR=26.2% vs BE WR=25.0% (+1.2pp).
+    Marginal but above breakeven. Re-evaluate if drift degrades signal.
+
+    ^DJI removed 2026-06-26 — Step3 BuyWR=24.3% vs BE WR=11.1% (+13.2pp).
+    BUY now profitable. SELL_ONLY no longer needed.
     """
     engine = ctx.engine
     if engine.name not in SELL_ONLY_ASSETS:

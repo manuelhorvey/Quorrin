@@ -695,3 +695,61 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+  USDJPY:
+    ticker: USDJPY=X
+    allocation: 0.04
+    sl_mult: 0.52
+    tp_mult: 1.97  # ratio=3.79. Walk-forward: total_R=+281.19, sharpe_adj=4.68, SELL WR=63.8%, BUY WR=40.0% (inverted — SELL_ONLY). Promoted 2026-06-26.
+    spread_tier: fx_major
+    max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.9
+        tp_mult: 0.9
+      RED:
+        sl_mult: 0.8
+        tp_mult: 0.8
+    config:
+      shadow_sltp:
+        enabled: true
+        method: trailing
+        trailing_activation_mult: 1.0
+        trailing_distance_mult: 1.0
+      dynamic_sltp:
+        enabled: true
+        method: trailing
+        trailing_activation_mult: 1.0
+        trailing_distance_mult: 1.0
+        min_rr_ratio: 1.5
+  GBPJPY:
+    ticker: GBPJPY=X
+    allocation: 0.03
+    sl_mult: 0.50
+    tp_mult: 2.22  # ratio=4.44. Walk-forward: total_R=+359.94, sharpe_adj=5.88, SELL WR=66.5%, BUY WR=30.6% (pre-Step3). Removed from SELL_ONLY 2026-06-26: Step3 features improved BuyWR to 38.6%; BE WR=18.4% → BUY now profitable.
+    spread_tier: fx_cross
+    max_depth: 2
+    regime_geometry:
+      GREEN:
+        sl_mult: 1.0
+        tp_mult: 1.0
+      YELLOW:
+        sl_mult: 0.9
+        tp_mult: 0.9
+      RED:
+        sl_mult: 0.8
+        tp_mult: 0.8
+    config:
+      shadow_sltp:
+        enabled: true
+        method: trailing
+        trailing_activation_mult: 1.0
+        trailing_distance_mult: 1.0
+      dynamic_sltp:
+        enabled: true
+        method: trailing
+        trailing_activation_mult: 1.0
+        trailing_distance_mult: 1.0
+        min_rr_ratio: 1.5

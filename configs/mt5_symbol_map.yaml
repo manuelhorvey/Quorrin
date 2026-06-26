@@ -26,14 +26,14 @@ NZDCHF=X: NZDCHF
 NZDUSD=X: NZDUSD
 USDCAD=X: USDCAD
 USDCHF=X: USDCHF
-# USDJPY=X: USDJPY      # REMOVED from dashboard (flat edge)
+USDJPY=X: USDJPY      # PROMOTED 2026-06-26 — Group A sweep: total_R=+281.19, sharpe_adj=4.68, SELL WR=63.8%. SELL_ONLY.
 # AUDCAD=X:  AUDCAD     # FAIL — negative expectancy
 # EURCHF=X:  EURCHF     # WEAK — low consistency
 # EURGBP=X:  EURGBP     # FAIL — negative expectancy
 # EURJPY=X:  EURJPY     # WEAK — low sharpe
 # EURNZD=X:  EURNZD     # FAIL — negative expectancy
 # GBPAUD=X:  GBPAUD     # WEAK — low consistency
-# GBPJPY=X:  GBPJPY     # WEAK — fragile
+GBPJPY=X:  GBPJPY     # PROMOTED 2026-06-26 — Group A sweep: total_R=+359.94, sharpe_adj=5.88, SELL WR=66.5%. SELL_ONLY.
 GBPUSD=X:  GBPUSD
 # NZDCHF=X:  NZDCHF     # WEAK — low consistency
 # NZDJPY=X:  NZDJPY     # WEAK — near-zero trades

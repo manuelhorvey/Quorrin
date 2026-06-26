@@ -72,9 +72,9 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Primary builder:** `features/alpha_features.py:build_alpha_features()`
 **Regime builder:** `features/regime_features.py:generate_regime_features()`
 **Per-asset contract:** Defined in `features/registry.py:FEATURE_REGISTRY` (36 tickers) — used for training custom features.
-**Input:** 13 standard alpha features + 7 regime features per asset.
+**Input:** 19 standard alpha features (13 base + 6 trend-exhaustion) + 7 regime features per asset.
 
-13 features total (9 per-asset + 4 cross-asset), all with per-asset prefix (`{ASSET}_`):
+19 features total (15 per-asset + 4 cross-asset), all with per-asset prefix (`{ASSET}_`):
 
 | Feature | Description |
 |---------|-------------|
@@ -87,10 +87,18 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 | `{ASSET}_vol_ratio` | Short/long-term vol ratio |
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in COT data) |
+| `{ASSET}_macd_hist` | MACD histogram / close (normalized) — trend exhaustion |
+| `{ASSET}_stoch_k` | Stochastic %K — overbought/oversold |
+| `{ASSET}_stoch_d` | Stochastic %D — signal line confirmation |
+| `{ASSET}_bb_pct_b` | Bollinger Band %B — extreme range detection |
+| `{ASSET}_adx_slope` | ADX rate of change — trend acceleration/deceleration |
+| `{ASSET}_rsi_divergence` | RSI divergence (-1/0/+1) — bullish/bearish exhaustion |
 | `dxy_mom_21d` | DXY 21-day return |
 | `vix_mom_5d` | VIX 5-day return |
 | `spx_mom_5d` | SPX 5-day return |
 | `WTI_mom_21d` | WTI crude 21-day return |
+
+**Trend-exhaustion features** (added 2026-06-26) require OHLCV data passed to `build_alpha_features()`. Computed via the `ta` library. See `features/divergence.py` for RSI divergence detection logic (local extrema within 20-bar lookback window).
 
 ### Custom feature variants:
 
@@ -108,10 +116,11 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 
 Applied at decision pipeline stage `g`. Overrides BUY signals to FLAT for assets where the model's BUY calibration is inverted (p_long > 0.5 → ~17% win rate). SELL signals pass through unchanged. See `2026-06-20 diagnostic chain` for full evidence.
 
-**SELL_ONLY_ASSETS** (`paper_trading/execution/decision_pipeline.py:848`):
+**SELL_ONLY_ASSETS** (`paper_trading/execution/decision_pipeline.py`):
 ```
-CADCHF, ES, NQ, NZDCHF, EURAUD, ^DJI, USDCHF, EURCHF
+CADCHF, ES, NQ, NZDCHF, EURAUD
 ```
+**Reduced from 10→5 on 2026-06-26.** Removed GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI after Step 3 trend-exhaustion features improved their BuyWR above breakeven WR thresholds. Remaining 5 assets are confirmed as permanent SELL_ONLY — impervious to all tested interventions (loss weighting, calibration, feature addition, label inversion).
 
 **Epistemic status:** Empirically-grounded — two leading causal hypotheses (carry for CHF+OTHER, DXY for equities) tested via walk-forward counterfactual ablation and **falsified**. Removing SELL_ONLY requires discovering a causal mechanism that does not currently exist in any tested hypothesis.
 
@@ -475,7 +484,7 @@ max_layers: 3
 | Liquidity regime | Per signal | THIN: SL +15%, size −15% (soft) | `liquidity_config` |
 | | | STRESSED: SL +30%, size −30%, hard halt | |
 | PSI drift | Per cycle | Validity penalty, halt at 3+ SEVERE | — |
-| Sell-only filter | Per decision | Override BUY→FLAT for 8 inverted-BUY assets | `SELL_ONLY_ASSETS` (hardcoded) |
+| Sell-only filter | Per decision | Override BUY→FLAT for 5 inverted-BUY assets | `SELL_ONLY_ASSETS` (hardcoded, reduced from 10 on 2026-06-26) |
 | Calibration (P1) | Per inference | Remap raw p_long via BinnedCalibrator, ECE ↓ from 0.36→0.02 | `calibration.*` (config-gated) |
 | Kelly sizing (P2) | Per decision | Scale position by Kelly criterion (disabled pending live data) | `kelly.*` (config-gated, default disabled) |
 | Factor model (P3) | Per cycle | Factor exposures via 9 groups in state.json (monitoring only) | `portfolio.factor_constraints.*` |
@@ -505,7 +514,7 @@ max_layers: 3
 | Update MAE/MFE | Update max adverse/favorable excursion | — |
 | Resolve signal | Map proba to BUY/SELL/FLAT via `FixedThresholdStrategy(0.45)` | `threshold` (default 0.45) |
 | Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 | (hardcoded, per-asset pair) |
-| Sell-only filter | Override BUY→FLAT for `SELL_ONLY_ASSETS` | (hardcoded frozenset, 8 assets) |
+| Sell-only filter | Override BUY→FLAT for `SELL_ONLY_ASSETS` | (hardcoded frozenset, 5 assets, reduced from 10 on 2026-06-26) |
 | Spread gate | Block entry if spread > per-class tier (observe 720 cycles first) | `spread_gate_tiers` (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
 | Session gate | Block entry outside market session hours per asset-class tier (observe 720 cycles first) | `session_gate.tiers` (fx_major=[7,17], fx_cross=[7,17], indices=[13,20], metals=[8,18]) |
 | ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) | `adx_entry_gate` (adx_threshold=18) |

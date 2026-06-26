@@ -16,7 +16,7 @@ Usage:
     calibrated_p_long = registry.calibrate(asset_name, raw_p_long)
 """
 
-from shared.calibration.calibrator import BinnedCalibrator, BetaCalibrator, CalibrationMethod
+from shared.calibration.calibrator import BinnedCalibrator, BetaCalibrator, CalibrationMethod, DirectionalCalibrator
 from shared.calibration.registry import CalibrationRegistry
 from shared.calibration.ece_tracker import ECETracker, compute_ece
 
@@ -25,6 +25,7 @@ __all__ = [
     "BetaCalibrator",
     "CalibrationMethod",
     "CalibrationRegistry",
+    "DirectionalCalibrator",
     "ECETracker",
     "compute_ece",
 ]

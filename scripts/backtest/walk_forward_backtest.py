@@ -139,10 +139,15 @@ def run_walk_forward(
     rolling_window_bars: int | None = None,
     label_type: str = "standard",
     invert_labels: bool = False,
+    sample_weight_flag: bool = False,
+    calibrate_flag: bool = False,
 ) -> pd.DataFrame | None:
     import xgboost as xgb
 
-    logger.info("=== %s walk-forward (%dy windows, %dy step, pt_sl=%s) ===", asset_name, window_years, step_years, pt_sl)
+    logger.info(
+        "=== %s walk-forward (%dy windows, %dy step, pt_sl=%s) ===",
+        asset_name, window_years, step_years, pt_sl,
+    )
 
     prices, rate_diffs, dxy, vix, spx, commodities = fetch_asset_data(asset_name, ticker)
     if prices.empty or len(prices) < 100:
@@ -154,7 +159,10 @@ def run_walk_forward(
     labels = compute_labels(prices, ohlcv, pt_sl=pt_sl, vertical_barrier=20, label_type=label_type)
     gap = max(gap, 20)
     cot_data = fetch_cot_features(prices.index)
-    alpha_df = build_alpha_features(prices, rate_diffs, dxy=dxy, vix=vix, spx=spx, commodities=commodities, cot_data=cot_data)
+    alpha_df = build_alpha_features(
+        prices, rate_diffs, dxy=dxy, vix=vix, spx=spx,
+        commodities=commodities, cot_data=cot_data, ohlcv=ohlcv,
+    )
 
     alpha_df["label"] = labels.reindex(alpha_df.index).fillna(0).astype(int)
     alpha_df = alpha_df.dropna()
@@ -242,8 +250,17 @@ def run_walk_forward(
             tree_method="hist",
             verbosity=0,
         )
-        model.fit(X_tr[alpha_cols], y_tr)
+        # ── Sample weights (direction-weighted training) ──
+        # When --weighted is passed, BUY samples (label=1) get 2x weight to
+        # penalize BUY misclassifications more heavily in the loss function.
+        fit_kwargs = {}
+        if sample_weight_flag:
+            y_tr_vals = y_tr.values if hasattr(y_tr, 'values') else np.asarray(y_tr)
+            fit_kwargs['sample_weight'] = np.where(y_tr_vals == 1, 2.0, 1.0)
 
+        model.fit(X_tr[alpha_cols], y_tr, **fit_kwargs)
+
+        base_p_tr = model.predict_proba(X_tr[alpha_cols])[:, 1]
         base_p_long = model.predict_proba(X_te[alpha_cols])[:, 1]
 
         # Ensemble blending (matching production: regime model on alpha + regime features)
@@ -257,6 +274,22 @@ def run_walk_forward(
             ensemble = EnsembleSignal(base_weight=ensemble_weight, ensemble_threshold=ensemble_threshold)
             blended, _ = ensemble.combine(base_p_long, r_p_long)
             p_long = blended.ravel()
+
+        # ── Calibration (direction-conditional, Step 2) ────────────────
+        # When --calibrate is set, fit a DirectionalCalibrator on the fold's
+        # training predictions and apply it to OOS probabilities.
+        if calibrate_flag:
+            from shared.calibration import DirectionalCalibrator
+
+            cal = DirectionalCalibrator(n_bins=10)
+            # For the TRAINING fold, compute the model's in-sample predictions
+            # and fit the calibrator on (p_long, actual_label) pairs.
+            cal.fit(base_p_tr, y_tr.values)
+            p_long = cal.calibrate(p_long)
+            logger.info(
+                "  fold %d: calibration applied (buy_fitted=%s sell_fitted=%s)",
+                fold, cal._buy_fitted, cal._sell_fitted,
+            )
 
         # Signal from binary P(LONG)
         signals = np.zeros(len(p_long), dtype=int)
@@ -360,21 +393,42 @@ def main():
     parser.add_argument("--tickers", default=None, help="Comma-separated yfinance tickers (raw)")
     parser.add_argument("--years", type=int, default=3, help="Training window in years")
     parser.add_argument("--step", type=int, default=1, help="Step size in years")
-    parser.add_argument("--ensemble-weight", type=float, default=1.0, help="Base model weight in ensemble (1.0 = base only)")
+    parser.add_argument(
+        "--ensemble-weight", type=float, default=1.0,
+        help="Base model weight in ensemble (1.0 = base only)",
+    )
     parser.add_argument("--ensemble-threshold", type=float, default=0.15, help="Ensemble signal threshold")
-    parser.add_argument("--pt-sl", type=str, default=None,
-                        help="Override pt_sl as tp,sl (e.g. --pt-sl 1.0,2.0). Default: per-asset from production config.")
-    parser.add_argument("--tag", type=str, default="", help="Suffix for output filenames (ensemble/base, etc.)")
-    parser.add_argument("--window-type", type=str, default="expanding", choices=["expanding", "rolling"],
-                        help="Training window type: expanding (all history) or rolling (fixed lookback)")
-    parser.add_argument("--rolling-window-bars", type=int, default=None,
-                        help="Fixed lookback in bars for rolling window (default: window_years * 252)")
-    parser.add_argument("--label-type", type=str, default="standard",
-                        choices=["standard", "trend_adjusted"],
-                        help="Label type: standard (legacy triple-barrier) or trend_adjusted (per-timestep pt_sl)")
-    parser.add_argument("--invert-labels", action="store_true", default=False,
-                        help="Flip training labels (y -> 1-y) so model learns P(DOWN) instead of P(UP). "
-                             "For diagnostic use only — tests whether BUY signal is recoverable by label reorientation.")
+    parser.add_argument(
+        "--pt-sl", type=str, default=None,
+        help="Override pt_sl as tp,sl (e.g. --pt-sl 1.0,2.0). Default: from production config.",
+    )
+    parser.add_argument("--tag", type=str, default="", help="Suffix for output filenames")
+    parser.add_argument(
+        "--window-type", type=str, default="expanding",
+        choices=["expanding", "rolling"],
+        help="Training window: expanding (all history) or rolling (fixed lookback)",
+    )
+    parser.add_argument(
+        "--rolling-window-bars", type=int, default=None,
+        help="Fixed lookback in bars for rolling window (default: years * 252)",
+    )
+    parser.add_argument(
+        "--label-type", type=str, default="standard",
+        choices=["standard", "trend_adjusted"],
+        help="Label type: standard (triple-barrier) or trend_adjusted (per-timestep pt_sl)",
+    )
+    parser.add_argument(
+        "--invert-labels", action="store_true", default=False,
+        help="Flip labels (y -> 1-y) so model learns P(DOWN) instead of P(UP).",
+    )
+    parser.add_argument(
+        "--weighted", action="store_true", default=False,
+        help="Apply direction-weighted training: BUY samples get 2x sample weight in loss.",
+    )
+    parser.add_argument(
+        "--calibrate", action="store_true", default=False,
+        help="Apply DirectionalCalibrator after each fold.",
+    )
     args = parser.parse_args()
 
     # Load per-asset pt_sl from production config
@@ -443,6 +497,8 @@ def main():
             rolling_window_bars=args.rolling_window_bars,
             label_type=args.label_type,
             invert_labels=args.invert_labels,
+            sample_weight_flag=args.weighted,
+            calibrate_flag=args.calibrate,
         )
         if result is not None:
             all_summaries.append(result)
@@ -454,7 +510,8 @@ def main():
         logger.info("combined summary -> %s", combined_path)
 
         print("\n=== Cross-Asset Walk-Forward Summary ===")
-        avg = combined.groupby("asset")[["hit_rate", "directional", "long_rate", "short_rate", "flat_rate"]].mean()
+        metrics = ["hit_rate", "directional", "long_rate", "short_rate", "flat_rate"]
+        avg = combined.groupby("asset")[metrics].mean()
         print(avg.to_string(float_format="%.3f"))
 
 

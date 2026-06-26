@@ -56,6 +56,10 @@ class AssetTrainingPipeline:
 
         cot_data = fetch_cot_features(prices.index)
 
+        # Fetch OHLCV early — needed for trend-exhaustion features, vectorized
+        # labels, and regime features
+        ohlcv = fetch_asset_ohlcv(asset.ticker)
+
         features = build_alpha_features(
             prices,
             rate_diffs,
@@ -64,6 +68,7 @@ class AssetTrainingPipeline:
             spx=spx,
             commodities=commodities,
             cot_data=cot_data,
+            ohlcv=ohlcv,
         )
 
         tp_mult = float(getattr(asset, "tp_mult", 2.0))
@@ -72,9 +77,6 @@ class AssetTrainingPipeline:
         logger.info("%s: training pt_sl=%s (tp_mult=%.2f, sl_mult=%.2f)", asset.name, pt_sl, tp_mult, sl_mult)
         vb = asset.contract.label_params.get("vertical_barrier", 20)
         logger.info("%s: training vertical_barrier=%d (from contract)", asset.name, vb)
-
-        # Fetch OHLCV early — needed for both vectorized labels and regime features
-        ohlcv = fetch_asset_ohlcv(asset.ticker)
         if not ohlcv.empty:
             labeled = apply_triple_barrier(ohlcv, pt_sl=list(pt_sl), vertical_barrier=vb)
             labels = labeled["label"].reindex(features.index).fillna(0).astype(int)

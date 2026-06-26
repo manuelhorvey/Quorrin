@@ -92,7 +92,14 @@ const AssetCard: React.FC<Props> = React.memo(({ name }) => {
     const risk = pos && price != null ? getRiskGeometry(pos, price) : null
 
     return {
-      signal: asset.final_signal ?? sig?.signal ?? 'FLAT',
+      // final_signal (post-pipeline, e.g. after SELL_ONLY filter) wins when present.
+      // When it's null (flat/gate-blocked), show the raw model signal UNLESS
+      // it's a misleading BUY prediction on a sell_only asset — the permanent
+      // SELL_ONLY filter blocked it, so display FLAT instead.
+      signal:
+        asset.final_signal ??
+        (asset.sell_only && sig?.signal === 'BUY' ? 'FLAT' : sig?.signal) ??
+        'FLAT',
       confidence: confidenceToPercent(sig?.confidence),
       price,
       totalReturn: m.mtm_return ?? m.total_return ?? 0,

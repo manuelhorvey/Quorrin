@@ -147,6 +147,9 @@ class PaperTradingEngine:
         self._mtm_cache_value: float | None = None
         self._mtm_cache_cycle: int = -1
 
+        # Auto-prune runs once per day
+        self._last_prune_date: str | None = None
+
         # Background persistence writer (single-threaded drain)
         self._background_writer = BackgroundWriter(
             wal_writer=self._wal,
@@ -280,6 +283,30 @@ class PaperTradingEngine:
     def save_state(self):
         return self._state.save_state()
 
+    def _prune_old_data(self) -> None:
+        """Prune data files older than their per-type retention period.
+
+        Runs at most once per calendar day to keep disk usage bounded
+        without slowing down every cycle.
+        """
+        today = datetime.now(tz=ET).strftime("%Y-%m-%d")
+        if self._last_prune_date == today:
+            return
+        self._last_prune_date = today
+
+        try:
+            from scripts.ops.prune_data import prune_all
+
+            logger.info("Pruning data older than retention limits...")
+            stats = prune_all(apply=True)
+            total = sum(s.get("pruned", 0) + s.get("pruned_files", 0) for s in stats.values() if isinstance(s, dict))
+            if total > 0:
+                logger.info("Pruned %d items across %d data types", total, len(stats))
+            else:
+                logger.debug("No data needed pruning today")
+        except Exception as e:
+            logger.warning("Auto-prune failed: %s", e)
+
     def initialize(self):
         from features.registry import ASSET_LABEL_PARAMS
 
@@ -387,6 +414,9 @@ class PaperTradingEngine:
         _t3 = time.perf_counter()
 
         self.last_update = datetime.now(tz=ET)
+
+        # ── Auto-prune old data (once per day) ───────────────────────
+        self._prune_old_data()
 
         # ── Flush background writer ──────────────────────────────────
         self._background_writer.flush()

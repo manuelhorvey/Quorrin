@@ -79,16 +79,10 @@ CONFIG_ASSETS = {
 SELL_ONLY_ASSETS = frozenset(
     {
         "CADCHF",
-        "AUDUSD",
         "ES",
         "NQ",
         "NZDCHF",
         "EURAUD",
-        "^DJI",
-        "USDCHF",
-        "EURCHF",
-        "NZDUSD",
-        "EURNZD",
     }
 )
 

@@ -49,9 +49,9 @@ logging.basicConfig(
 logger = logging.getLogger("buy_signal_existence")
 
 SELL_ONLY_ASSETS: frozenset[str] = frozenset({
-    "CADCHF", "ES", "NQ", "NZDCHF",
-    "EURAUD", "^DJI", "USDCHF", "EURCHF",
+    "CADCHF", "ES", "NQ", "NZDCHF", "EURAUD",
 })
+# ^DJI, USDCHF, EURCHF removed 2026-06-26 after trend-exhaustion features improved BuyWR above breakeven.
 
 NON_SELL_ONLY_ASSETS: list[str] = [
     "GBPUSD", "AUDUSD", "EURNZD", "NZDUSD", "GBPAUD",

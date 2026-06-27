@@ -2,7 +2,7 @@
 
 ## Alpha Features
 
-The primary feature builder is `features/alpha_features.py:build_alpha_features()`. Every asset uses the same 13 alpha features (9 per-asset + 4 cross-asset) with per-asset prefix. The per-asset contracts in `features/registry.py` are used by the backtest pipeline for custom feature variants.
+The primary feature builder is `features/alpha_features.py:build_alpha_features()`. Every asset uses 21 alpha features (17 per-asset + 4 cross-asset) with per-asset prefix, including COT sentiment features and trend-exhaustion indicators. The per-asset contracts in `features/registry.py` are used by the backtest pipeline for custom feature variants.
 
 ### Input Data
 
@@ -18,7 +18,7 @@ Data ingested from MT5 bridge (primary) or yfinance (fallback):
 
 ### Feature Categories
 
-#### Per-Asset Alpha Features (9 cols via `build_alpha_features()`)
+#### Per-Asset Core Features (11 cols via `build_alpha_features()`)
 
 | Feature | Description |
 |---|---|
@@ -31,6 +31,21 @@ Data ingested from MT5 bridge (primary) or yfinance (fallback):
 | `{ASSET}_vol_ratio` | Short/long-term vol ratio |
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in CFTC data) |
+| `{ASSET}_cot_z` | COT speculative positioning z-score |
+| `{ASSET}_cot_change_4w` | 4-week change in COT net positioning |
+
+#### Per-Asset Trend-Exhaustion Features (6 cols, added 2026-06-26)
+
+Require OHLCV data passed to `build_alpha_features()`. Computed via the `ta` library. See `features/divergence.py` for RSI divergence detection logic.
+
+| Feature | Description |
+|---|---|
+| `{ASSET}_macd_hist` | MACD histogram normalized by close (±5% clip) |
+| `{ASSET}_stoch_k` | Stochastic %K normalized to [0, 1] |
+| `{ASSET}_stoch_d` | Stochastic %D (signal line) |
+| `{ASSET}_bb_pct_b` | Bollinger Band %B: (close - lower) / (upper - lower) |
+| `{ASSET}_adx_slope` | ADX rate of change over 5 days |
+| `{ASSET}_rsi_divergence` | RSI divergence (-1 bearish / 0 none / +1 bullish) |
 
 #### Cross-Asset Features (4 cols)
 
@@ -43,7 +58,7 @@ Data ingested from MT5 bridge (primary) or yfinance (fallback):
 
 ### Custom Feature Variants
 
-Some assets have additional or replacement features beyond the 13-base set:
+Some assets have additional or replacement features beyond the 21-base set:
 
 | Asset | Variant |
 |---|---|
@@ -51,6 +66,7 @@ Some assets have additional or replacement features beyond the 13-base set:
 | NZDUSD | `mom126` replaces base momentum |
 | GBPAUD | `yield_slope` (US yield curve slope) |
 | CADCHF | `yield_slope` |
+| AUDNZD | `yield_slope` |
 | EURNZD | `yield_slope` |
 | GBPCHF | `yield_slope` |
 
@@ -92,4 +108,4 @@ Per-asset `pt_sl` from `configs/paper_trading.yaml`.
 
 ## Architecture Note
 
-All 19 dashboard assets use the same 13 alpha features from `features/alpha_features.py:build_alpha_features()`. A few assets additionally use `yield_slope` or `mom126` variants defined in `features/registry.py`. Each asset has an independent XGBoost model — no shared feature manifold across all assets.
+All 21 promoted assets use the same 21 alpha features from `features/alpha_features.py:build_alpha_features()`. A few assets additionally use `yield_slope` or `mom126` variants defined in `features/registry.py`. Each asset has an independent XGBoost model — no shared feature manifold across all assets.

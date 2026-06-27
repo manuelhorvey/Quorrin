@@ -320,7 +320,7 @@ class DirectionalCalibrator(CalibrationMethod):
         # using 1 - p_long as input and 1 - outcome as target.
         sell_idx = np.where(sell_mask)[0]
         if len(sell_idx) >= self.min_samples_per_bin * 3:
-            sell_p = 1.0 - p_long[sell_idx]      # P(DOWN) raw estimate
+            sell_p = 1.0 - p_long[sell_idx]  # P(DOWN) raw estimate
             sell_outcome = 1 - outcomes[sell_idx]  # 1 if SELL was correct
             self.sell_calibrator.fit(sell_p, sell_outcome)
             self._sell_fitted = True
@@ -352,7 +352,6 @@ class DirectionalCalibrator(CalibrationMethod):
 
         buy_mask = p_long > 0.5
         sell_mask = p_long < 0.5
-        neutral_mask = p_long == 0.5
 
         # Apply BUY calibrator
         if self._buy_fitted and buy_mask.any():
@@ -377,13 +376,21 @@ class DirectionalCalibrator(CalibrationMethod):
         if self._buy_fitted and self.buy_calibrator.bin_centers is not None:
             buy_data = {
                 "bin_centers": self.buy_calibrator.bin_centers.tolist(),
-                "bin_empirical_probs": self.buy_calibrator.bin_empirical_probs.tolist() if self.buy_calibrator.bin_empirical_probs is not None else None,
+                "bin_empirical_probs": (
+                    self.buy_calibrator.bin_empirical_probs.tolist()
+                    if self.buy_calibrator.bin_empirical_probs is not None
+                    else None
+                ),
             }
         sell_data = None
         if self._sell_fitted and self.sell_calibrator.bin_centers is not None:
             sell_data = {
                 "bin_centers": self.sell_calibrator.bin_centers.tolist(),
-                "bin_empirical_probs": self.sell_calibrator.bin_empirical_probs.tolist() if self.sell_calibrator.bin_empirical_probs is not None else None,
+                "bin_empirical_probs": (
+                    self.sell_calibrator.bin_empirical_probs.tolist()
+                    if self.sell_calibrator.bin_empirical_probs is not None
+                    else None
+                ),
             }
 
         data = {

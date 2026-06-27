@@ -64,9 +64,6 @@ SELL_ONLY_ASSETS: frozenset[str] = frozenset(
         "NQ",
         "NZDCHF",
         "EURAUD",
-        "^DJI",
-        "USDCHF",
-        "EURCHF",
     }
 )
 
@@ -297,7 +294,7 @@ def format_report(summary: dict, units: str) -> str:
     lines.append(f"MONTE CARLO DRAWDOWN SIMULATION ({units}-space)")
     lines.append("=" * 72)
     lines.append(f"SELL_ONLY filter active: {SELL_ONLY_ACTIVE}")
-    lines.append(f"Assets: 19 ({len(SELL_ONLY_ASSETS)} SELL_ONLY, {19 - len(SELL_ONLY_ASSETS)} full two-way)")
+    lines.append(f"Assets: 21 ({len(SELL_ONLY_ASSETS)} SELL_ONLY, {21 - len(SELL_ONLY_ASSETS)} full two-way)")
     lines.append(f"Units: {units} of capital")
     lines.append("")
 

@@ -31,16 +31,10 @@ WALKDIR = Path(__file__).resolve().parent.parent / "walkforward"
 SELL_ONLY_ASSETS: frozenset[str] = frozenset(
     {
         "CADCHF",
-        "AUDUSD",
         "ES",
         "NQ",
         "NZDCHF",
         "EURAUD",
-        "^DJI",
-        "USDCHF",
-        "EURCHF",
-        "NZDUSD",
-        "EURNZD",
     }
 )
 

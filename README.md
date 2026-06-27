@@ -61,9 +61,11 @@ State Persistence + Replay
 
 # Current Portfolio
 
-19 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
+21 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
 
 **Added 2026-06-22:** GBPUSD promoted (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
+
+**Added 2026-06-26:** USDJPY and GBPJPY promoted (trend-exhaustion features improved BuyWR above breakeven; removed from SELL_ONLY same day).
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability failure mode — confident wrong-direction bets during trends). USDCAD and NZDUSD allocations halved from 5%→2.5% to limit drawdown impact.
 
@@ -71,11 +73,11 @@ State Persistence + Replay
 | ---------- | ------------ | ------- | ------- | ---------- | --------- |
 | GC         | GC=F         | 1.00    | 4.00    | 7.0%       | 2         |
 | USDCHF     | USDCHF=X     | 0.85    | 3.00    | 4.0%       | 4         |
-| USDCAD     | USDCAD=X     | 2.50    | 2.03    | 2.5%       | 5         |
+| USDCAD     | USDCAD=X     | 1.59    | 3.19    | 2.5%       | 5         |
 | ES         | ES=F         | 2.00    | 5.50    | 7.0%       | 2         |
 | NQ         | NQ=F         | 2.50    | 5.00    | 7.0%       | 2         |
-| GBPCAD     | GBPCAD=X     | 2.50    | 2.50    | 5.0%       | 2         |
-| NZDCAD     | NZDCAD=X     | 2.50    | 4.00    | 5.0%       | 2         |
+| GBPCAD     | GBPCAD=X     | 1.77    | 3.54    | 5.0%       | 2         |
+| NZDCAD     | NZDCAD=X     | 2.24    | 4.47    | 5.0%       | 2         |
 | ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
 | NZDUSD     | NZDUSD=X     | 2.50    | 2.00    | 2.5%       | 5         |
 | GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 5.0%       | 3         |
@@ -83,13 +85,15 @@ State Persistence + Replay
 | CADCHF     | CADCHF=X     | 1.00    | 4.00    | 5.0%       | 2         |
 | AUDUSD     | AUDUSD=X     | 1.50    | 4.00    | 4.0%       | 2         |
 | EURCHF     | EURCHF=X     | 1.00    | 3.00    | 5.0%       | 4         |
-| EURCAD     | EURCAD=X     | 1.00    | 1.50    | 2.0%       | 3         |
-| EURNZD     | EURNZD=X     | 1.50    | 2.50    | 3.0%       | 3         |
+| EURCAD     | EURCAD=X     | 0.87    | 1.73    | 2.0%       | 3         |
+| EURNZD     | EURNZD=X     | 1.37    | 2.74    | 3.0%       | 3         |
 | GBPCHF     | GBPCHF=X     | 1.00    | 2.00    | 3.0%       | 2         |
 | GBPUSD     | GBPUSD=X     | 0.52    | 1.97    | 4.0%       | 2         |
 | EURAUD     | EURAUD=X     | 0.54    | 1.77    | 1.0%       | 2         |
+| USDJPY     | USDJPY=X     | 0.52    | 1.97    | 4.0%       | 2         |
+| GBPJPY     | GBPJPY=X     | 0.50    | 2.22    | 3.0%       | 2         |
 
-Allocation sums to ~0.83. Remaining capacity held as cash buffer.
+Allocation sums to ~0.90. Remaining capacity held as cash buffer.
 
 ### Backtest Performance (pre-leak-fix baseline — 5-Year 2021–2025, 18-asset portfolio)
 
@@ -264,7 +268,7 @@ Three feature sets feed the inference pipeline: alpha, regime, and archetype.
 ## Alpha Features
 
 Built in `features/alpha_features.py:build_alpha_features()`.
-19 features per asset (15 per-asset + 4 cross-asset, includes 6 trend-exhaustion features added 2026-06-26):
+21 features per asset (17 per-asset + 4 cross-asset, includes 6 trend-exhaustion features added 2026-06-26):
 
 | Feature | Description |
 |---------|-------------|
@@ -277,6 +281,8 @@ Built in `features/alpha_features.py:build_alpha_features()`.
 | `{ASSET}_vol_ratio` | Short/long-term vol ratio |
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in CFTC data) |
+| `{ASSET}_cot_z` | COT speculative positioning z-score |
+| `{ASSET}_cot_change_4w` | 4-week change in COT net positioning |
 | `{ASSET}_macd_hist` | MACD histogram / close — trend exhaustion |
 | `{ASSET}_stoch_k` | Stochastic %K — overbought/oversold |
 | `{ASSET}_stoch_d` | Stochastic %D — signal line confirmation |
@@ -320,7 +326,7 @@ Derived from OHLCV for execution conditioning:
  1. Fetch live OHLCV (MT5 or yfinance, 5y window)
  2. Refresh latest price
  3. Fetch macro data
- 4. Build alpha features (build_alpha_features, 13 cols)
+  4. Build alpha features (build_alpha_features, 21 cols)
  5. Build regime features from OHLCV (generate_regime_features, 7 cols)
  6. Build archetype features (ema_spread, adx, rsi, bb_zscore)
  7. Optional truncation validation (predict last row only)
@@ -429,7 +435,7 @@ Persistent state is stored in SQLite WAL mode with append-oriented semantics.
 QuantForge uses independently configurable governance layers with worst-wins aggregation,
 plus decision pipeline suppression stages, position sizing guardrails, and HealthMonitor circuit breaker.
 
-## Governance Layers (14 + HealthMonitor)
+## Governance Layers (15 + HealthMonitor)
 
 | Layer                      | Frequency   | Scope     | Effect                              |
 | -------------------------- | ----------- | --------- | ----------------------------------- |
@@ -439,7 +445,7 @@ plus decision pipeline suppression stages, position sizing guardrails, and Healt
 | Macro regime overlay       | Weekly      | Global    | Exposure + SL adjustments           |
 | Liquidity regime           | Per signal  | Per asset | Exposure + halt logic               |
 | PSI drift                  | Per cycle   | Per asset | Penalty + halt                      |
-| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 8 inverted-BUY assets |
+| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 5 inverted-BUY assets |
 | Calibration (P1)           | Per inference| Per asset | Remap raw p_long via BinnedCalibrator (config-gated, enabled) |
 | Kelly sizing (P2)          | Per decision| Per asset | Scale position by Kelly criterion (config-gated, disabled) |
 | Factor model (P3)          | Per cycle   | Portfolio | Factor exposures via 9 groups in state.json (monitoring only) |
@@ -467,7 +473,7 @@ Applied in order within the decision pipeline (`DEFAULT_STAGES`):
 | Update MAE/MFE            | Update max adverse/favorable excursion  |
 | Resolve signal            | Map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45) |
 | Risk-off suppression      | Flat AUDUSD when VIX>0 & SPX<0          |
-| Sell-only filter          | Override BUY→FLAT for 8 inverted-BUY assets |
+| Sell-only filter          | Override BUY→FLAT for 5 inverted-BUY assets |
 | Spread gate               | Block entry if spread > per-class threshold (observe 720 cycles) |
 | Session gate              | Block entry outside market session hours per asset-class tier (observe 720 cycles) |
 | ADX entry gate            | Block entry if ADX below threshold (observe-only, disabled by default) |

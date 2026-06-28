@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from unittest.mock import patch
 
 from paper_trading.execution.broker_interface import Order
 from paper_trading.execution.paper_broker import PaperBroker
@@ -49,7 +50,8 @@ class TestPaperBroker:
         assert broker.connect() is True
         assert broker.disconnect() is True
 
-    def test_get_current_price_returns_zero_for_unknown(self, broker):
+    @patch("paper_trading.execution.paper_broker.yf.Ticker", side_effect=RuntimeError("yfinance unavailable"))
+    def test_get_current_price_returns_zero_for_unknown(self, mock_ticker, broker):
         price = broker.get_current_price("NONEXISTENT_SYMBOL_12345")
         assert price == 0.0
 

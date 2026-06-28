@@ -136,6 +136,8 @@ class WalWriter:
         """Flush buffered events to disk (write + fsync).
 
         Safe to call multiple times — no-op when buffer is empty.
+        On write failure (disk full, permissions), events are re-buffered
+        for a retry on the next flush cycle.
         """
         with self._lock:
             lines = self._buffer
@@ -144,13 +146,21 @@ class WalWriter:
                 return
 
         seq_low = self._seq - len(lines) + 1  # approximate for logging
-        with open(self._path, "a") as f:
-            f.writelines(lines)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                logger.exception("WAL batch fsync failed for %s seq=%d", self._source, seq_low)
+        try:
+            with open(self._path, "a") as f:
+                f.writelines(lines)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    logger.exception("WAL batch fsync failed for %s seq=%d", self._source, seq_low)
+        except OSError:
+            logger.exception(
+                "WAL batch write failed for %s seq=%d — re-buffering %d events",
+                self._source, seq_low, len(lines),
+            )
+            with self._lock:
+                self._buffer = lines + self._buffer
 
     @property
     def current_sequence(self) -> int:

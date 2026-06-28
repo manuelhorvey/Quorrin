@@ -75,7 +75,7 @@ def apply_publication_lags(
             result[col] = result[col].shift(lag)
             # carry the most recent value forward so we don't introduce NaNs
             if pd.notna(original_last):
-                result[col].ffill(inplace=True)
+                result[col] = result[col].ffill()
             logger.debug("Applied %dd publication lag to '%s'", lag, col)
     return result
 
@@ -95,7 +95,7 @@ def apply_lag_to_macro_derived(
             original_last = result[col].iloc[-1]
             result[col] = result[col].shift(lag)
             if pd.notna(original_last):
-                result[col].ffill(inplace=True)
+                result[col] = result[col].ffill()
     return result
 
 

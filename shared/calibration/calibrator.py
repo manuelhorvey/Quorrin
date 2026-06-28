@@ -23,6 +23,7 @@ import logging
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
+from scipy.special import expit
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -196,7 +197,7 @@ class BetaCalibrator(CalibrationMethod):
         def neg_log_likelihood(params):
             a, b = params
             logits = a * logit_p + b
-            pred = 1.0 / (1.0 + np.exp(-logits))
+            pred = expit(logits)
             pred = np.clip(pred, eps, 1.0 - eps)
             return -np.sum(outcomes * np.log(pred) + (1.0 - outcomes) * np.log(1.0 - pred))
 
@@ -220,7 +221,7 @@ class BetaCalibrator(CalibrationMethod):
         p = np.clip(p_long, eps, 1.0 - eps)
         logit_p = np.log(p / (1.0 - p))
         logits = self.a * logit_p + self.b
-        calibrated = 1.0 / (1.0 + np.exp(-logits))
+        calibrated = expit(logits)
         return np.clip(calibrated, 0.001, 0.999)
 
     def save(self, path: str | Path) -> None:

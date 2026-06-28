@@ -15,20 +15,15 @@ from monitoring.psi_monitor import PSIMonitor
 from monitoring.validity_state_machine import ValidityStateMachine as _ValidityStateMachine
 from paper_trading.asset_pnl_controller import AssetPnlController
 from paper_trading.attribution.collector import AttributionCollector
-from paper_trading.compat import (
-    ExecutionContext,
-    GovernanceService,
-    MetricsService,
-    SignalService,
-    evaluate_regime_conviction_gate,
-    run_decision_pipeline,
-)
 from paper_trading.config_manager import get_config  # noqa: F401  (patched by tests)
 from paper_trading.context import WorkingState
 from paper_trading.entry.decision import TradeDecision
 from paper_trading.entry.optimizer import EntryOptimizer
 from paper_trading.entry.policy import ExecutionPolicyLayer
+from paper_trading.execution.decision_pipeline import run_decision_pipeline
+from paper_trading.execution_context import ExecutionContext
 from paper_trading.governance.asset import AssetGovernance
+from paper_trading.governance.conviction_gate import evaluate_regime_conviction_gate
 from paper_trading.governance.regime import RegimeClassifier
 from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.inference.training import AssetTrainingPipeline
@@ -39,7 +34,10 @@ from paper_trading.position.manager import PositionManager
 from paper_trading.position.scale_out import build_scale_out_from_config
 from paper_trading.services.attribution_service import AttributionService as _AttributionService
 from paper_trading.services.entry_service import EntryService
+from paper_trading.services.governance_service import GovernanceService
+from paper_trading.services.metrics_service import MetricsService
 from paper_trading.services.position_service import PositionService
+from paper_trading.services.signal_service import SignalService
 from paper_trading.shadow.engine import ShadowSLTPEngine
 from paper_trading.state_store import _SKIP_JOURNAL
 from quantforge.domain.entities.position import OrderType

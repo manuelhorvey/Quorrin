@@ -13,7 +13,7 @@
 | Liquidity regime | Per signal | Per asset | THIN: SL +15%, size −15% (soft) |
 | | | | STRESSED: SL +30%, size −30%, halt |
 | PSI drift | Per cycle | Per asset | Validity penalty, halt at 3+ SEVERE |
-| Sell-only filter | Per decision | Per asset | Override BUY→FLAT for 5 inverted-BUY assets |
+| Sell-only filter | Per decision | Per asset | Override BUY→FLAT for 5 inverted-BUY assets (CADCHF, ES, NQ, NZDCHF, EURAUD) |
 | Calibration (P1) | Per inference | Per asset | Remap raw p_long via BinnedCalibrator, ECE 0.36→0.02 |
 | Kelly sizing (P2) | Per decision | Per asset | Scale position by Kelly criterion (config-gated, disabled) |
 | Factor model (P3) | Per cycle | Portfolio | Factor exposures via 9 groups in state.json (monitoring only) |
@@ -42,7 +42,6 @@
 | Session gate | Block entry outside market session hours per asset-class tier (observe 720 cycles first) |
 | ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) |
 | Confidence gate | Abort if net confidence below threshold |
-| Signal stability filter | Require >0.65 max(prob_long, prob_short) to proceed |
 | Signal hysteresis | 2-of-3 agreement required before flip |
 | Meta-label advisory | Record meta-label recommendation (no enforcement) |
 | Update regime bar counter | Track bars since last regime shift |

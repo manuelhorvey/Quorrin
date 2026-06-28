@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commodities, equity indices) with per-asset XGBoost models, regime-conditional ensemble (disabled 2026-06-20; see ADR-026 and PnL backtest section), 9-layer governance, position sizing guardrails, and MT5 bridge execution (Exness demo via Wine).
+Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commodities, equity indices) with per-asset XGBoost models, regime-conditional ensemble (disabled 2026-06-20; see ADR-026 and PnL backtest section), 15-layer governance, position sizing guardrails, and MT5 bridge execution (Exness demo via Wine).
 
 **2026-06-20: AUDNZD, EURUSD, AUDCHF removed from trading.** These 3 assets accounted for the model's confirmed directional instability failure mode (confident wrong-direction bets during trends). Removed from paper_trading.yaml assets, mt5_symbol_map, shadow analytics, risk-off suppression lists, and API commission table. 22-3=19 remaining assets. See the Walk-Forward PnL Backtest section for the full diagnostic chain.
 
@@ -12,7 +12,7 @@ Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commod
 
 **2026-06-23: AUDUSD, EURNZD, NZDUSD removed from SELL_ONLY filter.** Corrected walk-forward methodology shows BUY WR > 50% for all three (AUDUSD 64.5%, EURNZD 57.6%, NZDUSD 57.7%) — BUY is no longer inverted. The original SELL_ONLY diagnosis was based on a broken walk-forward (no purging, EWM labels, validation-split early stopping). The filter no longer trades BUY on the remaining 5 assets (CADCHF, ES, NQ, NZDCHF, EURAUD) where BUY WR remains 11-31%. ^DJI, USDCHF, EURCHF removed from SELL_ONLY 2026-06-26 after trend-exhaustion features improved BuyWR above breakeven.
 
-**2026-06-25: Structural asymmetry confirmed — SELL_ONLY is permanent under current feature design.** Three independent experiments prove BUY direction is not recoverable for the 8 flagged assets: (1) threshold scan 0.01-0.99 — no threshold produces BUY WR > 50%; (2) rolling 252 window — p_long mean shifts 0.4→0.6 in wrong direction (more BUY, worse accuracy); (3) label inversion (y' = 1-y training) — EURAUD BUY WR only improves 22.7%→31.0%. The feature space encodes SELL predictability (62-90% WR) but not BUY predictability (0-32% WR). This is a portfolio-wide issue, not subset-specific — non-SELL_ONLY assets average only 49.3% BUY WR. The architecture is a **pure SELL alpha engine** for these 8 assets; BUY restoration is closed under current feature/label design. See `scripts/restoration/` for the diagnostic framework, gatekeeper, and architecture document.
+**2026-06-25: Structural asymmetry confirmed — SELL_ONLY is permanent under current feature design.** Three independent experiments prove BUY direction is not recoverable for the original 8 flagged assets: (1) threshold scan 0.01-0.99 — no threshold produces BUY WR > 50%; (2) rolling 252 window — p_long mean shifts 0.4→0.6 in wrong direction (more BUY, worse accuracy); (3) label inversion (y' = 1-y training) — EURAUD BUY WR only improves 22.7%→31.0%. The feature space encodes SELL predictability (62-90% WR) but not BUY predictability (0-32% WR). This is a portfolio-wide issue, not subset-specific — non-SELL_ONLY assets average only 49.3% BUY WR. The architecture is a **pure SELL alpha engine** for these 8 assets; BUY restoration is closed under current feature/label design. See `scripts/restoration/` for the diagnostic framework, gatekeeper, and architecture document.
 
 ## Architecture Quick Reference
 
@@ -23,10 +23,11 @@ Cross-sectional multi-asset paper trading engine. 21-asset portfolio (FX, commod
 - **Portfolio Maturity Framework (5-layer, P0–P4)**: P0 portfolio weights (`shared/portfolio_weights.py`), P1 calibration (`shared/calibration/`), P2 Kelly sizing (`shared/kelly.py`), P3 factor model (`shared/factor_model.py`), P4 HRP fix (`portfolio/hrp_allocator.py`). All config-gated. See `LIVE_CONTRACT.md §15`.
 - **Inference**: `paper_trading/inference/pipeline.py` — alpha features → base model → **calibration (P1)** → governance → execute (ensemble disabled; regime features still generated for trace logging)
 - **Training**: `paper_trading/inference/training.py` — base model only (regime model skipped when base_weight >= 1.0), scale_pos_weight, meta-labeling. Expanding-window (all history, never drops old data) — known contributor to directional instability across folds.
-- **Entry gates**: `entry_service.py` price deviation check (skips if price deviated > max_entry_slippage_pct); `decision_pipeline.py` profit lock (blocks flips when unrealized PnL > profit_lock_threshold_pct)
+- **Entry gates**: `entry_service.py` price deviation check (skips if price deviated > max_entry_slippage_pct); profit lock embedded in `manage_position` stage (blocks flips when unrealized PnL > profit_lock_threshold_pct)
 - **Position sizing guardrails**: Kelly multiplier (P2, disabled) → drawdown taper → per-position equity cap → risk-per-trade cap → portfolio leverage budget (atomic lock) → backstop decay multiplier
 - **Independent MT5 sizing**: Paper sized from paper equity ($100K mtm_value); MT5 sized from real broker account balance via `_compute_mt5_qty()` with its own drawdown taper + risk cap
-- **Orchestrator**: `EngineOrchestrator` (ThreadPoolExecutor, 8 workers), 3-phase cycle (signal → entry → backstop)
+- **Orchestrator**: `EngineOrchestrator` (ThreadPoolExecutor, 8 workers), 4-phase cycle (Refresh+Signal → Validity → Portfolio Health → Persist) with MT5 orphan sub-phases (A-D)
+- **Governance**: 15-layer governance + HealthMonitor + VaR/CVaR + RecoveryScheduler
 - **MT5 Bridge**: `paper_trading/ops/mt5_client.py` — TCP frame protocol to Wine-hosted MT5 (port 9879)
 - **Dashboard**: React SPA on port 5000, state via `state.json`
 

@@ -72,9 +72,9 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Primary builder:** `features/alpha_features.py:build_alpha_features()`
 **Regime builder:** `features/regime_features.py:generate_regime_features()`
 **Per-asset contract:** Defined in `features/registry.py:FEATURE_REGISTRY` (36 tickers) — used for training custom features.
-**Input:** 21 standard alpha features (15 base + 6 trend-exhaustion) + 7 regime features per asset.
+**Input:** 21 standard alpha features (11 core + 6 trend-exhaustion = 17 per-asset, plus 4 cross-asset) + 7 regime features per asset.
 
-21 features total (17 per-asset + 4 cross-asset), all with per-asset prefix (`{ASSET}_`):
+21 features total, all with per-asset prefix (`{ASSET}_`) plus 4 cross-asset features:
 
 | Feature | Description |
 |---------|-------------|
@@ -257,29 +257,28 @@ df.index = pd.to_datetime(df.index.tz_convert("UTC").date)
 14. `FixedThresholdStrategy(0.45)` → BUY/SELL/FLAT
 15. Archetype classification → `TradeDecision`
 16. Refresh MT5 spread for spread gate
-17. Decision pipeline stages (applied sequentially):
+17. Decision pipeline stages (applied sequentially, 21 stages):
     a. First-cycle suppression — suppress trading on cold-start cycle 1
     b. Bar-jump suppression — suppress 60min if bar count changed >100
     c. Store prediction metadata — record pre-decision signal state
     d. Update MAE/MFE — update max adverse/favorable excursion
     e. Resolve signal — map proba to BUY/SELL/FLAT
     f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-    g. Sell-only filter — override BUY→FLAT for 8 SELL_ONLY assets (inverted BUY calibration)
+    g. Sell-only filter — override BUY→FLAT for 5 SELL_ONLY assets (inverted BUY calibration)
     h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
     i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles first)
     j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
     k. Confidence gate — abort if net confidence below threshold
-    l. Signal stability filter — require >0.65 max(prob_long, prob_short)
-    m. Signal hysteresis — 2-of-3 agreement before flip
-    n. Meta-label advisory — record meta-label recommendation without enforcement
-     o. Update regime bar counter — track bars since last regime shift
-     p. Conviction gate — flip gate based on regime conviction
-     q. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 15.3 (P2).
-     r. Manage position — close/re-open with entry gate check (includes embedded profit lock — blocks flip if unrealized PnL > `profit_lock_threshold_pct`, default 15%)
-     s. Build entry artifacts — construct TradeDecision for execution
-     t. Route execution policy — direct to PaperBroker or MT5Broker
-     u. Poll deferred entries — execute previously deferred pending orders
-     v. Update prob history — record probability history for drift monitoring
+    l. Signal hysteresis — 2-of-3 agreement before flip
+    m. Meta-label advisory — record meta-label recommendation without enforcement
+    n. Update regime bar counter — track bars since last regime shift
+    o. Conviction gate — flip gate based on regime conviction
+    p. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 15.3 (P2).
+    q. Manage position — close/re-open with entry gate check (includes embedded profit lock — blocks flip if unrealized PnL > `profit_lock_threshold_pct`, default 15%)
+    r. Build entry artifacts — construct TradeDecision for execution
+    s. Route execution policy — direct to PaperBroker or MT5Broker
+    t. Poll deferred entries — execute previously deferred pending orders
+    u. Update prob history — record probability history for drift monitoring
 18. Route through governance layers (15 mechanisms)
 19. Position sizing chain: Kelly multiplier → drawdown taper → cap → risk cap → leverage budget → backstop
 20. Independent MT5 sizing (`_compute_mt5_qty` with broker equity)

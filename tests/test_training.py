@@ -95,9 +95,9 @@ class TestAssetTrainingPipeline:
             "label": np.random.choice([-1, 0, 1], size=50),
         }, index=idx)
 
-        with patch("features.data_fetch.fetch_asset_data", return_value=(prices, pd.DataFrame(), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.DataFrame())):
-            with patch("features.data_fetch.fetch_cot_features", return_value=pd.DataFrame()):
-                with patch("features.data_fetch.fetch_asset_ohlcv", return_value=ohlcv):
+        with patch("paper_trading.inference.training.fetch_asset_data", return_value=(prices, pd.DataFrame(), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.DataFrame())):
+            with patch("paper_trading.inference.training.fetch_cot_features", return_value=pd.DataFrame()):
+                with patch("paper_trading.inference.training.fetch_asset_ohlcv", return_value=ohlcv):
                     with patch("paper_trading.inference.training.build_alpha_features", return_value=features):
                         with patch("paper_trading.inference.training.apply_triple_barrier", return_value=pd.DataFrame({"label": [0] * 50}, index=idx)):
                             with patch("paper_trading.inference.training.generate_regime_features", return_value=pd.DataFrame()):
@@ -124,9 +124,9 @@ class TestAssetTrainingPipeline:
         }, index=idx)
         features["label"] = np.random.choice([-1, 1], size=400)
 
-        with patch("features.data_fetch.fetch_asset_data", return_value=(prices, pd.DataFrame(), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.DataFrame())):
-            with patch("features.data_fetch.fetch_cot_features", return_value=pd.DataFrame()):
-                with patch("features.data_fetch.fetch_asset_ohlcv", return_value=ohlcv):
+        with patch("paper_trading.inference.training.fetch_asset_data", return_value=(prices, pd.DataFrame(), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.Series(dtype=float, index=idx), pd.DataFrame())):
+            with patch("paper_trading.inference.training.fetch_cot_features", return_value=pd.DataFrame()):
+                with patch("paper_trading.inference.training.fetch_asset_ohlcv", return_value=ohlcv):
                     with patch("paper_trading.inference.training.build_alpha_features", return_value=features):
                         with patch("paper_trading.inference.training.apply_triple_barrier", return_value=pd.DataFrame({"label": [1 if i < 200 else -1 for i in range(400)]}, index=idx)):
                             with patch("paper_trading.inference.training.generate_regime_features", return_value=pd.DataFrame()):

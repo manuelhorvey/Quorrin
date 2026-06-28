@@ -143,6 +143,9 @@ class EngineOrchestrator:
         # Separate from Phase 3b's _prev_portfolio_value (which uses total_value sum):
         self._var_prev_value: float | None = None
 
+        # MT5 orphan cleanup tracking
+        self._abandoned_orphans: int = 0
+
         # Position concentration snapshot (updated each cycle in Phase 3e)
         self._position_concentration: dict = {
             "long": 0,
@@ -233,12 +236,32 @@ class EngineOrchestrator:
         budget_ref = [leverage_budget]
         self._cycles_elapsed += 1
 
+        # MT5 leverage budget — independent from paper budget, based on MT5 equity
+        mt5_total_equity = 0.0
+        mt5_leverage_budget_enabled = defaults.get("mt5_leverage_budget_enabled", False)
+        for actor in self._actors.values():
+            engine = actor._engine
+            try:
+                bridge = getattr(engine, "execution_bridge", None)
+                if bridge is not None and hasattr(bridge, "broker"):
+                    broker = bridge.broker
+                    if hasattr(broker, "get_account_summary"):
+                        summary = broker.get_account_summary()
+                        if summary and hasattr(summary, "portfolio_value"):
+                            mt5_total_equity += summary.portfolio_value
+            except Exception:
+                pass
+        mt5_leverage_budget = max_leverage * mt5_total_equity * self._backstop_multiplier
+        mt5_budget_ref = [mt5_leverage_budget] if mt5_leverage_budget_enabled else None
+
         exp_mult, _ = compute_exposure_multiplier(current_dd)
         for actor in self._actors.values():
             actor._engine._cycle_total_equity = total_equity
             actor._engine._cycle_drawdown_pct = current_dd
             actor._engine._leverage_budget_ref = budget_ref
             actor._engine._leverage_lock = self._leverage_lock
+            actor._engine._mt5_leverage_budget_ref = mt5_budget_ref
+            actor._engine._mt5_leverage_lock = self._leverage_lock
             if hasattr(actor._engine, "pos_mgr"):
                 actor._engine.pos_mgr.exposure_multiplier = exp_mult
         return defaults, max_leverage, budget_ref
@@ -633,6 +656,7 @@ class EngineOrchestrator:
         snapshot["emergency_halt"] = self._emergency_halt
         snapshot["halt_reason"] = self._halt_reason.value if self._halt_reason else ""
         snapshot["halt_detail"] = self._halt_detail
+        snapshot["abandoned_orphans"] = self._abandoned_orphans
         try:
             self._wal.write("state_committed", snapshot)
         except Exception:
@@ -771,15 +795,13 @@ class EngineOrchestrator:
             retries = db.get("_mt5_cleanup_retries", 0)
 
             if retries >= self.MAX_CLEANUP_RETRIES:
+                self._abandoned_orphans += 1
                 logger.error(
                     "MT5_ORPHAN abandoned after %d retries: %s queue=%s — manual MT5 cleanup required",
                     self.MAX_CLEANUP_RETRIES,
                     name,
                     queue,
                 )
-                # FIXME: add abandoned-orphan counter to diagnostics/metrics
-                # Phase C (dry-run orphan report) now logs these; adoption
-                # logic still needs a design pass.
                 engine._mt5_cleanup_queue = []
                 engine._mt5_cleanup_retries = 0
                 continue

@@ -25,12 +25,12 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from scipy.special import expit
 
+import numpy as np
+
 if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
-
-import numpy as np
 
 logger = logging.getLogger("quantforge.calibration")
 

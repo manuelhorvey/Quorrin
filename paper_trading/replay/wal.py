@@ -10,15 +10,20 @@ Causal boundary events (P0 — required for deterministic replay):
     decision_output    — final action AFTER governance gating + model hash
 
 Observability events (supporting — not required for causal replay):
-    price_update      — OHLC bar data received
-    signal_generated  — model signal (entry/flat/exit + confidence)
-    entry_executed    — fill result for position entry
-    sl_executed       — fill result for stop-loss
-    tp_executed       — fill result for take-profit
-    position_closed   — position closed (any reason)
-    state_committed   — full state snapshot checkpoint
-    actor_health      — actor health state change
-    stack_added       — pyramid layer added to an existing position
+    price_update        — OHLC bar data received
+    signal_generated    — model signal (entry/flat/exit + confidence)
+    entry_executed      — fill result for position entry
+    sl_executed         — fill result for stop-loss
+    tp_executed         — fill result for take-profit
+    position_closed     — position closed (any reason)
+    state_committed     — full state snapshot checkpoint
+    actor_health        — actor health state change
+    stack_added         — pyramid layer added to an existing position
+    mt5_order_placed    — MT5 market order submitted to bridge (pre-fill)
+    mt5_order_filled    — MT5 order confirmed filled (retcode 10009)
+    mt5_order_rejected  — MT5 order rejected (unsupported type, invalid vol, bridge error, retcode != 10009)
+    mt5_order_modified  — MT5 SL/TP modification submitted
+    mt5_position_closed — MT5 position closed (or already closed / close failed)
 
 Invariants:
     I1: Events from a single source are strictly ordered by sequence.

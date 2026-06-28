@@ -96,6 +96,9 @@ class PaperTradingEngine:
 
         if cfg.mt5.enabled:
             self.broker = self._create_mt5_broker(cfg)
+            # Wire WAL writer into broker for MT5 order lifecycle events
+            if hasattr(self.broker, "set_wal_writer"):
+                self.broker.set_wal_writer(self._wal)
             is_real_broker = True
             # Install MT5 client as global data provider for data_fetcher
             self._install_mt5_data_provider(cfg)

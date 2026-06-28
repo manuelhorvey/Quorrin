@@ -24,6 +24,15 @@ def setup_logging(level=logging.INFO, log_file=None):
         fh.setFormatter(fmt)
         root.addHandler(fh)
 
-    root.addFilter(CorrelationIdFilter())
+    # Add the filter to the handlers, not just the logger. Python's logging
+    # propagates records from child loggers (e.g. "quantforge.asset_engine")
+    # through to the parent's callHandlers() which bypasses the parent logger's
+    # own filter() — meaning a logger-level filter never runs for propagated
+    # records.  Adding the filter to the handlers ensures it always fires
+    # before formatting, regardless of which logger originated the record.
+    filter_ = CorrelationIdFilter()
+    for h in root.handlers:
+        h.addFilter(filter_)
+    root.addFilter(filter_)  # defensive — catches direct emit on the quantforge logger
 
     return root

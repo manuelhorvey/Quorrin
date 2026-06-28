@@ -143,6 +143,9 @@ class EngineOrchestrator:
         # Separate from Phase 3b's _prev_portfolio_value (which uses total_value sum):
         self._var_prev_value: float | None = None
 
+        # MT5 orphan cleanup tracking
+        self._abandoned_orphans: int = 0
+
         # Position concentration snapshot (updated each cycle in Phase 3e)
         self._position_concentration: dict = {
             "long": 0,
@@ -557,7 +560,7 @@ class EngineOrchestrator:
                     n = len(rets)
                     idx = max(0, min(n - 1, int(0.05 * n)))
                     var_95 = rets[idx]
-                    loss_idx = rets[:idx + 1]
+                    loss_idx = rets[: idx + 1]
                     cvar_95 = sum(loss_idx) / max(len(loss_idx), 1)
                     results["var_95"] = round(var_95, 6)
                     results["cvar_95"] = round(cvar_95, 6)
@@ -633,6 +636,7 @@ class EngineOrchestrator:
         snapshot["emergency_halt"] = self._emergency_halt
         snapshot["halt_reason"] = self._halt_reason.value if self._halt_reason else ""
         snapshot["halt_detail"] = self._halt_detail
+        snapshot["abandoned_orphans"] = self._abandoned_orphans
         try:
             self._wal.write("state_committed", snapshot)
         except Exception:
@@ -771,15 +775,13 @@ class EngineOrchestrator:
             retries = db.get("_mt5_cleanup_retries", 0)
 
             if retries >= self.MAX_CLEANUP_RETRIES:
+                self._abandoned_orphans += 1
                 logger.error(
                     "MT5_ORPHAN abandoned after %d retries: %s queue=%s — manual MT5 cleanup required",
                     self.MAX_CLEANUP_RETRIES,
                     name,
                     queue,
                 )
-                # FIXME: add abandoned-orphan counter to diagnostics/metrics
-                # Phase C (dry-run orphan report) now logs these; adoption
-                # logic still needs a design pass.
                 engine._mt5_cleanup_queue = []
                 engine._mt5_cleanup_retries = 0
                 continue

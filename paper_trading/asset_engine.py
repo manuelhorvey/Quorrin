@@ -260,14 +260,13 @@ class AssetEngine:
                 current_hash = hashlib.sha256(f.read()).hexdigest()[:16]
         # Integrity check
         if stored_hash and current_hash and stored_hash != current_hash:
-                logger.warning(
-                    "%s: MODEL HASH MISMATCH — sidecar=%s, computed=%s. "
-                    "Model file may be corrupted.",
-                    self.name,
-                    stored_hash,
-                    current_hash,
-                )
-                self._model_hash_verified = False
+            logger.warning(
+                "%s: MODEL HASH MISMATCH — sidecar=%s, computed=%s. Model file may be corrupted.",
+                self.name,
+                stored_hash,
+                current_hash,
+            )
+            self._model_hash_verified = False
         # Return the best available identifier
         if stored_hash:
             return stored_hash

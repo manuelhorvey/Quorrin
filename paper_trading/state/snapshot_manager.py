@@ -44,12 +44,14 @@ class _SnapshotManager:
             if version < CONTRACT_VERSION:
                 logger.warning(
                     "Snapshot contract_version=%d < current=%d — fields may be missing",
-                    version, CONTRACT_VERSION,
+                    version,
+                    CONTRACT_VERSION,
                 )
             elif version > CONTRACT_VERSION:
                 logger.error(
                     "Snapshot contract_version=%d > current=%d — possibly incompatible",
-                    version, CONTRACT_VERSION,
+                    version,
+                    CONTRACT_VERSION,
                 )
                 return None
             self._cache = (snapshot, time.monotonic() + self._cache_ttl)

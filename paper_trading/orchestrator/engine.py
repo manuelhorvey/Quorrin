@@ -557,7 +557,7 @@ class EngineOrchestrator:
                     n = len(rets)
                     idx = max(0, min(n - 1, int(0.05 * n)))
                     var_95 = rets[idx]
-                    loss_idx = rets[:idx + 1]
+                    loss_idx = rets[: idx + 1]
                     cvar_95 = sum(loss_idx) / max(len(loss_idx), 1)
                     results["var_95"] = round(var_95, 6)
                     results["cvar_95"] = round(cvar_95, 6)

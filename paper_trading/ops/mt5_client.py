@@ -113,9 +113,7 @@ class _FrameConnection:
                 header = _recv_exactly(self._sock, _HEADER_SIZE)
                 size = struct.unpack(_HEADER_FMT, header)[0]
                 if size > _MAX_PAYLOAD:
-                    raise MT5ConnectionError(
-                        f"Response payload {size} exceeds max {_MAX_PAYLOAD}"
-                    )
+                    raise MT5ConnectionError(f"Response payload {size} exceeds max {_MAX_PAYLOAD}")
                 data = _recv_exactly(self._sock, size)
                 resp = json.loads(data.decode("utf-8"))
                 if resp.get("id") != req_id:

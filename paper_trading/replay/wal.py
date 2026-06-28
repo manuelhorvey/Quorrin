@@ -157,7 +157,9 @@ class WalWriter:
         except OSError:
             logger.exception(
                 "WAL batch write failed for %s seq=%d — re-buffering %d events",
-                self._source, seq_low, len(lines),
+                self._source,
+                seq_low,
+                len(lines),
             )
             with self._lock:
                 self._buffer = lines + self._buffer

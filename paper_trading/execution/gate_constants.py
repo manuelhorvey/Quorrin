@@ -24,13 +24,15 @@ def get_sell_only_assets() -> frozenset[str]:
     except Exception:
         logger.debug("Config not yet available — using hardcoded SELL_ONLY_ASSETS", exc_info=True)
     # Hardcoded fallback: 5 assets with confirmed inverted BUY signal
-    return frozenset({
-        "CADCHF",
-        "ES",
-        "NQ",
-        "NZDCHF",
-        "EURAUD",
-    })
+    return frozenset(
+        {
+            "CADCHF",
+            "ES",
+            "NQ",
+            "NZDCHF",
+            "EURAUD",
+        }
+    )
 
 
 # Legacy compatibility alias — prefer get_sell_only_assets() in new code.

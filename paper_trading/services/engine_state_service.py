@@ -9,6 +9,7 @@ from paper_trading.api.common import set_mt5_status
 from paper_trading.config_manager import get_config
 from paper_trading.execution.gate_constants import get_sell_only_assets
 from paper_trading.governance.risk import get_sell_tripwire_state
+from paper_trading.metrics.engine_metrics import update_engine_metrics
 from paper_trading.ops.experiment_context import ExperimentContext
 from paper_trading.ops.simulation_snapshot import build_asset_snapshot
 from paper_trading.performance.live_sharpe import LiveSharpeTracker
@@ -347,6 +348,12 @@ class EngineStateService:
         engine.state_store.save_snapshot(snapshot)
         self._capture_simulation_snapshot(state)
         self._flush_experiment_state()
+
+        try:
+            update_engine_metrics(engine)
+        except Exception:
+            logger.debug("Failed to update Prometheus engine metrics", exc_info=True)
+
         return state
 
     def _capture_simulation_snapshot(self, state: dict) -> None:

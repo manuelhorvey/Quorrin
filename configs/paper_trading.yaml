@@ -79,7 +79,10 @@ mt5:
   enabled: true
   bridge_host: 127.0.0.1
   bridge_port: 9879
-  min_lot: 0.05
+  # min_lot: REMOVED 2026-06-29 — _quantity_to_lots no longer applies a
+  # configured floor; uses the broker's actual min_volume from symbol_info.
+  # If the computed lot value is below the broker's min_volume, the position
+  # is skipped (qty=0 → "below_min_volume") instead of being upsized.
   symbol_map_path: configs/mt5_symbol_map.yaml
 # Alerting framework — multi-channel dispatch for engine events.
 # Each channel supports its own config keys; unconfigured channels are skipped.

@@ -576,7 +576,6 @@ class TestPaperTradingEngine:
                 account=12345, password="pwd", server="srv",
                 symbol_map_path=None,
                 bridge_host="127.0.0.1", bridge_port=9879,
-                min_lot=0.05,
                 enabled=False,
             ),
         )

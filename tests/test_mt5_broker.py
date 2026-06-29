@@ -249,7 +249,7 @@ class TestLotConversion:
         assert lots == 5.0
 
     def test_quantity_to_lots_uses_broker_min_volume_not_configured_min_lot(self, mock_client):
-        broker = MT5Broker(client=mock_client, min_lot=0.05)
+        broker = MT5Broker(client=mock_client)
         broker.connect()
         # 2000 units → 0.02 lots. min_lot=0.05 is NOT a hard floor here —
         # only the broker's actual min_volume (0.01) is enforced.
@@ -258,7 +258,7 @@ class TestLotConversion:
         assert lots == 0.02
 
     def test_quantity_to_lots_returns_zero_below_broker_min_volume(self, mock_client):
-        broker = MT5Broker(client=mock_client, min_lot=0.05)
+        broker = MT5Broker(client=mock_client)
         broker.connect()
         # 500 units → 0.005 lots → below min_volume (0.01) → return 0.0
         lots = broker._quantity_to_lots("EURUSD", 500)

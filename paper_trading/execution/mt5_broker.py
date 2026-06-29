@@ -45,7 +45,6 @@ class MT5Broker(BrokerInterface):
         bridge_host: str = "127.0.0.1",
         bridge_port: int = DEFAULT_MT5_BRIDGE_PORT,
         lot_size_map: dict[str, float] | None = None,
-        min_lot: float = 0.05,
         client: MT5Client | None = None,
     ):
         if client is not None:
@@ -61,7 +60,6 @@ class MT5Broker(BrokerInterface):
             )
         self._symbol_map = symbol_map or {}
         self._lot_size_map = lot_size_map or {}
-        self._min_lot = min_lot
         self._connected = False
 
         # Cache for positions (avoids hammering the bridge)

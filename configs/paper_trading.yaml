@@ -9,7 +9,7 @@ mt5:
   enabled: true
   bridge_host: 127.0.0.1
   bridge_port: 9879
-  min_lot: 0.01
+  min_lot: 0.05
   symbol_map_path: configs/mt5_symbol_map.yaml
 # Alerting framework — multi-channel dispatch for engine events.
 # Each channel supports its own config keys; unconfigured channels are skipped.
@@ -53,7 +53,7 @@ portfolio:
   # constraints (CHF ≤ 0.20) bind via SLSQP direct linear constraints.
   weight_method: factor_constrained_v2
 defaults:
-  rolling_window_bars: 756  # 3 years of daily bars for rolling training window; null/omitted = expanding window
+  rolling_window_bars: 756 # 3 years of daily bars for rolling training window; null/omitted = expanding window
   churn_ratio_threshold: 0.35
   cooldown_half_life_hours: 4.0
   cooldown_max_penalty_pct: 20.0
@@ -233,12 +233,12 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
-  
+
   USDCAD:
     ticker: USDCAD=X
     allocation: 0.025
     sl_mult: 1.59
-    tp_mult: 3.19  # ratio 1.23→2.0 2026-06-25: BUY WR=67.4% (strong), SELL WR=49.2% (marginal). Walk-forward R improvement +173.4R. GM=2.25 preserved.
+    tp_mult: 3.19 # ratio 1.23→2.0 2026-06-25: BUY WR=67.4% (strong), SELL WR=49.2% (marginal). Walk-forward R improvement +173.4R. GM=2.25 preserved.
     spread_tier: fx_major
     max_depth: 5
     regime_geometry:
@@ -324,7 +324,7 @@ assets:
     ticker: GBPCAD=X
     allocation: 0.05
     sl_mult: 1.77
-    tp_mult: 3.54  # ratio 1.0→2.0 2026-06-25: BUY WR=60.1%, SELL WR=80.4%, both directions skilled. Walk-forward R improvement +289.5R. GM=2.5 preserved.
+    tp_mult: 3.54 # ratio 1.0→2.0 2026-06-25: BUY WR=60.1%, SELL WR=80.4%, both directions skilled. Walk-forward R improvement +289.5R. GM=2.5 preserved.
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -353,7 +353,7 @@ assets:
     ticker: NZDCAD=X
     allocation: 0.05
     sl_mult: 2.24
-    tp_mult: 4.47  # ratio 1.6→2.0 2026-06-25: BUY WR=48.1%, SELL WR=77.1%. Walk-forward R improvement +95.4R. GM=3.16 preserved.
+    tp_mult: 4.47 # ratio 1.6→2.0 2026-06-25: BUY WR=48.1%, SELL WR=77.1%. Walk-forward R improvement +95.4R. GM=3.16 preserved.
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -405,12 +405,12 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 0.5
         min_rr_ratio: 1.5
-  
+
   NZDUSD:
     ticker: NZDUSD=X
     allocation: 0.025
     sl_mult: 2.0
-    tp_mult: 2.5  # swapped tp/sl 2026-06-25: ratio was 0.8 (BE_WR=55.6%), WR=57.2% — margin was +1.7%. Swapped to ratio=1.25 (BE_WR=44.4%), walk-forward R improvement +166R. Config change: immediate SL/TP placement; registry change: next retrain.
+    tp_mult: 2.5 # swapped tp/sl 2026-06-25: ratio was 0.8 (BE_WR=55.6%), WR=57.2% — margin was +1.7%. Swapped to ratio=1.25 (BE_WR=44.4%), walk-forward R improvement +166R. Config change: immediate SL/TP placement; registry change: next retrain.
     spread_tier: fx_major
     max_depth: 5
     regime_geometry:
@@ -548,7 +548,7 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
-  
+
   EURCHF:
     ticker: EURCHF=X
     allocation: 0.05
@@ -581,7 +581,7 @@ assets:
     ticker: EURCAD=X
     allocation: 0.02
     sl_mult: 0.87
-    tp_mult: 1.73  # ratio 1.5→2.0 2026-06-25: BUY WR=61.7%, SELL WR=52.5%. Walk-forward R improvement +62.1R. GM=1.22 preserved.
+    tp_mult: 1.73 # ratio 1.5→2.0 2026-06-25: BUY WR=61.7%, SELL WR=52.5%. Walk-forward R improvement +62.1R. GM=1.22 preserved.
     max_depth: 3
     regime_geometry:
       GREEN:
@@ -609,7 +609,7 @@ assets:
     ticker: EURNZD=X
     allocation: 0.03
     sl_mult: 1.37
-    tp_mult: 2.74  # ratio 1.67→2.0 2026-06-25: BUY WR=55.1%, SELL WR=63.1%. Walk-forward R improvement +63.1R. GM=1.94 preserved.
+    tp_mult: 2.74 # ratio 1.67→2.0 2026-06-25: BUY WR=55.1%, SELL WR=63.1%. Walk-forward R improvement +63.1R. GM=1.94 preserved.
     max_depth: 3
     regime_geometry:
       GREEN:
@@ -708,7 +708,7 @@ assets:
         tp_mult: 0.8
     config:
       ensemble:
-        base_weight: 1.0  # ensemble disabled portfolio-wide as of 2026-06-20; threshold no-op
+        base_weight: 1.0 # ensemble disabled portfolio-wide as of 2026-06-20; threshold no-op
         threshold: 0.25
       shadow_sltp:
         enabled: true
@@ -725,7 +725,7 @@ assets:
     ticker: USDJPY=X
     allocation: 0.04
     sl_mult: 0.52
-    tp_mult: 1.97  # ratio=3.79. Walk-forward: total_R=+281.19, sharpe_adj=4.68, SELL WR=63.8%, BUY WR=40.0% (inverted — SELL_ONLY). Promoted 2026-06-26.
+    tp_mult: 1.97 # ratio=3.79. Walk-forward: total_R=+281.19, sharpe_adj=4.68, SELL WR=63.8%, BUY WR=40.0% (inverted — SELL_ONLY). Promoted 2026-06-26.
     spread_tier: fx_major
     max_depth: 2
     regime_geometry:
@@ -754,7 +754,7 @@ assets:
     ticker: GBPJPY=X
     allocation: 0.03
     sl_mult: 0.50
-    tp_mult: 2.22  # ratio=4.44. Walk-forward: total_R=+359.94, sharpe_adj=5.88, SELL WR=66.5%, BUY WR=30.6% (pre-Step3). Removed from SELL_ONLY 2026-06-26: Step3 features improved BuyWR to 38.6%; BE WR=18.4% → BUY now profitable.
+    tp_mult: 2.22 # ratio=4.44. Walk-forward: total_R=+359.94, sharpe_adj=5.88, SELL WR=66.5%, BUY WR=30.6% (pre-Step3). Removed from SELL_ONLY 2026-06-26: Step3 features improved BuyWR to 38.6%; BE WR=18.4% → BUY now profitable.
     spread_tier: fx_cross
     max_depth: 2
     regime_geometry:

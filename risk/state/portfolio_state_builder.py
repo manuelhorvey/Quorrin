@@ -79,7 +79,11 @@ class PortfolioStateBuilder:
 
             entry_price = getattr(pos, "entry_price", 0.0) or 0.0
             current_price = getattr(eng, "current_price", entry_price) or entry_price
-            pnl_pct = pos_mgr.position_pnl(current_price) if entry_price > 0 else 0.0
+            pnl_pct = (
+                getattr(pos_mgr, "position_pnl", None)(current_price)
+                if entry_price > 0 and hasattr(pos_mgr, "position_pnl")
+                else 0.0
+            )
 
             notional = getattr(eng, "_last_entry_notional", 0.0) or 0.0
             if side == "long":
@@ -222,7 +226,9 @@ class PortfolioStateBuilder:
             spread_ok=True,          # populated by spread gate live check
             session_ok=True,         # populated by session gate
             sell_only_ok=not sell_only,
-            confidence_ok=getattr(engine, "_last_confidence", 100.0) >= 55.0,
+            confidence_ok=(lambda v: v >= 55.0 if isinstance(v, (int, float)) else True)(
+                getattr(engine, "_last_confidence", 100.0)
+            ),
             risk_off_ok=True,        # populated by risk-off detector
             hysteresis_ok=True,      # populated by signal hysteresis
             conviction_ok=True,      # populated by conviction gate

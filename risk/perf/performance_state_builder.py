@@ -92,6 +92,17 @@ class ExecutionQualityTracker:
         self._partial_fills: int = 0
         self._total_trades: int = 0
 
+    def record_trade(
+        self,
+        asset: str,
+        exit_reason: str,
+        r_multiple: float,
+        mae_pct: float,
+        mfe_pct: float,
+    ) -> None:
+        """Record a completed trade outcome for the given asset."""
+        self._outcome_tracker.record_trade(exit_reason, r_multiple, mae_pct, mfe_pct)
+
     def record_slippage(self, slippage_pct: float) -> None:
         self._slippage_history.append(abs(slippage_pct))
 

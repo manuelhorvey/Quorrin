@@ -10,15 +10,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from risk.contracts.portfolio_state import (
+from paper_trading.pek.contracts.portfolio_state import (
     AssetGateState,
     ClusterInfo,
     PortfolioStateSnapshot,
     PositionInfo,
 )
-from shared.factor_model import FACTOR_GROUPS, DEFAULT_FACTOR_LIMITS
+from shared.factor_model import DEFAULT_FACTOR_LIMITS, FACTOR_GROUPS
 
-logger = logging.getLogger("quantforge.risk.state")
+logger = logging.getLogger("quantforge.pek.state")
 
 # ── Correlated cluster definitions (mirrors factor groups that exhibit high intra-group correlation) ──
 # These are the factor groups where members tend to move together.

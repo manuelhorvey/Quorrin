@@ -16,9 +16,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from risk.contracts.portfolio_state import PortfolioStateSnapshot, ClusterInfo
-from risk.contracts.risk_budget import RiskBudget
-from paper_trading.orchestrator.admission.signal import AdmissionSignal, PositionSide
+from paper_trading.orchestrator.admission.signal import AdmissionSignal
+from paper_trading.pek.contracts.portfolio_state import PortfolioStateSnapshot
+from paper_trading.pek.contracts.risk_budget import RiskBudget
 
 logger = logging.getLogger("quantforge.orchestrator.admission")
 

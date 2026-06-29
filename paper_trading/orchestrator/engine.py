@@ -36,18 +36,18 @@ from paper_trading.orchestrator.actor import (
     AssetResult,
     compute_health_snapshot,
 )
-from paper_trading.orchestrator.admission import PortfolioAdmissionController, AdmissionSignal
+from paper_trading.orchestrator.admission import AdmissionSignal, PortfolioAdmissionController
 from paper_trading.orchestrator.admission.signal import PositionSide
 from paper_trading.orchestrator.correlation import CorrelationMonitor
 from paper_trading.orchestrator.health import CircuitBreaker, HaltReason, HealthMonitor, RecoveryScheduler
 from paper_trading.replay.wal import WalWriter
 from paper_trading.state_store import EngineSnapshot
-from risk.contracts.portfolio_state import PortfolioStateSnapshot, ClusterInfo
-from risk.contracts.performance_state import PerformanceState, RegimeVelocity
-from risk.contracts.risk_budget import RiskBudget
-from risk.engine_v2 import RiskEngineV2
-from risk.perf.performance_state_builder import PerformanceStateBuilder
-from risk.state.portfolio_state_builder import PortfolioStateBuilder
+from paper_trading.pek.contracts.performance_state import PerformanceState
+from paper_trading.pek.contracts.portfolio_state import PortfolioStateSnapshot
+from paper_trading.pek.contracts.risk_budget import RiskBudget
+from paper_trading.pek.engine_v2 import RiskEngineV2
+from paper_trading.pek.perf.performance_state_builder import PerformanceStateBuilder
+from paper_trading.pek.state.portfolio_state_builder import PortfolioStateBuilder
 
 logger = logging.getLogger("quantforge.orchestrator.engine")
 

@@ -9,12 +9,11 @@ from __future__ import annotations
 import logging
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any
 
-from risk.contracts.performance_state import PerformanceState, RegimeVelocity
-from risk.perf.outcome_tracker import OutcomeTracker
+from paper_trading.pek.contracts.performance_state import PerformanceState, RegimeVelocity
+from paper_trading.pek.perf.outcome_tracker import OutcomeTracker
 
-logger = logging.getLogger("quantforge.risk.perf")
+logger = logging.getLogger("quantforge.pek.perf")
 
 
 class DegradationMonitor:

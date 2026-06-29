@@ -24,7 +24,7 @@ import logging
 import math
 import threading
 import time
-from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -281,7 +281,7 @@ class EngineOrchestrator:
             name = futures[future]
             try:
                 asset_results[name] = future.result()
-            except (CancelledError, Exception) as e:
+            except Exception as e:
                 logger.critical("%s actor threw uncaught exception: %s", name, e)
                 asset_results[name] = AssetResult.failed(name, f"uncaught: {e}")
 
@@ -301,7 +301,7 @@ class EngineOrchestrator:
             try:
                 actor._engine.update_validity()
                 return None
-            except (CancelledError, Exception) as e:
+            except Exception as e:
                 return f"{name}: {e}"
 
         validity_futures = {self._pool.submit(_run_validity, n, a): n for n, a in self._actors.items()}

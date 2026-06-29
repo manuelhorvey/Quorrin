@@ -1,5 +1,4 @@
 import logging
-import threading
 import time
 
 import numpy as np
@@ -16,8 +15,6 @@ from shared.volatility import estimate_ewm_vol
 logger = logging.getLogger("quantforge.entry_service")
 
 ET = pytz.timezone("US/Eastern")
-
-_LOCK_TYPE = type(threading.Lock())
 
 
 class EntryService:
@@ -434,8 +431,6 @@ class EntryService:
                 drawdown_taper_min=cfg.get("size_taper_min", 0.50),
                 entry_price=entry_price,
                 sl_distance=sl_dist,
-                leverage_budget_ref=getattr(asset, "_leverage_budget_ref", None),
-                leverage_lock=getattr(asset, "_leverage_lock", None),
                 is_mt5=False,
                 ticker=asset.name,
             )
@@ -461,14 +456,13 @@ class EntryService:
 
             logger.info(
                 "SIZING %s: eff_cap=%.2f scalar=%.4f dd=%.2f pos_cap=%.2f risk_cap=%.2f "
-                "lev=%.2f -> final_not=%.2f qty=%.6f",
+                "-> final_not=%.2f qty=%.6f",
                 asset.name,
                 result.effective_cap,
                 result.size_scalar_applied,
                 result.drawdown_taper,
                 result.position_cap,
                 result.risk_cap_used,
-                result.leverage_budget_total,
                 notional,
                 qty,
             )
@@ -503,13 +497,6 @@ class EntryService:
         mt5_dd = getattr(broker, "current_mt5_drawdown_pct", lambda: 0.0)()
         sl_dist = abs(intent_sl - entry_price)
 
-        mt5_budget_ref = getattr(asset, "_mt5_leverage_budget_ref", None)
-        mt5_lock = getattr(asset, "_mt5_leverage_lock", None)
-        if not isinstance(mt5_budget_ref, list):
-            mt5_budget_ref = None
-        if type(mt5_lock) is not _LOCK_TYPE and mt5_lock is not None:
-            mt5_lock = None
-
         sizing_input = SizingInput(
             equity=mt5_equity,
             drawdown_pct=mt5_dd,
@@ -522,9 +509,6 @@ class EntryService:
             drawdown_taper_min=cfg.get("size_taper_min", 0.50),
             entry_price=entry_price,
             sl_distance=sl_dist,
-            leverage_budget_ref=mt5_budget_ref,
-            leverage_lock=mt5_lock,
-            leverage_budget_soft=cfg.get("mt5_leverage_budget_soft", True),
             is_mt5=True,
             lot_converter=getattr(broker, "_quantity_to_lots", None),
             ticker=asset.ticker,
@@ -536,14 +520,13 @@ class EntryService:
 
         logger.info(
             "MT5_SIZING %s: equity=%.2f dd=%.2f kelly=%.4f max_pct=%.2f%% risk_cap=%.2f "
-            "lev_budget=%.2f min_viable=%.2f -> final_not=%.2f qty=%.4f",
+            "min_viable=%.2f -> final_not=%.2f qty=%.4f",
             asset.name,
             mt5_equity,
             result.drawdown_taper,
             result.kelly_applied,
             sizing_input.max_position_pct * 100,
             result.risk_cap_used,
-            result.leverage_budget_total,
             result.min_viable_notional,
             result.notional,
             result.quantity,

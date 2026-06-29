@@ -61,8 +61,6 @@ def mock_asset():
     asset._cycle_counter = 100
     asset._meta_size_multiplier = MagicMock(return_value=1.0)
     asset._cycle_drawdown_pct = 0.0
-    asset._leverage_budget_ref = None
-    asset._leverage_lock = None
     asset._kelly_multiplier = 1.0
     asset._last_spread_bps = None
     asset._last_spread_time = 0.0
@@ -416,7 +414,7 @@ class TestSubmitToBroker:
             mock_sc.return_value = MagicMock(
                 is_viable=True, quantity=0.02, notional=2000, chain_breakdown={},
                 effective_cap=100000, size_scalar_applied=0.02, drawdown_taper=1.0,
-                position_cap=15000, risk_cap_used=1000, leverage_budget_total=50000,
+                position_cap=15000, risk_cap_used=1000,
             )
             result = svc._submit_to_broker(mock_asset, "long", 100.0, 95.0, 110.0, "GREEN")
         assert result[0] == 100.5

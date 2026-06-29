@@ -344,39 +344,67 @@ class EngineOrchestrator:
 
         # Collect trade intents from actor results
         intents: list[AdmissionSignal] = []
+        rejection_reasons: dict[str, str] = {}
         for name, actor in self._actors.items():
             signal = results.get("assets", {}).get(name)
             if signal is None or not isinstance(signal, dict) or "error" in signal:
                 continue
 
-            side = signal.get("side")
-            if side is None:
+            side_str = signal.get("side")
+            if side_str is None or side_str == "none":
+                continue
+
+            try:
+                pos_side = PositionSide(side_str)
+            except ValueError:
+                rejection_reasons[name] = f"unknown_side:{side_str}"
                 continue
 
             prob_long = signal.get("prob_long", 0.5)
             prob_short = signal.get("prob_short", 0.5)
-            prob_neutral = signal.get("prob_neutral", 0.0)
             calibrated_prob = signal.get("calibrated_prob", max(prob_long, prob_short))
-            entry_price = signal.get("entry_price", 0.0) or signal.get("close_price", 0.0)
-            sl_price = signal.get("sl", 0.0)
+            entry_price = signal.get("close_price", 0.0)
+            position_size = signal.get("position_size", 0.0)
 
-            try:
-                pos_side = PositionSide(side)
-            except ValueError:
-                continue
+            # Compute stop-loss and take-profit from existing position if available
+            engine = getattr(actor, "_engine", None)
+            pos_mgr = getattr(engine, "pos_mgr", None) if engine else None
+            stop_loss = 0.0
+            take_profit = 0.0
+            if pos_mgr and pos_mgr.has_position():
+                pos = getattr(pos_mgr, "position", None)
+                if pos:
+                    stop_loss = getattr(pos, "stop_loss", 0.0) or 0.0
+                    take_profit = getattr(pos, "take_profit", 0.0) or 0.0
+
+            sl_distance_pct = abs(entry_price - stop_loss) / max(entry_price, 0.0001) if stop_loss > 0 else 0.0
+            tp_distance_pct = abs(take_profit - entry_price) / max(entry_price, 0.0001) if take_profit > 0 else 0.0
+            notional_requested = position_size * entry_price if entry_price > 0 else 0.0
+            risk_usd = notional_requested * sl_distance_pct
+            tp_sl_ratio = tp_distance_pct / max(sl_distance_pct, 0.0001) if sl_distance_pct > 0 else 0.0
+
+            # Regime confidence from asset's last regime row
+            regime_confidence = 0.5
+            if engine:
+                last_regime = getattr(engine, "_last_regime_row", None)
+                if last_regime:
+                    regime_confidence = getattr(last_regime, "P_trend", 0.5)
 
             intent = AdmissionSignal(
                 asset=name,
                 side=pos_side,
-                calibrated_prob=calibrated_prob,
-                prob_long=prob_long,
-                prob_short=prob_short,
-                prob_neutral=prob_neutral,
                 entry_price=entry_price,
-                sl_price=sl_price,
-                expected_value=signal.get("expected_value", 0.0),
-                is_deferred=signal.get("is_deferred", False),
-                cycles_deferred=signal.get("cycles_deferred", 0),
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                sl_distance_pct=sl_distance_pct,
+                tp_distance_pct=tp_distance_pct,
+                notional_requested=notional_requested,
+                risk_usd=risk_usd,
+                calibrated_prob=calibrated_prob,
+                expected_value_r=0.0,
+                tp_sl_ratio=tp_sl_ratio,
+                regime_confidence=regime_confidence,
+                feature_hash=signal.get("feature_hash", ""),
             )
             intents.append(intent)
 
@@ -387,7 +415,12 @@ class EngineOrchestrator:
             risk_budget=self._risk_budget,
         )
         admitted = result.admitted if result else []
-        rejected = [r[0].asset for r in result.rejected] if result else []
+        rejected_list = result.rejected if result else []
+
+        # Build rejection reason dict: merge pre-PEK rejections (side errors) with PEK rejections
+        for sig, reason in rejected_list:
+            rejection_reasons[sig.asset] = reason
+        rejected_assets = list(rejection_reasons.keys())
 
         # Budget enforcement: if actual notional > budget × tolerance, close
         # lowest-ranked admitted positions until within budget.
@@ -449,10 +482,12 @@ class EngineOrchestrator:
         adm = {
             "n_intents": len(intents),
             "n_admitted": len(admitted),
-            "n_rejected": len(rejected),
+            "n_rejected": len(rejected_assets),
             "budget_notional": budget_ref[0] if budget_ref else 0.0,
             "admitted": [s.asset for s in admitted],
-            "rejected": [s.asset for s in rejected],
+            "rejected": rejected_assets,
+            "rejection_reasons": rejection_reasons,
+            "ranking_scores": getattr(result, "ranking_scores", {}),
         }
         results["admission"] = adm
         self._last_admission = adm

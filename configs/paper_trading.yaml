@@ -9,7 +9,7 @@ mt5:
   enabled: true
   bridge_host: 127.0.0.1
   bridge_port: 9879
-  min_lot: 0.05
+  min_lot: 0.01
   symbol_map_path: configs/mt5_symbol_map.yaml
 # Alerting framework — multi-channel dispatch for engine events.
 # Each channel supports its own config keys; unconfigured channels are skipped.

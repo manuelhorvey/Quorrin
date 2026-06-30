@@ -50,6 +50,17 @@ _CIRCUIT_BREAKER_LAST_FAILURE = 0.0
 _CIRCUIT_BREAKER_TIMEOUTS = [30.0, 60.0, 120.0, 300.0]
 _CIRCUIT_BREAKER_LOCK = threading.Lock()
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _is_loopback(host: str) -> bool:
+    """Return True if the bridge host is safe (loopback-only)."""
+    if not host:
+        return False
+    if host in _LOOPBACK_HOSTS:
+        return True
+    return host.startswith("127.")
+
 
 class MT5ConnectionError(Exception):
     pass
@@ -253,7 +264,19 @@ class MT5Client:
         bridge_host: str = "127.0.0.1",
         bridge_port: int | None = None,
         symbol_map: dict[str, str] | None = None,
+        allow_remote_bridge: bool = False,
     ):
+        # Security: only loopback is safe by default — the bridge runs on
+        # the local machine and credentials never leave it.  Pin to 127.0.0.1
+        # unless the operator explicitly opts in to a remote bridge (which
+        # is unsafe and should not happen in production).
+        if not allow_remote_bridge and not _is_loopback(bridge_host):
+            logger.warning(
+                "MT5 bridge_host=%r is non-loopback. This is unsafe — "
+                "bridge traffic is plaintext TCP and credentials are exposed. "
+                "Pass allow_remote_bridge=True to override.",
+                bridge_host,
+            )
         self._account = account
         self._password = password
         self._server = server

@@ -26,13 +26,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Check config schema
+        run: |
+          python tools/check_config_schema.py
+
       - name: Check live dependency boundaries
         run: bash scripts/diagnostics/check_live_deps.sh
 
       - name: Lint with ruff
         run: |
-          ruff check paper_trading/ shared/ features/ labels/ --output-format=github
-          ruff format paper_trading/ shared/ features/ labels/ --check
+          ruff check . --output-format=github
+          ruff format . --check
 
       - name: Build dashboard
         run: |

@@ -1,0 +1,33 @@
+[Unit]
+Description=MT5 Bridge Supervisor (QuantForge)
+Documentation=https://github.com/anomalyco/opencode
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/quantforge/mt5.env
+Environment="MT5_BRIDGE_PORT=9879"
+Environment="WINE_PREFIX=/root/.wine_mt5"
+WorkingDirectory=/home/quantforge/QuantForge
+ExecStart=/home/quantforge/.venv/bin/python -m scripts.ops.mt5_bridge_supervisor \
+    --bridge-host 127.0.0.1 \
+    --bridge-port 9879 \
+    --health-port 9880 \
+    --watchdog-secs 30 \
+    --max-restarts 10
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quantforge-mt5-supervisor
+
+# Hardening — match the monitor_all script's expectations
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/quantforge/QuantForge/data
+
+[Install]
+WantedBy=multi-user.target

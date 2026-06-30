@@ -49,13 +49,12 @@ if nc -z 127.0.0.1 $BRIDGE_PORT >/dev/null 2>&1; then
     echo "  MT5 bridge already running on :$BRIDGE_PORT"
 else
     echo "  Starting MT5 bridge on :$BRIDGE_PORT..."
-    ARGS=""
-    if [ -n "${MT5_ACCOUNT:-}" ]; then ARGS="$ARGS --account $MT5_ACCOUNT"; fi
-    if [ -n "${MT5_PASSWORD:-}" ]; then ARGS="$ARGS --password $MT5_PASSWORD"; fi
-    if [ -n "${MT5_SERVER:-}" ]; then ARGS="$ARGS --server $MT5_SERVER"; fi
+    # NOTE: credentials are passed via env vars ONLY (set -a above sourced
+    # .env). We do NOT pass --password on the command line because that
+    # would expose the secret to `ps aux`.
 
     export WINEPREFIX="$WINE_PREFIX"
-    xvfb-run wine python "$SCRIPT_DIR/mt5_bridge.py" $ARGS &>/dev/null &
+    xvfb-run wine python "$SCRIPT_DIR/mt5_bridge.py" &>/dev/null &
     LAUNCHED_BRIDGE=$!
     # Wait for bridge to accept connections
     for i in 1 2 3 4 5 6 7 8 9 10; do

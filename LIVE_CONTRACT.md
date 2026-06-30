@@ -74,9 +74,14 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Primary builder:** `features/alpha_features.py:build_alpha_features()`
 **Regime builder:** `features/regime_features.py:generate_regime_features()`
 **Per-asset contract:** Defined in `features/registry.py:FEATURE_REGISTRY` (36 tickers) — used for training custom features.
-**Input:** 21 standard alpha features (11 core + 6 trend-exhaustion = 17 per-asset, plus 4 cross-asset) + 7 regime features per asset.
+**Input:** 15–35 alpha features per asset (15 CLOSE_* per-asset + 4 cross-asset + up to 16 COT features from all covered pairs) + 7 regime features per asset.
 
-21 features total, all with per-asset prefix (`{ASSET}_`) plus 4 cross-asset features:
+> **Feature naming note:** `build_alpha_features()` is called per-asset with a single-column DataFrame named `"close"`,
+> so all per-asset features use the `CLOSE_` prefix (e.g. `CLOSE_carry_vol_adj`) rather than the asset ticker.
+> The documentation uses `{ASSET}_` notation as a placeholder — actual model files contain `CLOSE_*`. This is
+> a known naming artifact; a code fix (using the real asset name as prefix) is deferred to the next retrain cycle.
+
+15 per-asset features (9 core + 6 trend-exhaustion, all `CLOSE_*` prefixed) + 4 cross-asset features + up to 16 COT features from all covered pairs (variable count, injected from `cot_data`):
 
 | Feature | Description |
 |---------|-------------|
@@ -89,8 +94,8 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 | `{ASSET}_vol_ratio` | Short/long-term vol ratio |
 | `{ASSET}_dow_signal` | Day-of-week encoding |
 | `{ASSET}_has_cot` | COT data availability flag (zero-filled for pairs not in COT data) |
-| `{ASSET}_cot_z` | COT speculative positioning z-score |
-| `{ASSET}_cot_change_4w` | 4-week change in COT net positioning |
+| `{COVERED}_cot_z` | COT speculative positioning z-score (all COT-covered pairs, not per-asset) |
+| `{COVERED}_cot_change_4w` | 4-week change in COT net positioning (all COT-covered pairs) |
 | `{ASSET}_macd_hist` | MACD histogram / close (normalized) — trend exhaustion |
 | `{ASSET}_stoch_k` | Stochastic %K — overbought/oversold |
 | `{ASSET}_stoch_d` | Stochastic %D — signal line confirmation |
@@ -101,6 +106,8 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 | `vix_mom_5d` | VIX 5-day return |
 | `spx_mom_5d` | SPX 5-day return |
 | `WTI_mom_21d` | WTI crude 21-day return |
+
+> **COT injection note:** COT features are NOT generated per-asset. The initialization loop (matching column names against `_COT_COVERED_NAMES`) does not fire because the DataFrame column is named `"close"`. Instead, ALL columns from `cot_data` (~16 cols × 2 features from 8 COT-covered pairs) are joined into every asset's feature vector. This means assets not in COT data (GC, ES, NQ) still receive COT positioning data for unrelated pairs. Flagged as tech debt: COT should be filtered per factor group.
 
 **Trend-exhaustion features** (added 2026-06-26) require OHLCV data passed to `build_alpha_features()`. Computed via the `ta` library. See `features/divergence.py` for RSI divergence detection logic (local extrema within 20-bar lookback window).
 
@@ -322,26 +329,30 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 **Builder:** `paper_trading/portfolio_builder.py:build_paper_portfolio()`
 **Source:** `configs/paper_trading.yaml`
 
+> **2026-06-30 update:** 11 assets adjusted to ratio=3.0 via geometric mean constraint.
+> Methodology: `scripts/optimization/portfolio_sltp_optimizer.py`. See AGENTS.md for full chronology.
+> All 21 assets retrained with new labels. Backtest: total_R=288.4, max_dd_R=-0.15.
+
 ### Current assets (21 promoted)
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| USDCAD | USDCAD=X | 2.5% | 1.59 | 3.19 | 5 |
-| ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
-| NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
-| GBPCAD | GBPCAD=X | 5.0% | 1.77 | 3.54 | 2 |
-| NZDCAD | NZDCAD=X | 5.0% | 2.24 | 4.47 | 2 |
+| USDCAD | USDCAD=X | 2.5% | 1.30 | 3.90 | 5 |
+| ES | ES=F | 7.0% | 1.91 | 5.74 | 2 |
+| NQ | NQ=F | 7.0% | 2.04 | 6.12 | 2 |
+| GBPCAD | GBPCAD=X | 5.0% | 1.45 | 4.34 | 2 |
+| NZDCAD | NZDCAD=X | 5.0% | 1.83 | 5.48 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 2.5% | 2.00 | 2.50 | 5 |
-| GBPAUD | GBPAUD=X | 5.0% | 1.50 | 2.00 | 3 |
+| NZDUSD | NZDUSD=X | 2.5% | 1.29 | 3.87 | 5 |
+| GBPAUD | GBPAUD=X | 5.0% | 1.00 | 3.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
-| AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
+| AUDUSD | AUDUSD=X | 4.0% | 1.41 | 4.24 | 2 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
-| EURCAD | EURCAD=X | 2.0% | 0.87 | 1.73 | 3 |
-| EURNZD | EURNZD=X | 3.0% | 1.37 | 2.74 | 3 |
-| GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURCAD | EURCAD=X | 2.0% | 0.71 | 2.12 | 3 |
+| EURNZD | EURNZD=X | 3.0% | 1.12 | 3.36 | 3 |
+| GBPCHF | GBPCHF=X | 3.0% | 0.82 | 2.45 | 2 |
 | GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 | USDJPY | USDJPY=X | 4.0% | 0.52 | 1.97 | 2 |
@@ -359,6 +370,8 @@ AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base 
 **2026-06-22: GBPUSD promoted** to portfolio after walk-forward showed IC 0.186 (4/4 folds positive), HR 0.371, pt_sl=(1.97, 0.52) giving R:R=3.79.
 
 **2026-06-26: USDJPY, GBPJPY re-promoted** after Step 3 trend-exhaustion features improved BuyWR above breakeven WR thresholds, enabling two-way trading.
+
+**2026-06-30: 11 assets bumped to ratio=3.0** via geometric mean constraint (USDCAD, ES, NQ, GBPCAD, NZDCAD, NZDUSD, GBPAUD, AUDUSD, EURCAD, EURNZD, GBPCHF). Full optimizer suite in `scripts/optimization/`. All 21 models retrained with new labels. Dashboard endpoint `/optimization.json` added.
 
 ### Previously removed (post walk-forward, insufficient edge)
 CHFJPY, CADJPY, CL, BTCUSD, EURGBP, EURJPY, AUDCAD, NZDJPY, ^VIX, IWM

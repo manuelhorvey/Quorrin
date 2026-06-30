@@ -66,27 +66,32 @@ graph TD
 
 **Added 2026-06-26:** USDJPY and GBPJPY promoted (trend-exhaustion features improved BuyWR above breakeven; removed from SELL_ONLY same day).
 
+**2026-06-30:** 11 assets bumped to ratio=3.0 via optimizer (USDCAD, ES, NQ, GBPCAD, NZDCAD, NZDUSD, GBPAUD, AUDUSD, EURCAD, EURNZD, GBPCHF). All 21 models retrained. Dashboard `/optimization.json` endpoint added. Full optimizer suite in `scripts/optimization/`.
+
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability failure mode — confident wrong-direction bets during trends). USDCAD and NZDUSD allocations halved from 5%→2.5% to limit drawdown impact.
+
+> **2026-06-30 update:** Portfolio table reflects the ratio=3.0 optimizer pass (11 assets bumped).
+> Methodology: `scripts/optimization/portfolio_sltp_optimizer.py`. All models retrained.
 
 | Asset      | Ticker       | sl_mult | tp_mult | Allocation | max_depth |
 | ---------- | ------------ | ------- | ------- | ---------- | --------- |
 | GC         | GC=F         | 1.00    | 4.00    | 7.0%       | 2         |
 | USDCHF     | USDCHF=X     | 0.85    | 3.00    | 4.0%       | 4         |
-| USDCAD     | USDCAD=X     | 1.59    | 3.19    | 2.5%       | 5         |
-| ES         | ES=F         | 2.00    | 5.50    | 7.0%       | 2         |
-| NQ         | NQ=F         | 2.50    | 5.00    | 7.0%       | 2         |
-| GBPCAD     | GBPCAD=X     | 1.77    | 3.54    | 5.0%       | 2         |
-| NZDCAD     | NZDCAD=X     | 2.24    | 4.47    | 5.0%       | 2         |
+| USDCAD     | USDCAD=X     | 1.30    | 3.90    | 2.5%       | 5         |
+| ES         | ES=F         | 1.91    | 5.74    | 7.0%       | 2         |
+| NQ         | NQ=F         | 2.04    | 6.12    | 7.0%       | 2         |
+| GBPCAD     | GBPCAD=X     | 1.45    | 4.34    | 5.0%       | 2         |
+| NZDCAD     | NZDCAD=X     | 1.83    | 5.48    | 5.0%       | 2         |
 | ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
-| NZDUSD     | NZDUSD=X     | 2.50    | 2.00    | 2.5%       | 5         |
-| GBPAUD     | GBPAUD=X     | 1.00    | 2.00    | 5.0%       | 3         |
+| NZDUSD     | NZDUSD=X     | 1.29    | 3.87    | 2.5%       | 5         |
+| GBPAUD     | GBPAUD=X     | 1.00    | 3.00    | 5.0%       | 3         |
 | NZDCHF     | NZDCHF=X     | 1.00    | 4.00    | 7.0%       | 2         |
 | CADCHF     | CADCHF=X     | 1.00    | 4.00    | 5.0%       | 2         |
-| AUDUSD     | AUDUSD=X     | 1.50    | 4.00    | 4.0%       | 2         |
+| AUDUSD     | AUDUSD=X     | 1.41    | 4.24    | 4.0%       | 2         |
 | EURCHF     | EURCHF=X     | 1.00    | 3.00    | 5.0%       | 4         |
-| EURCAD     | EURCAD=X     | 0.87    | 1.73    | 2.0%       | 3         |
-| EURNZD     | EURNZD=X     | 1.37    | 2.74    | 3.0%       | 3         |
-| GBPCHF     | GBPCHF=X     | 1.00    | 2.00    | 3.0%       | 2         |
+| EURCAD     | EURCAD=X     | 0.71    | 2.12    | 2.0%       | 3         |
+| EURNZD     | EURNZD=X     | 1.12    | 3.36    | 3.0%       | 3         |
+| GBPCHF     | GBPCHF=X     | 0.82    | 2.45    | 3.0%       | 2         |
 | GBPUSD     | GBPUSD=X     | 0.52    | 1.97    | 4.0%       | 2         |
 | EURAUD     | EURAUD=X     | 0.54    | 1.77    | 1.0%       | 2         |
 | USDJPY     | USDJPY=X     | 0.52    | 1.97    | 4.0%       | 2         |
@@ -293,7 +298,7 @@ Built in `features/alpha_features.py:build_alpha_features()`.
 | `spx_mom_5d` | SPX 5-day return |
 | `WTI_mom_21d` | WTI crude 21-day return |
 
-Some assets additionally include `yield_slope` (GBPAUD, CADCHF, AUDNZD, EURNZD, GBPCHF) or `mom126` (EURCHF, NZDUSD).
+> **Note:** All per-asset features use the `CLOSE_` prefix (e.g. `CLOSE_carry_vol_adj`) rather than the asset ticker, because the pipeline passes a single-column DataFrame named `"close"` to `build_alpha_features()`. The `{ASSET}_` placeholder in this table is documentation shorthand — actual model files contain `CLOSE_*` columns.
 
 ## Regime Features (inference + regime model training)
 
@@ -510,23 +515,51 @@ A React SPA (TypeScript, Vite, Tailwind CSS) served on port 5000.
 * Governance overlays (narrative status, liquidity badges, PSI drift panel, connection status)
 * Risk-parity rebalancing visualization
 * Historical trade log with attribution decomposition
+* Optimizer recommendations panel (drift detector output overlaid on dashboard)
 * Zod-validated API responses
 
 ### API Endpoints
 
-| Endpoint            | Format | Purpose                     |
-| ------------------- | ------ | --------------------------- |
-| `state.json`        | JSON   | Engine snapshot             |
-| `trades.json`       | JSON   | Trade history               |
-| `attribution.json`  | JSON   | Execution decomposition     |
-| `narrative.json`    | JSON   | Macro narrative status      |
-| `liquidity.json`    | JSON   | Liquidity regime per asset  |
-| `psi.json`          | JSON   | PSI drift monitoring        |
-| `governance.json`   | JSON   | Governance layer state      |
-| `risk_parity.json`  | JSON   | Risk-parity weights         |
-| `execution.json`    | JSON   | Execution quality metrics   |
-| `shadow.json`       | JSON   | Shadow trade comparison     |
-| `analytics.json`    | JSON   | Portfolio analytics         |
+| Path                             | Purpose                                  |
+| -------------------------------- | ---------------------------------------- |
+| `state.json`                     | Engine snapshot (portfolio + per-asset)  |
+| `state-bundle.json`              | Full system bundle (state + live + health) |
+| `trades.json`                    | Trade history                            |
+| `equity_history.json`            | Equity curve history                     |
+| `optimization.json`              | Optimizer drift detector output          |
+| `governance.json`                | Governance layer state                   |
+| `risk.json`                      | Risk metrics summary                     |
+| `risk/{asset}.json`              | Per-asset risk detail                    |
+| `risk-parity.json`               | Risk-parity weights                      |
+| `statistical-metrics.json`       | PSR/DSR/MinTRL metrics                   |
+| `narrative.json`                 | Macro narrative status                   |
+| `liquidity.json`                 | Liquidity regime per asset               |
+| `psi.json`                       | PSI drift monitoring                     |
+| `confidence.json`                | Per-asset confidence distributions       |
+| `volatility.json`                | Per-asset volatility metrics             |
+| `trade-outcomes.json`            | Trade outcome breakdown                  |
+| `weekly-review.json`             | Weekly performance review                |
+| `attribution/trades.json`        | Trade-level attribution decomposition    |
+| `attribution/summary.json`       | Attribution summary                      |
+| `attribution/live.json`          | Live attribution breakdown               |
+| `attribution/waterfall.json`     | Attribution waterfall chart data         |
+| `execution/quality.json`         | Execution quality metrics                |
+| `execution/slippage.json`        | Slippage analysis                        |
+| `shadow/trades.json`             | Shadow trade comparison                  |
+| `shadow/summary.json`            | Shadow trade summary                     |
+| `shadow-actions`                 | Shadow action queue                      |
+| `shadow-actions/{id}.json`       | Single shadow action detail              |
+| `archetype/stats.json`           | Archetype classification stats           |
+| `analytics/snapshot.json`        | Portfolio analytics snapshot             |
+| `mt5/status.json`                | MT5 bridge/account status                |
+| `health.json`                    | Governance health scores                 |
+| `health/{asset}.json`            | Per-asset health detail                  |
+| `health`                         | Engine liveness (pings engine loop)      |
+| `asset/{name}.json`              | Full per-asset detail                    |
+| `wal/{asset}.json`               | WAL event timeline for an asset          |
+| `logs`                           | Live engine log stream (SSE)             |
+| `metrics`                        | Prometheus-style metrics                 |
+| `ping`                           | Liveness check                           |
 
 ---
 
@@ -584,7 +617,7 @@ Dashboard: [http://localhost:5000](http://localhost:5000)
 | Variable                      | Required | Purpose                                |
 | ----------------------------- | -------- | -------------------------------------- |
 | `PYTHONPATH`                  | Yes      | Set to `.`                             |
-| `QUANTFORGE_REFRESH_INTERVAL` | No       | Engine loop interval (default 60s)      |
+| `QUANTFORGE_REFRESH_INTERVAL` | No       | Engine loop interval (default 30s)      |
 | `MT5_ACCOUNT`                 | No*      | Exness MT5 account number              |
 | `MT5_PASSWORD`                | No*      | Exness MT5 account password            |
 | `MT5_SERVER`                  | No*      | Exness MT5 server (e.g. Exness-MT5Trial2) |
@@ -621,6 +654,14 @@ Dashboard: [http://localhost:5000](http://localhost:5000)
 | `scripts/backtest/crisis_replay.py`                     | Crisis replay against 4 historical windows (dec 2024, tariff, selloffs) |
 | `scripts/backtest/monte_carlo_drawdown.py`              | Block-bootstrap drawdown simulation (3 horizons, 10K sims) |
 | `scripts/diagnostics/check_chf_correlation.py`             | CHF cluster independence verification |
+| `scripts/optimization/portfolio_sltp_optimizer.py`         | TP/SL ratio-space grid search (ratio=3.0 pass) |
+| `scripts/optimization/sl_fragility_test.py`               | Intraday vs daily SL hit rate validation |
+| `scripts/optimization/drift_detector.py`                   | Live win-rate drift against breakeven WR |
+| `scripts/optimization/trade_outcome_repository.py`         | Flat trade outcome export from SQLite |
+| `scripts/optimization/portfolio_balancer.py`               | Correlation-aware cluster risk penalty |
+| `scripts/optimization/per_asset_quality.py`                | EV/breakeven/MFE/MAE quality classification |
+| `scripts/optimization/risk_compression.py`                 | Stress scenario injection for TP/SL |
+| `scripts/optimization/directional_win_rate.py`             | Per-direction BUY/SELL win-rate tracker |
 | `scripts/setup/setup_mt5_wine.sh`                    | MT5 Wine environment setup      |
 | `benchmarks/microbenchmark.py`                 | Runtime benchmarking            |
 

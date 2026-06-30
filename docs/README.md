@@ -69,7 +69,7 @@ AUDCHF, AUDNZD, EURUSD, GBPNZD, CADJPY, CHFJPY, CL, USDJPY, BTCUSD, EURGBP, EURJ
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| Engine | — | Main trading loop (60s cycle) |
+| Engine | — | Main trading loop (30s cycle) |
 | Dashboard | 5000 | React SPA + JSON API endpoints |
 | MT5 bridge | 9879 | Wine-hosted TCP bridge to MetaTrader 5 terminal |
 | MT5 terminal | — | MetaTrader 5 under Wine + xvfb-run |

@@ -781,9 +781,12 @@ return_pct = R × ATR_pct  (per asset),  portfolio_return = mean(return_pct) acr
 
 **Files**: `scripts/backtest/monte_carlo_drawdown.py`, `mc_results_v2.json`
 
-## Portfolio tp/sl Optimization (2026-06-25)
+## Portfolio tp/sl Optimization — First Pass (2026-06-25)
 
 **Method**: Scanned ratio space [0.5, 8.0] for each of 21 assets against walk-forward signal parquets. Optimal ratio found by maximizing total_R while preserving geometric mean (keeping average barrier distance constant). SELL_ONLY assets evaluated on SELL leg only. Ratio=2.0 chosen as conservative target — the unconstrained optimum was ratio=4.0-8.0 for most assets, but changing labels (next retrain) introduces uncertainty; a moderate improvement with known bounds is safer than an extreme change.
+
+> **Follow-up (2026-06-30):** Ratio threshold raised to 3.0 for 11 assets after full optimizer iteration.
+> See the TP/SL Optimizer — Ratio=3.0 Bump section below.
 
 **Assets improved (6 of 21)**:
 
@@ -950,6 +953,71 @@ The SELL_ONLY filter is now a focused guard for the 5 assets with genuinely unre
 - EURUSD, AUDNZD, AUDCHF, GBPNZD (all removed 2026-06-20)
 
 21 models remain in `paper_trading/models/` — one per production asset.
+
+---
+## TP/SL Optimizer — Ratio=3.0 Bump (2026-06-30)
+
+### Methodology
+
+Grid search over ratio space [0.5, 20.0] log-scale for all 21 assets using `scripts/optimization/portfolio_sltp_optimizer.py`, estimating config-only PnL (current signals × new tp/sl). Geometric mean constraint preserves average barrier distance.
+
+**Key result:** All 21 assets converge to ratio=20.0 (search boundary) — the optimizer always wants more ratio. Ratio=3.0 chosen as conservative cap to keep SL (0.71–2.04%) above intraday noise. SL fragility test confirms 20/21 OK, 0 CRITICAL, 1 FRAGILE (NZDCAD frag=2.00, hit rate 0.22%).
+
+### Assets Bumped (<3.0 → 3.0, 11 assets)
+
+| Asset | Old ratio | New ratio | Old sl | Old tp | New sl | New tp |
+|-------|-----------|-----------|--------|--------|--------|--------|
+| USDCAD | 2.01 | 3.00 | 1.59 | 3.19 | 1.30 | 3.90 |
+| ES | 2.75 | 3.01 | 2.00 | 5.50 | 1.91 | 5.74 |
+| NQ | 2.00 | 3.00 | 2.50 | 5.00 | 2.04 | 6.12 |
+| GBPCAD | 2.00 | 2.99 | 1.77 | 3.54 | 1.45 | 4.34 |
+| NZDCAD | 2.00 | 2.99 | 2.24 | 4.47 | 1.83 | 5.48 |
+| NZDUSD | 1.25 | 3.00 | 2.00 | 2.50 | 1.29 | 3.87 |
+| GBPAUD | 1.33 | 3.00 | 1.50 | 2.00 | 1.00 | 3.00 |
+| AUDUSD | 2.67 | 3.01 | 1.50 | 4.00 | 1.41 | 4.24 |
+| EURCAD | 1.99 | 2.99 | 0.87 | 1.73 | 0.71 | 2.12 |
+| EURNZD | 2.00 | 3.00 | 1.37 | 2.74 | 1.12 | 3.36 |
+| GBPCHF | 2.00 | 2.99 | 1.00 | 2.00 | 0.82 | 2.45 |
+
+### Tools Built (8 scripts)
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/optimization/portfolio_sltp_optimizer.py` | Two-pass log-space grid search [0.1–20.0] with GM constraint |
+| `scripts/optimization/sl_fragility_test.py` | 4h OHLCV intraday SL hit rate vs daily |
+| `scripts/optimization/drift_detector.py` | Live win-rate drift against breakeven WR; powers dashboard |
+| `scripts/optimization/trade_outcome_repository.py` | Flat trade outcome DataFrame from SQLite |
+| `scripts/optimization/portfolio_balancer.py` | Correlation-aware cluster risk discounting (Equity 15%, CHF 5%) |
+| `scripts/optimization/per_asset_quality.py` | EV/breakeven/MFE/MAE quality classification |
+| `scripts/optimization/risk_compression.py` | Stress scenario injection for TP/SL configuration |
+| `scripts/optimization/directional_win_rate.py` | Per-direction BUY/SELL win rate tracking |
+
+### Dashboard Integration
+
+- **`/optimization.json`** endpoint (`state_routes.py:258`) serves drift detector output
+- **`OptimizerRecommendations.tsx`** component renders flagged assets on the DashboardOverview page
+- Populated by: `PYTHONPATH=$PYTHONPATH:. python scripts/optimization/drift_detector.py --json > data/live/optimization.json`
+
+### Validation (Backtest After Retrain)
+
+All 21 models retrained with new tp/sl labels. Walk-forward comparison:
+
+| Metric | Step 3 baseline | After ratio=3.0 | Δ |
+|--------|----------------|------------------|---|
+| total_R | 248.23 | **288.4** | **+16.2%** |
+| sharpe_adj | 19.56 | 15.96 | -18.4% (portfolio composition) |
+| max_dd_R | -0.29 | **-0.15** | **-54.7%** |
+| Assets profitable | 17/17 | 17/17 | unchanged |
+
+### SELL_ONLY List Update
+
+Confirmed unchanged (5 assets): CADCHF, ES, NQ, NZDCHF, EURAUD. No SELL_ONLY asset was affected by the ratio change — the filter is performance-independent.
+
+### Falsified Concern
+
+**Hypothesis:** Ratio=3.0 makes SL too tight for some assets, causing intraday wick-outs.
+**Test:** `sl_fragility_test.py` scans 4h OHLCV for any bar that would have hit the new SL intraday.
+**Result:** 20/21 OK, 0 CRITICAL. NZDCAD FRAGILE at frag=2.00 but absolute hit rate 0.22% — acceptable.
 
 ## Ruff
 

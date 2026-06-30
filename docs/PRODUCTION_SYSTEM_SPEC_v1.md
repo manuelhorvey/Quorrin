@@ -281,27 +281,29 @@ Computed from OHLCV feature vector (no model inference):
 
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability). USDCAD/NZDUSD halved 5%→2.5%.
 
+**2026-06-30:** 11 assets bumped to ratio=3.0 via geometric mean constraint. See AGENTS.md for full chronology.
+
 **SELL_ONLY filter active for 5 assets** (BUY→FLAT): CADCHF, ES, NQ, NZDCHF, EURAUD.
 
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| USDCAD | USDCAD=X | 2.5% | 1.59 | 3.19 | 5 |
-| ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
-| NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
-| GBPCAD | GBPCAD=X | 5.0% | 1.77 | 3.54 | 2 |
-| NZDCAD | NZDCAD=X | 5.0% | 2.24 | 4.47 | 2 |
+| USDCAD | USDCAD=X | 2.5% | 1.30 | 3.90 | 5 |
+| ES | ES=F | 7.0% | 1.91 | 5.74 | 2 |
+| NQ | NQ=F | 7.0% | 2.04 | 6.12 | 2 |
+| GBPCAD | GBPCAD=X | 5.0% | 1.45 | 4.34 | 2 |
+| NZDCAD | NZDCAD=X | 5.0% | 1.83 | 5.48 | 2 |
 | ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 2.5% | 2.00 | 2.50 | 5 |
-| GBPAUD | GBPAUD=X | 5.0% | 1.50 | 2.00 | 3 |
+| NZDUSD | NZDUSD=X | 2.5% | 1.29 | 3.87 | 5 |
+| GBPAUD | GBPAUD=X | 5.0% | 1.00 | 3.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
-| AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
+| AUDUSD | AUDUSD=X | 4.0% | 1.41 | 4.24 | 2 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
-| EURCAD | EURCAD=X | 2.0% | 0.87 | 1.73 | 3 |
-| EURNZD | EURNZD=X | 3.0% | 1.37 | 2.74 | 3 |
-| GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURCAD | EURCAD=X | 2.0% | 0.71 | 2.12 | 3 |
+| EURNZD | EURNZD=X | 3.0% | 1.12 | 3.36 | 3 |
+| GBPCHF | GBPCHF=X | 3.0% | 0.82 | 2.45 | 2 |
 | GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
 | USDJPY | USDJPY=X | 4.0% | 0.52 | 1.97 | 2 |

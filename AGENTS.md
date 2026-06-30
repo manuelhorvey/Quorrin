@@ -920,3 +920,34 @@ The SELL_ONLY filter is now a focused guard for the 5 assets with genuinely unre
 ```bash
 ruff check . && ruff format .
 ```
+
+## Codebase Remediation (2026-06-30+)
+
+A series of incremental hardening commits applied to `refactor/codebase-remediation`:
+
+1. **`fix(security)` — replace asserts, add .env permission check**
+   - `paper_trading/services/entry_service.py:_validate_sltp_invariants` — replaced 8 `assert` statements with proper `if` checks that log and return `False`. Asserts are stripped under `python -O` and would have allowed invalid SL/TP state to pass.
+   - `paper_trading/config_manager.py` — new `_warn_on_insecure_dotenv()` runs at module import. Warns if `.env` exists with world-readable permissions and lists which exposed env vars are present. Sensitive vars tracked: `MT5_PASSWORD`, `MT5_ACCOUNT`, `OPENCODE_ZEN_API_KEY`, `QUANTFORGE_API_TOKEN`, `PAGERDUTY_ROUTING_KEY`, `SLACK_WEBHOOK_URL`.
+   - `shared/sizing_chain.py` — fixed one line-too-long in log format string.
+
+2. **`feat(config)` — YAML schema validator**
+   - `tools/check_config_schema.py` — validates `configs/paper_trading.yaml` top-level fields, types, value ranges, asset ticker presence, and section structure. Wires into CI as a separate step.
+   - `tests/test_config_schema.py` — 12 tests covering valid config, invalid rebalance/data_source/capital, missing ticker, bad MT5 port, missing file.
+   - `.github/workflows/ci.yml` — adds `python tools/check_config_schema.py` step, uncomments the `scripts/check_live_deps.sh` step, expands ruff scope from `paper_trading/` to whole repo.
+
+3. **`test(sizing)` — property-based invariants**
+   - `tests/test_sizing_chain_properties.py` — 10 hypothesis-driven property checks: viable iff skip_reason, nonneg notional/quantity, drawdown taper bounds [min_size, 1.0], atomic budget under concurrent compute, no crash on zero equity or extreme size_scalar/drawdown.
+
+4. **`test(wal)` — concurrency stress**
+   - `tests/test_wal_replay.py::TestWalConcurrency` — 200-event multi-threaded test (8 threads × 25 events) verifying no events lost and sequences are exactly 1..N with no gaps. Concurrent flush stress test (4 threads × 10 events) confirms JSON validity under interleaved writes+flushes.
+
+The WAL already had correct lock scope (lock released before `open()/writelines()/flush()/os.fsync()`), so no production code change needed for fsync — only the new test coverage.
+
+## Validation Commands
+
+```bash
+ruff check . && ruff format . --check
+python tools/check_config_schema.py
+python tools/check_import_firewall.py
+PYTHONPATH=$PYTHONPATH:. python -m pytest tests/ -q
+```

@@ -211,24 +211,64 @@ class PortfolioStateBuilder:
 
     def _compute_asset_gates(self, name: str, engine: Any) -> AssetGateState:
         """Snapshot per-asset gate state. Each bool represents whether
-        the asset CAN trade (True = ok, False = blocked)."""
-        sell_only = False
-        try:
-            from paper_trading.execution.gate_constants import get_sell_only_assets
+        the asset CAN trade (True = ok, False = blocked).
 
-            sell_only = name in get_sell_only_assets()
-        except ImportError:
-            pass
+        Gate computation order (matching DEFAULT_STAGES in decision_pipeline):
+          1. spread_ok     — live spread vs per-tier threshold
+          2. session_ok    — current UTC hour vs per-tier session window
+          3. sell_only_ok  — from SELL_ONLY_ASSETS
+          4. confidence_ok — from _last_confidence
+          5. risk_off_ok   — from _risk_off flag (VIX>0 & SPX<0)
+          6. hysteresis_ok — from _last_gates_trace
+          7. conviction_ok — from _last_gates_trace
+        """
+        from paper_trading.execution.decision_pipeline import SESSION_TIER_WINDOWS
+        from paper_trading.execution.gate_constants import SPREAD_TIER_BPS, get_sell_only_assets
+
+        # ── spread_ok ──
+        spread_bps = getattr(engine, "_last_spread_bps", None)
+        if isinstance(spread_bps, (int, float)):
+            tier = getattr(engine, "_spread_tier", "fx_cross")
+            threshold = SPREAD_TIER_BPS.get(tier, 20.0)
+            spread_ok = spread_bps < threshold
+        else:
+            spread_ok = True  # no data — fail-open
+
+        # ── session_ok ──
+        tier = getattr(engine, "_spread_tier", "fx_cross")
+        window = SESSION_TIER_WINDOWS.get(tier)
+        if window is not None:
+            start, end = window
+            current_hour = datetime.now(timezone.utc).hour
+            session_ok = start <= current_hour < end
+        else:
+            session_ok = True
+
+        # ── sell_only_ok ──
+        sell_only_ok = name not in get_sell_only_assets()
+
+        # ── confidence_ok ──
+        last_conf = getattr(engine, "_last_confidence", 100.0)
+        confidence_ok = last_conf >= 55.0 if isinstance(last_conf, (int, float)) else True
+
+        # ── risk_off_ok ──
+        risk_off_ok = not getattr(engine, "_risk_off", False)
+
+        # ── hysteresis_ok (from last gate trace) ──
+        gates_trace = getattr(engine, "_last_gates_trace", None) or {}
+        # apply_signal_hysteresis ran in last cycle → we reached that stage
+        hysteresis_ok = gates_trace.get("apply_signal_hysteresis", True)
+
+        # ── conviction_ok (from last gate trace) ──
+        conviction_ok = gates_trace.get("evaluate_conviction_gate", True)
 
         return AssetGateState(
             asset=name,
-            spread_ok=True,  # populated by spread gate live check
-            session_ok=True,  # populated by session gate
-            sell_only_ok=not sell_only,
-            confidence_ok=(lambda v: v >= 55.0 if isinstance(v, (int, float)) else True)(
-                getattr(engine, "_last_confidence", 100.0)
-            ),
-            risk_off_ok=True,  # populated by risk-off detector
-            hysteresis_ok=True,  # populated by signal hysteresis
-            conviction_ok=True,  # populated by conviction gate
+            spread_ok=spread_ok,
+            session_ok=session_ok,
+            sell_only_ok=sell_only_ok,
+            confidence_ok=confidence_ok,
+            risk_off_ok=risk_off_ok,
+            hysteresis_ok=hysteresis_ok,
+            conviction_ok=conviction_ok,
         )

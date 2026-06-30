@@ -30,9 +30,12 @@ class MetricsService:
         if macro_head is not None:
             macro_weight = round(float(getattr(macro_head, "current_weight", 0.45)), 4)
 
+        signal_str = decision.signal.value if hasattr(decision.signal, "value") else str(decision.signal)
+        side = {"BUY": "long", "SELL": "short", "LONG": "long", "SHORT": "short"}.get(signal_str, "none")
+
         return {
             "asset": name,
-            "signal": decision.signal,
+            "signal": signal_str,
             "final_signal": final_signal,
             "confidence": decision.confidence,
             "archetype": decision.archetype,
@@ -40,6 +43,12 @@ class MetricsService:
             "close_price": decision.close_price,
             "date": decision.timestamp,
             "label": decision.label,
+            "side": side,
+            "prob_long": getattr(decision, "prob_long", 0.0),
+            "prob_short": getattr(decision, "prob_short", 0.0),
+            "prob_neutral": getattr(decision, "prob_neutral", 0.0),
+            "position_size": getattr(decision, "position_size", 0.0),
+            "feature_hash": getattr(decision, "feature_hash", ""),
             "position": (
                 {
                     "side": pos.side if pos else None,

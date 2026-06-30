@@ -1,10 +1,11 @@
 import HealthScores from '../components/HealthScores'
 import GovernanceRadar from '../components/governance/GovernanceRadar'
-import AssetGrid from '../components/AssetGrid'
 import PositionConcentrationPanel from '../components/PositionConcentrationPanel'
 import FactorExposureBreakdown from '../components/FactorExposureBreakdown'
-import AdmissionPanel from '../components/AdmissionPanel'
 import PekScalarPanel from '../components/PekScalarPanel'
+import PerformanceStateVelocityChart from '../components/PerformanceStateVelocityChart'
+import RiskBudgetChart from '../components/RiskBudgetChart'
+import GateAggregationPanel from '../components/GateAggregationPanel'
 import Section from '../components/ui/Section'
 import EntranceAnimator from '../components/ui/EntranceAnimator'
 
@@ -15,18 +16,22 @@ export default function RiskWorkspace() {
         <EntranceAnimator variant="fade-up">
           <PekScalarPanel />
         </EntranceAnimator>
+        <EntranceAnimator variant="fade-up" delay={30}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PerformanceStateVelocityChart />
+            <RiskBudgetChart />
+          </div>
+        </EntranceAnimator>
       </Section>
       <Section id="portfolio-risk" errorTitle="Portfolio Risk">
         <EntranceAnimator variant="fade-up" delay={60}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <PositionConcentrationPanel />
-            <AdmissionPanel />
+            <FactorExposureBreakdown />
           </div>
         </EntranceAnimator>
         <EntranceAnimator variant="fade-up" delay={90}>
-          <div className="mt-4">
-            <FactorExposureBreakdown />
-          </div>
+          <GateAggregationPanel />
         </EntranceAnimator>
       </Section>
       <Section id="governance" errorTitle="Governance Constraints">
@@ -37,11 +42,6 @@ export default function RiskWorkspace() {
       <Section id="health-scores" errorTitle="Health Scores">
         <EntranceAnimator variant="fade-up" delay={150}>
           <HealthScores />
-        </EntranceAnimator>
-      </Section>
-      <Section id="asset-grid" errorTitle="All Assets">
-        <EntranceAnimator variant="fade-up" delay={200}>
-          <AssetGrid />
         </EntranceAnimator>
       </Section>
     </div>

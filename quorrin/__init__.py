@@ -2,7 +2,7 @@ import logging
 
 from paper_trading.logging.correlation import CorrelationIdFilter
 
-__version__ = "0.1.0"
+__version__ = "1.5.0"
 
 
 def setup_logging(level=logging.INFO, log_file=None):

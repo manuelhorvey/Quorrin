@@ -376,7 +376,7 @@ MT5 sizing runs the same chain independently using real broker equity (via `_com
 
 ```mermaid
 graph LR
-    A[effective_cap =\ncapital_base × min(mtm/init, 3.0)] --> B[notional =\neffective_cap × size_scalar]
+    A["effective_cap =\ncapital_base × min(mtm/init, 3.0)"] --> B["notional =\neffective_cap × size_scalar"]
     B --> C[Per-Position Equity Cap\nmax_position_pct_of_equity]
     C --> D[Risk-per-Trade Cap\nskip if below min_viable]
     D --> E[Leverage Budget\natomic decrement from\nmax_leverage × equity pool]

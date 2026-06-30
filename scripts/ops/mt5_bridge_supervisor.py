@@ -27,7 +27,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-logger = logging.getLogger("quantforge.mt5_supervisor")
+logger = logging.getLogger("quorrin.mt5_supervisor")
 
 
 class HealthState:

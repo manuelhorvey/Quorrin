@@ -74,14 +74,11 @@ random_state=42, n_jobs=1, tree_method='hist', verbosity=0
 **Primary builder:** `features/alpha_features.py:build_alpha_features()`
 **Regime builder:** `features/regime_features.py:generate_regime_features()`
 **Per-asset contract:** Defined in `features/registry.py:FEATURE_REGISTRY` (36 tickers) — used for training custom features.
-**Input:** 15–35 alpha features per asset (15 CLOSE_* per-asset + 4 cross-asset + up to 16 COT features from all covered pairs) + 7 regime features per asset.
+**Input:** 15–35 alpha features per asset (15 per-asset + 4 cross-asset + up to 16 COT features from all covered pairs) + 7 regime features per asset.
 
-> **Feature naming note:** `build_alpha_features()` is called per-asset with a single-column DataFrame named `"close"`,
-> so all per-asset features use the `CLOSE_` prefix (e.g. `CLOSE_carry_vol_adj`) rather than the asset ticker.
-> The documentation uses `{ASSET}_` notation as a placeholder — actual model files contain `CLOSE_*`. This is
-> a known naming artifact; a code fix (using the real asset name as prefix) is deferred to the next retrain cycle.
+**Feature naming:** Per-asset features use the asset ticker prefix (e.g. `EURUSD_carry_vol_adj`).
 
-15 per-asset features (9 core + 6 trend-exhaustion, all `CLOSE_*` prefixed) + 4 cross-asset features + up to 16 COT features from all covered pairs (variable count, injected from `cot_data`):
+15 per-asset features (9 core + 6 trend-exhaustion) + 4 cross-asset features + up to 16 COT features from all covered pairs (variable count, injected from `cot_data`):
 
 | Feature | Description |
 |---------|-------------|

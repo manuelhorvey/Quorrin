@@ -438,7 +438,7 @@ class AssetInferencePipeline:
         asset._ensemble_breakdown = {}
         try:
             latest_row = alpha_df.iloc[-1]
-            prefix = "CLOSE"
+            prefix = asset.name.upper()
             carry_val = latest_row.get(f"{prefix}_carry_vol_adj", np.nan)
             mom_21 = latest_row.get(f"{prefix}_mom_21d", np.nan)
             mom_63 = latest_row.get(f"{prefix}_mom_63d", np.nan)

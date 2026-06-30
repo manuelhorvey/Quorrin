@@ -298,7 +298,7 @@ Built in `features/alpha_features.py:build_alpha_features()`.
 | `spx_mom_5d` | SPX 5-day return |
 | `WTI_mom_21d` | WTI crude 21-day return |
 
-> **Note:** All per-asset features use the `CLOSE_` prefix (e.g. `CLOSE_carry_vol_adj`) rather than the asset ticker, because the pipeline passes a single-column DataFrame named `"close"` to `build_alpha_features()`. The `{ASSET}_` placeholder in this table is documentation shorthand — actual model files contain `CLOSE_*` columns.
+> **Note:** Per-asset features use the asset ticker prefix (e.g. `EURUSD_carry_vol_adj`). The `{ASSET}_` placeholder in this table resolves to the actual asset name.
 
 ## Regime Features (inference + regime model training)
 

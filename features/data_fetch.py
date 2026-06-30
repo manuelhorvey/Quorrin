@@ -349,7 +349,7 @@ def fetch_asset_data(
             f"{asset_name} ({ticker}): insufficient history ({len(close)} rows, need >= {_MIN_HISTORY_ROWS})"
         )
 
-    prices = close.to_frame("close")
+    prices = close.to_frame(asset_name)
 
     # Macro data is batch-fetched once per cycle and cached
     logger.debug("  fetching macro (DXY, VIX, SPY, CL=F, TNX)...")
@@ -458,7 +458,7 @@ def fetch_asset_data(
     else:
         rate_diff_series = pd.Series(0.0, index=common)
 
-    rate_diffs = pd.DataFrame({"close": rate_diff_series}, index=common)
+    rate_diffs = pd.DataFrame({asset_name: rate_diff_series}, index=common)
 
     commodities = wti.to_frame("WTI")
 

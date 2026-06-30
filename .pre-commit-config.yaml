@@ -1,0 +1,73 @@
+# Pre-commit hooks for Quorrin
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# These hooks catch the cheap-to-detect failures before they reach CI:
+#   * ruff lint (catches unused imports, blind excepts, etc.)
+#   * ruff format (whitespace, line-length, imports)
+#   * config schema validation (catches broken YAML before CI runs)
+#   * import firewall (catches forbidden imports from archived modules)
+#   * forbidden pattern scan (TODO/FIXME/XXX without owner)
+
+default_language_version:
+  python: python3.10
+
+repos:
+  - repo: local
+    hooks:
+
+      # ── Ruff ────────────────────────────────────────────────
+      - id: ruff-check
+        name: ruff (lint)
+        entry: ruff check . --force-exclude
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff (format)
+        entry: ruff format --check --force-exclude .
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+
+      # ── Config schema ───────────────────────────────────────
+      - id: config-schema
+        name: config schema
+        entry: python tools/check_config_schema.py
+        language: system
+        pass_filenames: false
+        files: '^configs/.*\.yaml$'
+
+      # ── Import firewall ─────────────────────────────────────
+      - id: import-firewall
+        name: import firewall
+        entry: python tools/check_import_firewall.py
+        language: system
+        pass_filenames: false
+
+      # ── Forbidden pattern scan ──────────────────────────────
+      - id: no-todo-untagged
+        name: no TODO/FIXME without owner
+        entry: bash scripts/ops/scan_forbidden_patterns.sh
+        language: system
+        files: '^paper_trading/.*\.py$|^quorrin/.*\.py$|^shared/.*\.py$'
+        require_serial: true
+
+      # ── Assertion elimination guard ─────────────────────────
+      - id: no-bare-asserts
+        name: no bare asserts (would be stripped under python -O)
+        entry: python tools/check_no_bare_asserts.py
+        language: system
+        files: '^paper_trading/.*\.py$|^quorrin/.*\.py$|^shared/.*\.py$'
+        pass_filenames: false
+
+      # ── Secret detection ────────────────────────────────────
+      - id: no-plaintext-secrets
+        name: no plaintext secrets
+        entry: python tools/check_no_plaintext_secrets.py
+        language: system
+        files: '\.py$|\.yaml$|\.yml$|\.sh$'
+        pass_filenames: false

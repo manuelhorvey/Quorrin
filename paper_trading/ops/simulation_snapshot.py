@@ -36,6 +36,28 @@ def _write_checksum(path: str) -> None:
         f.write(sha.hexdigest())
 
 
+def _coerce_json_list(value) -> list:
+    """Read-side adapter for ``trade_log`` / ``prob_history``.
+
+    Captured snapshots now persist these columns as JSON strings (so
+    pyarrow round-trips them safely without spurious type inference).
+    On read we deserialize; on bad data we fall back to an empty list.
+    """
+    if value is None or value is pd.NA:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        if not value:
+            return []
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
 def _verify_checksum(path: str) -> bool:
     checksum_path = path + CHECKSUM_EXT
     if not os.path.exists(checksum_path):
@@ -153,6 +175,12 @@ class SimulationStore:
         )
 
         df = pd.DataFrame(rows)
+        # Stringify object-typed list columns to JSON for pyarrow compatibility.
+        # `trade_log` and `prob_history` are lists with mixed scalar/object nesting
+        # — pyarrow's strict object inference mis-classifies them as bytes at
+        # round-trip time. JSON strings are the safest representation.
+        for col in ("trade_log", "prob_history"):
+            df[col] = df[col].apply(lambda v: json.dumps(v) if not isinstance(v, str) else v)
         if os.path.exists(self.snapshot_path) and os.path.getsize(self.snapshot_path) > 0:
             try:
                 existing = pd.read_parquet(self.snapshot_path)
@@ -229,8 +257,8 @@ class SimulationStore:
                 position_vol=float(row["position_vol"]) if pd.notna(row.get("position_vol")) else None,
                 n_trades=int(row["n_trades"]),
                 n_signals=int(row["n_signals"]),
-                trade_log=list(row.get("trade_log")) if isinstance(row.get("trade_log"), list) else [],
-                prob_history=list(row.get("prob_history")) if isinstance(row.get("prob_history"), list) else [],
+                trade_log=_coerce_json_list(row.get("trade_log")),
+                prob_history=_coerce_json_list(row.get("prob_history")),
                 last_signal=str(row["last_signal"]) if pd.notna(row.get("last_signal")) else None,
                 last_confidence=float(row["last_confidence"]) if pd.notna(row.get("last_confidence")) else None,
                 last_close_price=float(row["last_close_price"]) if pd.notna(row.get("last_close_price")) else None,

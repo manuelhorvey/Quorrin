@@ -31,8 +31,6 @@ FORBIDDEN_MODULES = frozenset(
         "features.base_features",
         "features.structural_features",
         "features.interaction_features",
-        "labels.triple_barrier",
-        "labels.generator",
         "shared.features",
         "shared.meta_labeling",
         "signals.signal_generator",

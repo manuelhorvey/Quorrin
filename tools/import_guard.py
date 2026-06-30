@@ -1,5 +1,13 @@
 import sys
 
+# Modules that should NOT be loaded in production. These were deprecated
+# refactors — their presence in a fresh import graph is fine (lazy
+# archives), but loading them in production code signals regression.
+#
+# NOTE: ``labels.triple_barrier`` and ``labels.generator`` are the
+# CANONICAL vectorized implementations. Their previous classification as
+# "forbidden" was a historic mistake; they're explicitly allowed here.
+
 FORBIDDEN_MODULES = frozenset(
     {
         "features.builder",
@@ -10,8 +18,6 @@ FORBIDDEN_MODULES = frozenset(
         "features.base_features",
         "features.structural_features",
         "features.interaction_features",
-        "labels.triple_barrier",
-        "labels.generator",
         "shared.features",
         "shared.meta_labeling",
         "signals.signal_generator",

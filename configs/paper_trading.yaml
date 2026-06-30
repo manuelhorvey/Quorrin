@@ -310,8 +310,8 @@ assets:
   USDCAD:
     ticker: USDCAD=X
     allocation: 0.025
-    sl_mult: 1.59
-    tp_mult: 3.19 # ratio 1.23→2.0 2026-06-25: BUY WR=67.4% (strong), SELL WR=49.2% (marginal). Walk-forward R improvement +173.4R. GM=2.25 preserved.
+    sl_mult: 1.30
+    tp_mult: 3.90 # ratio 2.01→3.0 2026-06-30: BUY WR=67.4%, SELL WR=49.2%. Conservative cap at 3.0. GM=2.25 preserved.
     spread_tier: fx_major
     max_depth: 5
     regime_geometry:
@@ -339,8 +339,8 @@ assets:
   ES:
     ticker: ES=F
     allocation: 0.07
-    sl_mult: 2.0
-    tp_mult: 5.5
+    sl_mult: 1.91
+    tp_mult: 5.74 # ratio 2.75→3.0 2026-06-30: SELL_ONLY (71.4% WR). Conservative cap at 3.0.
     spread_tier: indices
     regime_geometry:
       GREEN:
@@ -368,8 +368,8 @@ assets:
     ticker: NQ=F
     allocation: 0.07
     max_entry_slippage_pct: 5.0
-    sl_mult: 2.5
-    tp_mult: 5.0
+    sl_mult: 2.04
+    tp_mult: 6.12 # ratio 2.0→3.0 2026-06-30: SELL_ONLY (62.1% WR). Conservative cap at 3.0. GM=3.54 preserved.
     spread_tier: indices
     regime_geometry:
       GREEN:
@@ -396,8 +396,8 @@ assets:
   GBPCAD:
     ticker: GBPCAD=X
     allocation: 0.05
-    sl_mult: 1.77
-    tp_mult: 3.54 # ratio 1.0→2.0 2026-06-25: BUY WR=60.1%, SELL WR=80.4%, both directions skilled. Walk-forward R improvement +289.5R. GM=2.5 preserved.
+    sl_mult: 1.45
+    tp_mult: 4.34 # ratio 2.0→3.0 2026-06-30: BUY WR=60.1%, SELL WR=80.4%. Conservative cap at 3.0. GM=2.5 preserved.
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -425,8 +425,8 @@ assets:
   NZDCAD:
     ticker: NZDCAD=X
     allocation: 0.05
-    sl_mult: 2.24
-    tp_mult: 4.47 # ratio 1.6→2.0 2026-06-25: BUY WR=48.1%, SELL WR=77.1%. Walk-forward R improvement +95.4R. GM=3.16 preserved.
+    sl_mult: 1.83
+    tp_mult: 5.48 # ratio 2.0→3.0 2026-06-30: BUY WR=48.1%, SELL WR=77.1%. Conservative cap at 3.0. GM=3.16 preserved.
     regime_geometry:
       GREEN:
         sl_mult: 1.0
@@ -482,8 +482,8 @@ assets:
   NZDUSD:
     ticker: NZDUSD=X
     allocation: 0.025
-    sl_mult: 2.0
-    tp_mult: 2.5 # swapped tp/sl 2026-06-25: ratio was 0.8 (BE_WR=55.6%), WR=57.2% — margin was +1.7%. Swapped to ratio=1.25 (BE_WR=44.4%), walk-forward R improvement +166R. Config change: immediate SL/TP placement; registry change: next retrain.
+    sl_mult: 1.29
+    tp_mult: 3.87 # ratio 1.25→3.0 2026-06-30: BUY WR=58.3%, SELL WR=54.8%. Conservative cap at 3.0. GM=2.24 preserved.
     spread_tier: fx_major
     max_depth: 5
     regime_geometry:
@@ -511,8 +511,8 @@ assets:
   GBPAUD:
     ticker: GBPAUD=X
     allocation: 0.05
-    sl_mult: 1.5
-    tp_mult: 2.0
+    sl_mult: 1.0
+    tp_mult: 3.0 # ratio 1.33→3.0 2026-06-30: BUY WR=53.6%, SELL WR=53.6%. Conservative cap at 3.0. GM=1.73 preserved.
     max_depth: 3
     regime_geometry:
       GREEN:
@@ -595,8 +595,8 @@ assets:
   AUDUSD:
     ticker: AUDUSD=X
     allocation: 0.04
-    sl_mult: 1.5
-    tp_mult: 4.0
+    sl_mult: 1.41
+    tp_mult: 4.24 # ratio 2.67→3.0 2026-06-30: BUY WR=65.1%, SELL WR=65.1%. Walk-forward opt ratio=20.0. Conservative cap at 3.0.
     max_depth: 2
     spread_tier: fx_major
     regime_geometry:
@@ -653,8 +653,8 @@ assets:
   EURCAD:
     ticker: EURCAD=X
     allocation: 0.02
-    sl_mult: 0.87
-    tp_mult: 1.73 # ratio 1.5→2.0 2026-06-25: BUY WR=61.7%, SELL WR=52.5%. Walk-forward R improvement +62.1R. GM=1.22 preserved.
+    sl_mult: 0.71
+    tp_mult: 2.12 # ratio 1.99→3.0 2026-06-30: BUY WR=61.7%, SELL WR=52.5%. Conservative cap at 3.0. GM=1.23 preserved.
     max_depth: 3
     regime_geometry:
       GREEN:
@@ -681,8 +681,8 @@ assets:
   EURNZD:
     ticker: EURNZD=X
     allocation: 0.03
-    sl_mult: 1.37
-    tp_mult: 2.74 # ratio 1.67→2.0 2026-06-25: BUY WR=55.1%, SELL WR=63.1%. Walk-forward R improvement +63.1R. GM=1.94 preserved.
+    sl_mult: 1.12
+    tp_mult: 3.36 # ratio 2.0→3.0 2026-06-30: BUY WR=55.1%, SELL WR=63.1%. Conservative cap at 3.0. GM=1.94 preserved.
     max_depth: 3
     regime_geometry:
       GREEN:
@@ -709,8 +709,8 @@ assets:
   GBPCHF:
     ticker: GBPCHF=X
     allocation: 0.03
-    sl_mult: 1.0
-    tp_mult: 2.0
+    sl_mult: 0.82
+    tp_mult: 2.45 # ratio 2.0→3.0 2026-06-30: BUY WR=49.2%, SELL WR=49.2%. Conservative cap at 3.0. GM=1.41 preserved.
     max_depth: 2
     regime_geometry:
       GREEN:

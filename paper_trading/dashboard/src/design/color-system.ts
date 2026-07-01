@@ -1,9 +1,54 @@
-// ── Single Source of Truth ──────────────────────────
-// rawTokens keys are CSS custom property names minus the `--` prefix.
-// The generate-tokens script reads this map to produce:
-//   generated/tokens.css          →  :root { --color-teal-50: ... }
-//   generated/tailwind.partial.js →  { theme: { extend: { colors: ... } } }
-// All derived exports below are syntactic sugar on top of rawTokens.
+// ── Design Tokens — Quorrin Operator Console ─────────────────────────
+//
+// This file is the single source of truth for the dashboard's design
+// tokens. rawTokens keys are CSS custom-property names minus the `--`
+// prefix; the generate-tokens script reads this map to produce:
+//
+//   generated/tokens.css          →  :root { --color-app: ... }
+//   generated/tailwind.partial.js →  { theme: { extend: { colors: ... } }
+//
+// ── Naming policy ────────────────────────────────────────────────────
+//
+// Tokens name their *role*, not their look. Operators read 'accent',
+// 'signal-long', 'rule' — they don't read 'teal-500'. This is the
+// discipline that makes the system auditable: every value on every
+// page must trace to a token here.
+//
+// ── Color strategy ──────────────────────────────────────────────────
+//
+// Six surface depths describe the page silhouette; three tonal
+// semantics describe risk state; one accent describes brand presence.
+// Eleven semantic values total. Components needing a fourth colour
+// are usually computing layout (a hairline rule) — fold the value
+// into the rail and stop.
+//
+//   ink                                background depth
+//   panel / panel-hover                 section / card substrate
+//   surface                            modal / scrim substrate
+//   rule                               hairline separator (no shadow)
+//   text-primary / -secondary / -dim / -muted
+//                                       four-tone typography hierarchy
+//   accent / accent-pressed / accent-glow
+//                                       single brand accent (teal-emerald,
+//                                       lifted from the chart palette for
+//                                       hairline legibility)
+//   signal-long / signal-warn / signal-short
+//                                       governance semantic — used
+//                                       identically across all read state
+//                                       (green / yellow / red, in that
+//                                       order of severity)
+//   tripwire                           tripwire-ONLY signal; never
+//                                       decorative. Distinct from
+//                                       signal-short because tripwire
+//                                       pages should *also* enter
+//                                       EmergencyHaltBanner.
+//
+// Existing CSS-variable names below (color-app, color-text-primary,
+// color-gov-green, etc.) are preserved verbatim so the Tailwind
+// utility surface is unchanged for every consumer. The new token
+// names below (ink / panel / rule / signal-long / etc.) are layered
+// alongside for new components; migration to the role-named surface
+// is a future phase.
 // ──────────────────────────────────────────────────────────────────
 
 export const rawTokens = {

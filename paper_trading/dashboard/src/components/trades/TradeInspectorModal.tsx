@@ -60,7 +60,7 @@ export default function TradeInspectorModal({ asset, entryDate, exitDate, onClos
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 sm:pt-20 px-4">
       <div className="fixed inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
-      <div ref={modalRef} className="relative w-full max-w-2xl bg-app border border-default rounded-xl shadow-2xl animate-fade-in max-h-[80vh] flex flex-col" role="dialog" aria-modal="true" aria-label={`Trade inspector: ${asset}`}>
+      <div ref={modalRef} className="relative w-full max-w-2xl bg-surface border border-default rounded shadow-modal animate-fade-in max-h-[80vh] flex flex-col" role="dialog" aria-modal="true" aria-label={`Trade inspector: ${asset}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-default shrink-0">
           <div>

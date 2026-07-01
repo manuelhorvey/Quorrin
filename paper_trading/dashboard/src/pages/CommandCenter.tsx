@@ -9,7 +9,6 @@ import LiveSharpeCard from '../components/LiveSharpeCard'
 import OptimizerRecommendations from '../components/OptimizerRecommendations'
 import HaltConditions from '../components/HaltConditions'
 import EquityCurveSparkline from '../components/EquityCurveSparkline'
-import EmergencyHaltBanner from '../components/EmergencyHaltBanner'
 import AssetMiniGrid from '../components/AssetMiniGrid'
 import Panel from '../components/ui/Panel'
 import Badge from '../components/ui/Badge'
@@ -275,9 +274,7 @@ const CommandCenter = memo(function CommandCenter({ onSelectAsset }: CommandCent
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Emergency banner — highest priority */}
-      <EmergencyHaltBanner />
-
+      {/* Emergency banner is rendered once at the AppShell level (above) */}
       {/* System health — single source of truth */}
       <SystemHealthSummary />
 

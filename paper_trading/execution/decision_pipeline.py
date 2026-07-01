@@ -617,6 +617,10 @@ def apply_sell_only_filter(ctx: DecisionContext) -> None:
 
     ^DJI removed 2026-06-26 — Step3 BuyWR=24.3% vs BE WR=11.1% (+13.2pp).
     BUY now profitable. SELL_ONLY no longer needed.
+
+    ES removed 2026-07-01 — moved to full two-way trading.
+
+    NQ removed 2026-07-01 — moved to full two-way trading.
     """
     engine = ctx.engine
     if engine.name not in get_sell_only_assets():

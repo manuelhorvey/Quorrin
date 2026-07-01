@@ -15,26 +15,18 @@ import Badge from '../components/ui/Badge'
 import EntranceAnimator from '../components/ui/EntranceAnimator'
 import EmptyState from '../components/ui/EmptyState'
 import { Skeleton } from '../components/ui/Skeleton'
-import { TrendingUp, TrendingDown, DollarSign, Activity, ArrowDown, Goal, Banknote, ArrowUpDown, AlertTriangle } from 'lucide-react'
+import { ArrowUpDown, AlertTriangle } from 'lucide-react'
 import { formatTimeAgo } from '../utils/format'
 import type { SortKey } from '../lib/trading-state/selectors'
 
 // ── Quick Stats Row ──────────────────────────────────────────────────
-
-/** Local stat card that supports icon rendering inline with the label row. */
-function QuickStatCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
-  return (
-    <Panel className="flex items-center gap-3 p-4 hover:border-strong transition-all duration-200 group" gradient>
-      <div className="w-10 h-10 rounded-lg bg-panel flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-2xs text-tertiary font-medium uppercase tracking-wider">{label}</p>
-        <p className="text-sm font-semibold text-primary font-mono tabular-nums mt-0.5">{value}</p>
-      </div>
-    </Panel>
-  )
-}
+//
+// Terminal-precision row: one mono headline per metric, divided by
+// hairline rules on the desktop layout. No card backgrounds, no
+// icons, no shadows. Hairline rules define the cell boundary; values
+// speak directly. The aesthetic risk is reading as a tabular
+// accountancy report — which is the point: this row is a read-the-
+// state channel, not a status card.
 
 const QuickStatsGrid = memo(function QuickStatsGrid() {
   const { data: bundle } = useSystemSnapshot()
@@ -57,64 +49,52 @@ const QuickStatsGrid = memo(function QuickStatsGrid() {
   const peakValue = p.portfolio_peak_value
   const posReturn = totalReturn >= 0
   const posRealized = (p.realized_return ?? 0) >= 0
+  const drawdownTone = drawdown >= 5 ? 'text-gov-red' : drawdown >= 1 ? 'text-gov-yellow' : 'text-secondary'
 
+  // Mono row, one tabular cell per metric, divided by hairline rules.
+  // This row is the operator's first read after the rail; it should fit
+  // a 13" laptop without scrolling, give every value at the same
+  // headline size, and recede into mono gray except for values that
+  // are semantically coloured (GREEN / YELLOW / RED).
   return (
-    <EntranceAnimator>
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 text-2xs text-tertiary font-mono tabular-nums">
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 text-2xs text-tertiary font-mono tabular-nums border-b border-default">
         <span>{lastUpdate ? `Snapshot ${formatTimeAgo(lastUpdate)}` : ''}</span>
         <span>{p.start_date ? `Since ${p.start_date}` : ''}</span>
         {criticalAlerts > 0 && (
           <span className="text-gov-red font-semibold">{criticalAlerts} critical alert{criticalAlerts > 1 ? 's' : ''}</span>
         )}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
-        <QuickStatCard
-          label="Portfolio Value"
-          value={`$${(p.mtm_value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          icon={<DollarSign className="w-5 h-5 text-accent-emerald" strokeWidth={1.5} />}
+      <dl className="grid grid-cols-2 lg:grid-cols-7 gap-y-3 lg:divide-x lg:divide-default">
+        <Stat label="Portfolio Value" value={`$${(p.mtm_value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} />
+        <Stat label="Total Return" value={`${posReturn ? '+' : ''}${totalReturn.toFixed(2)}%`} tone={posReturn ? 'good' : 'bad'} />
+        <Stat label="Realized P&L" value={`${posRealized ? '+' : ''}${(p.realized_return ?? 0).toFixed(2)}%`} tone={posRealized ? 'good' : 'bad'} />
+        <Stat label="Drawdown" value={`-${Math.abs(drawdown).toFixed(2)}%`} tone={drawdownTone === 'text-secondary' ? undefined : drawdown >= 5 ? 'bad' : 'warn'} />
+        <Stat label="Open / Closed" value={`${p.open_positions ?? 0} / ${p.closed_trades ?? 0}`} />
+        <Stat label="Peak Value" value={peakValue != null ? `$${peakValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'} />
+        <Stat
+          label={mt5Equity != null ? 'MT5 Equity' : 'Capital'}
+          value={mt5Equity != null
+            ? `$${mt5Equity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+            : `$${(p.capital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}`}
         />
-        <QuickStatCard
-          label="Total Return"
-          value={`${totalReturn.toFixed(2)}%`}
-          icon={posReturn ? <TrendingUp className="w-5 h-5 text-gov-green" strokeWidth={1.5} /> : <TrendingDown className="w-5 h-5 text-gov-red" strokeWidth={1.5} />}
-        />
-        <QuickStatCard
-          label="Realized P&L"
-          value={`${posRealized ? '+' : ''}${(p.realized_return ?? 0).toFixed(2)}%`}
-          icon={<TrendingUp className={`w-5 h-5 ${posRealized ? 'text-gov-green' : 'text-gov-red'}`} strokeWidth={1.5} />}
-        />
-        <QuickStatCard
-          label="Drawdown"
-          value={`${drawdown.toFixed(2)}%`}
-          icon={<ArrowDown className="w-5 h-5 text-gov-red" strokeWidth={1.5} />}
-        />
-        <QuickStatCard
-          label="Open / Closed"
-          value={`${p.open_positions ?? 0} / ${p.closed_trades ?? 0}`}
-          icon={<Activity className="w-5 h-5 text-accent-blue" strokeWidth={1.5} />}
-        />
-        <QuickStatCard
-          label="Peak Value"
-          value={peakValue != null ? `$${peakValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'}
-          icon={<Goal className="w-5 h-5 text-gov-yellow" strokeWidth={1.5} />}
-        />
-        {mt5Equity != null ? (
-          <QuickStatCard
-            label="MT5 Equity"
-            value={`$${mt5Equity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-            icon={<Banknote className="w-5 h-5 text-accent-blue" strokeWidth={1.5} />}
-          />
-        ) : (
-          <QuickStatCard
-            label="Capital"
-            value={`$${(p.capital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}`}
-            icon={<Banknote className="w-5 h-5 text-tertiary" strokeWidth={1.5} />}
-          />
-        )}
-      </div>
-    </EntranceAnimator>
+      </dl>
+    </div>
   )
 })
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
+  const cls = tone === 'good' ? 'text-gov-green'
+    : tone === 'warn' ? 'text-gov-yellow'
+    : tone === 'bad' ? 'text-gov-red'
+    : 'text-primary'
+  return (
+    <div className="px-3 py-2 min-w-0">
+      <dt className="text-2xs text-tertiary font-medium uppercase tracking-wider truncate">{label}</dt>
+      <dd className={`text-base font-bold font-mono tabular-nums ${cls} mt-0.5 truncate`}>{value}</dd>
+    </div>
+  )
+}
 
 // ── Trading Asset Row ──────────────────────────────────────────────
 

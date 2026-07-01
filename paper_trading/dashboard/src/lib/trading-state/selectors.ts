@@ -39,16 +39,20 @@ interface LiveBundle {
   mt5?: { connected?: boolean }
 }
 
-// Extended raw asset state with optional open_position fields that
-// the backend may emit but aren't yet reflected in the AssetState type.
-interface RawAssetState extends AssetState {
-  open_position?: {
-    pnl?: number
-    peak_mfe_r?: number
-    r_multiple?: number
-    adaptive_exit_phase?: ExitPhase
-    sl_update_count?: number
-    direction?: "long" | "short"
+/** Open position data with optional adaptive exit fields. */
+interface OpenPositionData {
+  adaptive_exit_phase?: string
+  peak_mfe_r?: number | null
+  sl_update_count?: number
+  r_multiple?: number
+  direction?: string
+  current_value?: number
+  position?: {
+    side?: string
+    entry?: number
+    sl?: number
+    tp?: number
+    vol?: number
   }
 }
 
@@ -73,15 +77,14 @@ const DRIVER_SEVERITY: Record<string, "CRITICAL" | "HIGH" | "MEDIUM"> = {
 export function toAssetTradingState(
   assetName: string,
   raw: AssetState,
+  openPos?: OpenPositionData | null,
   edgeHealth?: EdgeHealthSummary | null,
 ): AssetTradingState {
-  const r = raw as RawAssetState
   const pos = raw.metrics.position
-  const openPos = r.open_position
 
   // ── Position state ───────────────────────────────────────────
   const halted = raw.halt.halted
-  const hasPosition = pos !== null
+  const hasPosition = pos !== null || openPos != null
 
   const positionState: AssetTradingState["position_state"] = halted
     ? "HALTED"
@@ -92,14 +95,25 @@ export function toAssetTradingState(
   const direction: AssetTradingState["direction"] =
     pos?.side === "long" ? "LONG"
     : pos?.side === "short" ? "SHORT"
+    : openPos?.position?.side === "long" ? "LONG"
+    : openPos?.position?.side === "short" ? "SHORT"
     : null
 
   // ── PnL state ────────────────────────────────────────────────
-  const unrealized = pos?.unrealized_pnl ?? openPos?.pnl ?? 0
+  const unrealized = pos?.unrealized_pnl ?? 0
   const realized = raw.metrics.exit_reasons?.avg_r ?? 0
 
   const peakMfeR: number | null = openPos?.peak_mfe_r ?? null
-  const rMultiple: number | null = openPos?.r_multiple ?? null
+  const exitPhase: ExitPhase = (openPos?.adaptive_exit_phase as ExitPhase) ?? "STATIC"
+  const isActive = exitPhase !== "STATIC"
+  const slUpdateCount = openPos?.sl_update_count ?? 0
+
+  // Estimate r_multiple from position data if available
+  let rMultiple: number | null = null
+  if (isActive && peakMfeR != null && peakMfeR > 0 && pos?.entry && pos?.unrealized_pnl && pos?.current_vol) {
+    // unrealized_pnl / (entry * vol) ≈ r_multiple for linear products
+    rMultiple = Math.abs(pos.unrealized_pnl) / Math.max(pos.entry * pos.current_vol, 1e-9)
+  }
 
   let efficiency: AssetTradingState["pnl_state"]["efficiency"] = "NORMAL"
   if (peakMfeR != null && rMultiple != null && peakMfeR > 0) {
@@ -107,14 +121,15 @@ export function toAssetTradingState(
     efficiency = ratio >= 0.7 ? "HIGH" : ratio >= 0.4 ? "NORMAL" : "LOW"
   }
 
-  // ── Exit state ───────────────────────────────────────────────
-  const exitPhase: ExitPhase = openPos?.adaptive_exit_phase ?? "STATIC"
-  const isActive = exitPhase !== "STATIC"
-  const slUpdateCount = openPos?.sl_update_count ?? 0
-
   let retracementPct: number | null = null
-  if (isActive && peakMfeR != null && rMultiple != null && peakMfeR > 0 && peakMfeR !== rMultiple) {
-    retracementPct = clamp(1 - rMultiple / peakMfeR, 0, 1)
+  if (isActive && peakMfeR != null && peakMfeR > 0 && openPos?.current_value != null && openPos.position?.entry != null) {
+    // Estimate retracement from current value vs peak
+    const entryVal = Math.abs(openPos.position.entry * (openPos.position.vol ?? 1))
+    const peakVal = Math.abs(peakMfeR * entryVal)
+    const currentVal = Math.abs(openPos.current_value)
+    if (peakVal > entryVal) {
+      retracementPct = clamp(1 - (currentVal - entryVal) / (peakVal - entryVal), 0, 1)
+    }
   }
 
   // ── Risk state ───────────────────────────────────────────────
@@ -143,8 +158,8 @@ export function toAssetTradingState(
   else if (confidence > 0.45) conviction = "WEAK"
 
   let mfeCaptureQuality: number | null = null
-  if (peakMfeR != null && peakMfeR > 0) {
-    mfeCaptureQuality = clamp(Math.abs(rMultiple ?? 0) / peakMfeR, 0, 1)
+  if (peakMfeR != null && peakMfeR > 0 && rMultiple != null) {
+    mfeCaptureQuality = clamp(rMultiple / peakMfeR, 0, 1)
   }
 
   const reversalProbability: number | null = edgeHealth?.reversal_rate ?? null
@@ -205,13 +220,18 @@ export function toPortfolioTradingState(
   else if (highRiskCount > 3) systemStatus = "MONITOR"
 
   // ── PnL ──────────────────────────────────────────────────────
-  const pnlTotal = portfolio.total_value - portfolio.capital
+  // Portfolio total return in percentage terms (consistent with per-asset display)
+  const pnlTotal = portfolio.capital > 0
+    ? (portfolio.total_value - portfolio.capital) / portfolio.capital
+    : 0
 
   const effSum = assetList.reduce((sum, a) => sum + efficiencyToNumeric(a.pnl_state.efficiency), 0)
   const pnlEfficiency = assetList.length > 0 ? effSum / assetList.length : 0
 
   // ── Risk ─────────────────────────────────────────────────────
-  const drawdown = portfolio.portfolio_drawdown ?? 0
+  const drawdownPct = portfolio.portfolio_drawdown ?? 0
+  // Normalize drawdown to [0, 1] for display; if it's already a fraction use it, if > 1 treat as percentage
+  const drawdown = Math.abs(drawdownPct) > 1 ? Math.abs(drawdownPct) / 100 : Math.abs(drawdownPct)
 
   const longCount = assetList.filter((a) => a.direction === "LONG").length
   const shortCount = assetList.filter((a) => a.direction === "SHORT").length
@@ -252,7 +272,7 @@ export function toPortfolioTradingState(
   const alerts: string[] = []
   if (systemStatus === "ALERT") alerts.push("System halted")
   if (!slIntegrityOk) alerts.push("Broker SL sync may be degraded")
-  if (drawdown > 0.1) alerts.push("Portfolio drawdown elevated")
+  if (drawdown > 0.05) alerts.push("Portfolio drawdown elevated")
 
   // ── Top 3 risks ──────────────────────────────────────────────
   const driverFreq: Record<string, number> = {}

@@ -58,7 +58,7 @@ export default function SystemHealthSummary() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <StatCard
           label="PnL"
-          value={`${portfolio.pnl.total >= 0 ? '+' : ''}${portfolio.pnl.total.toFixed(2)}`}
+          value={`${portfolio.pnl.total >= 0 ? '+' : ''}${(portfolio.pnl.total * 100).toFixed(2)}%`}
           sub={`Eff: ${(portfolio.pnl.efficiency * 100).toFixed(0)}%`}
           accent={pnlColor}
           variant="compact"

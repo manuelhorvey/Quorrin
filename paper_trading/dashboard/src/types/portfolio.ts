@@ -18,6 +18,9 @@ export interface OpenPositionState {
   bars_at_entry: number
   initial_sl: number | null
   initial_tp: number | null
+  adaptive_exit_phase?: string
+  peak_mfe_r?: number | null
+  sl_update_count?: number
 }
 
 export interface RiskSignal {

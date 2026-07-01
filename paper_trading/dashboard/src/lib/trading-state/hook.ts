@@ -21,13 +21,14 @@ export function useTradingState(): TradingStateResult {
     const snapshot = bundle.snapshot
     const rawAssets = snapshot.assets ?? {}
     const portfolio = snapshot.portfolio
+    const openPositions = snapshot.open_positions ?? {}
     const live = bundle.live
     const edgeHealth = (portfolio as any)?.edge_health ?? null
 
     // Transform each asset
     const assets: Record<string, AssetTradingState> = {}
     for (const [name, raw] of Object.entries(rawAssets)) {
-      assets[name] = toAssetTradingState(name, raw, edgeHealth)
+      assets[name] = toAssetTradingState(name, raw, openPositions[name], edgeHealth)
     }
 
     // Build portfolio-level state

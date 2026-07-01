@@ -5,7 +5,6 @@ import { useSystemIntegrity } from '../../hooks/useSystemIntegrity'
 import { SystemDegradedBanner } from '../ui/SystemDegradedBanner'
 import LoadingScreen from '../ui/LoadingScreen'
 import ErrorScreen from '../ui/ErrorScreen'
-import Header from '../Header'
 import TabBar from './TabBar'
 import Sidebar from './Sidebar'
 import TickerRail from './TickerRail'
@@ -26,7 +25,6 @@ export default function AppShell({ children }: AppShellProps) {
   if (integrity.shouldBlockRender) {
     return (
       <>
-        {!integrity.isBroken && <Header onMenuClick={toggleSidebar} />}
         <ErrorScreen
           title="Engine unavailable"
           message="Couldn't load the engine snapshot. It may be restarting."
@@ -37,8 +35,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-app text-secondary flex flex-col">
-      <TickerRail />
-      <Header onMenuClick={toggleSidebar} />
+      <TickerRail onToggleSidebar={toggleSidebar} />
       <SystemDegradedBanner integrity={integrity} />
       <EmergencyHaltBanner />
 

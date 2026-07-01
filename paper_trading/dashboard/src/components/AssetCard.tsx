@@ -342,7 +342,7 @@ const AssetCard: React.FC<Props> = React.memo(({ name, density = 'comfortable' }
               />
               {info.position.side.toUpperCase()} @ ${formatAssetPrice(info.position.entry)}
               {info.position.layers && info.position.layers.length > 1 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-900/30 text-blue-400 border border-blue-500/30 leading-none">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent-emerald/15 text-accent-emerald border border-accent-emerald/30 leading-none">
                   ×{info.position.layers.length}
                 </span>
               )}

@@ -1480,3 +1480,28 @@ The operator-console surfaces as designed:
 6. **Single accent** (lifted emerald) reserved for primary actions and one-shot highlights; **governance semantic** the only signal colors
 
 Branch is stable, builds clean (`tsc -b --noEmit`, `vite build`), commit-per-change history preserved.
+
+---
+
+## Deferred-PR cleanup batch D (one-off unit commits)
+
+The audit had 14 deferred items flagged as "large-blaster, >30 file touch-points" — each its own dedicated PR. Over the next session the items that hadn't been resolved by other phases were closed out:
+
+| Phase | Item | Commit | Outcome |
+|-------|------|--------|---------|
+| D-1 | #1 QuickStatCard → StatCard | n/a (audit-crep) | already completed in Phase 8.3 — the inline `QuickStatCard` definition in `CommandCenter.tsx` was replaced by the dl/div terminal-precision treatment using `StatCard` import paths only. Zero references confirmed by grep. |
+| D-2 | #2 PekStatusBar fold into SystemHealthSummary | n/a (audit-crep) | already removed in Phase 1.1 (`DashboardOverview.tsx` itself deleted; PekStatusBar was its inline member). |
+| D-3 | #7 TradingAssetRow extraction | `cb9f5ad` | extracted to top-level `components/TradingAssetRow.tsx`. Now reusable from any route. `AssetTradingState` used as the explicit type (no longer `ReturnType<typeof useTradingState>['assetList'][number]`). Inline definition deleted in `CommandCenter.tsx`. |
+| D-4 | #16 Header health chip move | `7e70f74` | Header `HealthBadge` collapsed to an icon-only click target (`<HealthButton />` with an `Activity` icon coloured by engine tone). Visible state already lives in TickerRail + Sidebar caption — no further Header pill is needed. State text remains in title and aria-label. |
+| D-5 | open-positions card-grid duplication Dashboard ⇄ Trading | `b84a4ae` | `<AssetMiniGrid openOnly />` removed from `/trading` (TradingWorkspace) and the `Section id="open-positions"` wrapper deleted. The grid stays on `/` (Dashboard) as part of the glance surface. `/trading` retains the dense per-asset sortable table (`AssetListPanel → TradingAssetRow[]`) for operate-on-positions work — that's a separate surface, not the same view. |
+| D-6 | #11 Panel variant collapse | `1ee522e` | `Panel.tsx` variants collapsed from 5 (`default | elevated | flat | accent | glass`) to 2 (`default | elevated`). Ornamental props (`leftAccent`, `gradient`, `glowColor`) removed (zero callers). The only straggler (`SystemHealthSummary.tsx` was still passing `'accent'` for the ALERT state) rerouted to `'elevated'` — semantically correct, ALERT now lifts the panel above its row. |
+| D-7 | #13/#14 PekScalarPanel relocation + EquityChart migration | n/a (already in Phase 6.2/6.3) | Phase 6.2 moved `EquityChart` from `/trading` to `/execution` (commit `ee30ccc`). Phase 6.3 closed IA-4 by deciding PEK scalars stay on `/risk` (post-IA-2 `/engine` had no destination; left them where they were). No further action. |
+
+Each item was its own small isolated commit so the work stays reviewable per the "small enough for one agent to finish in a single focused pass" rule. After this batch the dashboard has zero outstanding audit items.
+
+Final route count: 4 (`/`, `/trading`, `/execution`, `/risk`). Each route has a single primary job:
+
+- `/` — glance surface: status row + ticker rail + equity curve + open-positions grid + dense sortable asset list
+- `/trading` — operate surface: signal queue + admission/rejected + recent trades + execution feed
+- `/execution` — quality surface: equity curve + execution quality KPIs + trade attribution
+- `/risk` — governance surface: PEK telemetry + portfolio risk + governance + health scores

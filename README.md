@@ -3,13 +3,13 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Status](https://img.shields.io/badge/status-paper%20trading-green)
 ![WalkForward](https://img.shields.io/badge/walk--forward-36%20assets%20screened-success)
-![Portfolio](https://img.shields.io/badge/portfolio-21%20dashboard%20assets-blue)
+![Portfolio](https://img.shields.io/badge/portfolio-16%20dashboard%20assets-blue)
 [![codecov](https://codecov.io/gh/manuelhorvey/Quorrin/graph/badge.svg)](https://codecov.io/gh/manuelhorvey/Quorrin)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
-Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 15-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 5 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
+Cross-sectional multi-asset research and paper trading engine with walk-forward asset selection, per-asset XGBoost models, 15-layer governance + HealthMonitor circuit breaker, decision pipeline suppression stages (including sell-only filter for 3 assets with inverted BUY calibration), MetaTrader 5 bridge execution (with full order lifecycle support), and a React dashboard.
 
 ---
 
@@ -35,7 +35,7 @@ Every promoted asset must survive expanding-window validation before entering th
 
 # System Lifecycle
 
-The engine runs a continuous 5-phase orchestrator cycle (PRE → 1a → 1b → 2 → 3 → 4) with MT5 orphan sub-phases (A→D) inside Phase 3. Below is the core loop for each tick (every 30s):
+The engine runs a continuous 5-phase orchestrator cycle (PRE → 1a → 1b → 2 → 3 → 4) with MT5 orphan sub-phases (A→D) inside Phase 3. Below is the core loop for each tick (every 60s):
 
 ```mermaid
 flowchart TD
@@ -62,7 +62,7 @@ flowchart TD
 
 # Current Portfolio
 
-21 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
+16 assets promoted from the research universe via expanding-window walk-forward. Per-asset SL/TP/max_depth calibrated via grid sweep. Values sourced from `configs/paper_trading.yaml`.
 
 **Added 2026-06-22:** GBPUSD promoted (walk-forward IC 0.186, HR 0.371, pt_sl=(1.97, 0.52) → R:R=3.79).
 
@@ -80,11 +80,8 @@ flowchart TD
 | GC         | GC=F         | 1.00    | 4.00    | 7.0%       | 2         |
 | USDCHF     | USDCHF=X     | 0.85    | 3.00    | 4.0%       | 4         |
 | USDCAD     | USDCAD=X     | 1.30    | 3.90    | 2.5%       | 5         |
-| ES         | ES=F         | 1.91    | 5.74    | 7.0%       | 2         |
-| NQ         | NQ=F         | 2.04    | 6.12    | 7.0%       | 2         |
 | GBPCAD     | GBPCAD=X     | 1.45    | 4.34    | 5.0%       | 2         |
 | NZDCAD     | NZDCAD=X     | 1.83    | 5.48    | 5.0%       | 2         |
-| ^DJI       | ^DJI         | 0.50    | 4.00    | 4.0%       | 4         |
 | NZDUSD     | NZDUSD=X     | 1.29    | 3.87    | 2.5%       | 5         |
 | GBPAUD     | GBPAUD=X     | 1.00    | 3.00    | 5.0%       | 3         |
 | NZDCHF     | NZDCHF=X     | 1.00    | 4.00    | 7.0%       | 2         |
@@ -96,21 +93,19 @@ flowchart TD
 | GBPCHF     | GBPCHF=X     | 0.82    | 2.45    | 3.0%       | 2         |
 | GBPUSD     | GBPUSD=X     | 0.52    | 1.97    | 4.0%       | 2         |
 | EURAUD     | EURAUD=X     | 0.54    | 1.77    | 1.0%       | 2         |
-| USDJPY     | USDJPY=X     | 0.52    | 1.97    | 4.0%       | 2         |
-| GBPJPY     | GBPJPY=X     | 0.50    | 2.22    | 3.0%       | 2         |
 
-Allocation sums to ~0.90. Remaining capacity held as cash buffer.
+Allocation varies (factor_constrained_v2 adjusts dynamically).
 
 ### Backtest Performance ⚠️ Superseded
 
 > **Status (2026-06-30):** The pre-leak-fix baseline below is a **historical artifact**
 > describing the original screening that justified promotion. It does **not** reflect the
-> current 21-asset portfolio. Live metrics live in `/state.json:portfolio.live_sharpe` and
+> current 16-asset portfolio. Live metrics live in `/state.json:portfolio.live_sharpe` and
 > walk-forward may be regenerated from `scripts/backtest/backtest_pnl.py --weight-method factor_constrained_v2`.
 
 > **Note:** The original 18-asset baseline was calculated before GBPUSD promotion.
-> The current 21-asset portfolio includes GBPUSD (2026-06-22) and USDJPY/GBPJPY
-> (2026-06-26), with the 2026-06-30 tp/sl ratio=3.0 optimizer pass applied to 11 assets.
+> The current 16-asset portfolio includes GBPUSD (2026-06-22)
+> with the 2026-06-30 tp/sl ratio=3.0 optimizer pass applied to 11 assets.
 
 | Metric | Value |
 |--------|-------|
@@ -258,7 +253,7 @@ edge = p × tp_mult - q × sl_mult
 **File:** `shared/factor_model.py`
 
 9 factor groups (USD, EUR, AUD, NZD, CHF, CAD, GBP, US_EQUITY, COMMODITY)
-covering all 19 assets. Factor exposures computed per-cycle in `engine_state_service.py`.
+covering all 16 assets. Factor exposures computed per-cycle in `engine_state_service.py`.
 
 ### P4 — HRP Fix
 **File:** `portfolio/hrp_allocator.py`
@@ -451,7 +446,7 @@ plus decision pipeline suppression stages, position sizing guardrails, and Healt
 | Macro regime overlay       | Weekly      | Global    | Exposure + SL adjustments           |
 | Liquidity regime           | Per signal  | Per asset | Exposure + halt logic               |
 | PSI drift                  | Per cycle   | Per asset | Penalty + halt                      |
-| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 5 inverted-BUY assets |
+| Sell-only filter           | Per decision| Per asset | Override BUY→FLAT for 3 inverted-BUY assets |
 | Calibration (P1)           | Per inference| Per asset | Remap raw p_long via BinnedCalibrator (config-gated, enabled) |
 | Kelly sizing (P2)          | Per decision| Per asset | Scale position by Kelly criterion (config-gated, disabled) |
 | Factor model (P3)          | Per cycle   | Portfolio | Factor exposures via 9 groups in state.json (monitoring only) |
@@ -479,7 +474,7 @@ Applied in order within the decision pipeline (`DEFAULT_STAGES`):
 | Update MAE/MFE            | Update max adverse/favorable excursion  |
 | Resolve signal            | Map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45) |
 | Risk-off suppression      | Flat AUDUSD when VIX>0 & SPX<0          |
-| Sell-only filter          | Override BUY→FLAT for 5 inverted-BUY assets |
+| Sell-only filter          | Override BUY→FLAT for 3 inverted-BUY assets |
 | Spread gate               | Block entry if spread > per-class threshold (observe 720 cycles) |
 | Session gate              | Block entry outside market session hours per asset-class tier (observe 720 cycles) |
 | ADX entry gate            | Block entry if ADX below threshold (observe-only, disabled by default) |
@@ -621,7 +616,7 @@ Dashboard: [http://localhost:5000](http://localhost:5000)
 | Variable                      | Required | Purpose                                |
 | ----------------------------- | -------- | -------------------------------------- |
 | `PYTHONPATH`                  | Yes      | Set to `.`                             |
-| `QUORRIN_REFRESH_INTERVAL` | No       | Engine loop interval (default 30s)      |
+| `QUORRIN_REFRESH_INTERVAL` | No       | Engine loop interval (default 60s)      |
 | `MT5_ACCOUNT`                 | No*      | Exness MT5 account number              |
 | `MT5_PASSWORD`                | No*      | Exness MT5 account password            |
 | `MT5_SERVER`                  | No*      | Exness MT5 server (e.g. Exness-MT5Trial2) |
@@ -740,7 +735,7 @@ tests/                        # Test suite
 * Dashboard requires `yarn build` after asset list changes
 * MT5 bridge is single-threaded — concurrent requests are serialized via RLock
 * **GBPNZD removed** (2026-06-20) — tp/sl=1.0/3.0 (ratio 0.33), breakeven WR 75%, achieved 72.3%. Net-negative (-37R total, -71R max_dd).
-* **SELL_ONLY filter active for 5 assets** (CADCHF, ES, NQ, NZDCHF, EURAUD) — reduced from 10 on 2026-06-26 after Step 3 trend-exhaustion features improved BuyWR above breakeven for GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI. Remaining 5 are confirmed permanent SELL_ONLY.
+* **SELL_ONLY filter active for 3 assets** (CADCHF, NZDCHF, EURAUD) — reduced from 10 on 2026-07-01 after Portfolio Remediation removed ES, NQ, ^DJI, USDJPY, GBPJPY from the portfolio. Remaining 3 are confirmed permanent SELL_ONLY.
 * **Equity cluster alarm** flags ES/NQ/^DJI all on same side — recommendation only, not a forced flatten.
 * **Circuit breaker threshold lowered to 7** consecutive portfolio losses (was 15). Crisis replay showed max 4 consecutive losses — 15 would never trip.
 * **THIN liquidity regime** is a soft warning (SL/size adjustment, no halt);

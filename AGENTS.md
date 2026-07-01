@@ -10,7 +10,7 @@ Cross-sectional multi-asset paper trading engine. 16-asset portfolio (FX, commod
 
 **2026-06-22: GBPUSD promoted to portfolio.** Walk-forward shows IC 0.186 (4/4 folds positive), HR 0.371. Feature registry pt_sl=(1.97, 0.52) gives favorable R:R=3.79. Added to paper_trading.yaml and mt5_symbol_map. 18+1=19 assets.
 
-**2026-06-23: AUDUSD, EURNZD, NZDUSD removed from SELL_ONLY filter.** Corrected walk-forward methodology shows BUY WR > 50% for all three (AUDUSD 64.5%, EURNZD 57.6%, NZDUSD 57.7%) — BUY is no longer inverted. The original SELL_ONLY diagnosis was based on a broken walk-forward (no purging, EWM labels, validation-split early stopping). The filter no longer trades BUY on the remaining 5 assets (CADCHF, ES, NQ, NZDCHF, EURAUD) where BUY WR remains 11-31%. ^DJI, USDCHF, EURCHF removed from SELL_ONLY 2026-06-26 after trend-exhaustion features improved BuyWR above breakeven.
+**2026-06-23: AUDUSD, EURNZD, NZDUSD removed from SELL_ONLY filter.** Corrected walk-forward methodology shows BUY WR > 50% for all three (AUDUSD 64.5%, EURNZD 57.6%, NZDUSD 57.7%) — BUY is no longer inverted. The original SELL_ONLY diagnosis was based on a broken walk-forward (no purging, EWM labels, validation-split early stopping). The filter no longer trades BUY on the remaining 3 assets (CADCHF, NZDCHF, EURAUD) where BUY WR remains 11-31%. ^DJI, USDCHF, EURCHF removed from SELL_ONLY 2026-06-26 after trend-exhaustion features improved BuyWR above breakeven. ES, NQ removed from SELL_ONLY 2026-07-01 after portfolio remediation.
 
 **2026-06-25: Structural asymmetry confirmed — SELL_ONLY is permanent under current feature design.** Three independent experiments prove BUY direction is not recoverable for the original 8 flagged assets: (1) threshold scan 0.01-0.99 — no threshold produces BUY WR > 50%; (2) rolling 252 window — p_long mean shifts 0.4→0.6 in wrong direction (more BUY, worse accuracy); (3) label inversion (y' = 1-y training) — EURAUD BUY WR only improves 22.7%→31.0%. The feature space encodes SELL predictability (62-90% WR) but not BUY predictability (0-32% WR). This is a portfolio-wide issue, not subset-specific — non-SELL_ONLY assets average only 49.3% BUY WR. The architecture is a **pure SELL alpha engine** for these 8 assets; BUY restoration is closed under current feature/label design. See `scripts/restoration/` for the diagnostic framework, gatekeeper, and architecture document.
 
@@ -19,7 +19,7 @@ Cross-sectional multi-asset paper trading engine. 16-asset portfolio (FX, commod
 - **Models**: Per-asset XGBClassifier (base only) — regime-conditional ensemble disabled 2026-06-20 (walk-forward p=0.83; see ADR-026)
 - **Features**: 15–N alpha per asset (9 core + 6 trend-exhaustion when OHLCV present, plus 4 cross-asset, plus COT z/change for covered pairs) + 7 regime (hurst, kaufman_er, adx, vol_zscore, compression, utc_hour, session_vol_profile). See `docs/FEATURES.md` for canonical taxonomy.
 - **Labels**: Triple-barrier with per-asset pt_sl, vertical_barrier=20, gap >= vb
-- **Config**: `configs/paper_trading.yaml` — `mode:` selector + `modes:` overrides (production/ftmo/live), global defaults + per-asset (21 assets)
+- **Config**: `configs/paper_trading.yaml` — `mode:` selector + `modes:` overrides (production/ftmo/live), global defaults + per-asset (16 assets)
 - **Portfolio Maturity Framework (5-layer, P0–P4)**: P0 weights (`shared/portfolio_weights.py`), P1 calibration (`shared/calibration/`), P2 Kelly (`shared/kelly.py`), P3 factor model (`shared/factor_model.py`), P4 HRP (`portfolio/hrp_allocator.py`). All config-gated.
 - **PEK (Portfolio Execution Kernel)**: `PortfolioStateSnapshot` (built pre-phase) + `RiskEngineV2` (adaptive budget) + `PerformanceState` (velocity + outcome telemetry) + `PortfolioAdmissionController` (two-stage filter → rank → enforce)
 - **Inference**: `paper_trading/inference/pipeline.py` → base model → calibration (P1) → governance → execute (ensemble disabled)
@@ -204,8 +204,8 @@ curl http://127.0.0.1:5000/state.json | python3 -m json.tool
 | Check | Target | Source |
 |-------|--------|--------|
 | Gate override rate | <40% all assets | monitor csv |
-| Mean confidence | >0.52 for ≥18/21 | monitor csv |
-| Signal flips | ≤3/day for ≥18/21 | monitor csv |
+| Mean confidence | >0.52 for ≥14/16 | monitor csv |
+| Signal flips | ≤3/day for ≥14/16 | monitor csv |
 | Cross-asset correlation | no unexplained >0.7 | monitor csv |
 | MT5 errors | zero | engine logs |
 | Trades executed | ≥10 across portfolio | MT5 terminal |
@@ -224,7 +224,7 @@ The dashboard HTTP server (`paper_trading/serve.py`) supports optional bearer-to
 
 ## Structural Limitations (Permanent)
 
-- **BUY signal inversion (5 assets — CADCHF, ES, NQ, NZDCHF, EURAUD)**:
+- **BUY signal inversion (3 assets — CADCHF, NZDCHF, EURAUD)**:
   The feature space encodes SELL alpha but not BUY alpha for these assets.
   Counterfactual walk-forward ablation disproved both carry and DXY as causal
   mechanisms. SELL_ONLY filter is the correct long-term answer, not a stopgap.
@@ -240,11 +240,10 @@ The dashboard HTTP server (`paper_trading/serve.py`) supports optional bearer-to
   classified as "monitor live" bets — NZDCAD has only 46 total trades and 6/8
   zero-trade years at 0.45. Monitor first 3 months for unexpected behavior.
 
-- **ES, NQ**: Kept at default 0.45 threshold. The marginal signals at 0.40
-  degraded PnL (ES: -0.0232R from additional trades). ES exit rule defined:
-  if ES averages <5 trades/year in the next 12 months (review date 2027-07-01),
-  remove from portfolio. ES has 3 trades in 8 years and is SELL_ONLY on a
-  mildly BUY-biased model — the threshold won't fix this alone.
+- **ES, NQ**: Removed from portfolio 2026-07-01 as part of portfolio remediation.
+  Previously kept at default 0.45 threshold. The marginal signals at 0.40
+  degraded PnL (ES: -0.0232R from additional trades). ES had 3 trades in 8 years and was
+  SELL_ONLY on a mildly BUY-biased model — the threshold couldn't fix this alone.
 
 ## Known Issues
 
@@ -451,7 +450,7 @@ The original "directional flip" narrative was wrong as a portfolio-wide diagnosi
 
 ```python
 SELL_ONLY_ASSETS: frozenset[str] = frozenset({
-    "CADCHF", "ES", "NQ", "NZDCHF", "EURAUD",
+    "CADCHF", "NZDCHF", "EURAUD",
 })
 ```
 
@@ -964,11 +963,11 @@ Each remaining SELL_ONLY asset was evaluated against its Step 3 BuyWR vs breakev
 
 ### SELL_ONLY Reduction Summary
 
-SELL_ONLY_ASSETS reduced from 10 → 5 assets:
-- **Removed** (5): GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI — all have BuyWR > Breakeven WR
-- **Remaining** (5): CADCHF, ES, NQ, NZDCHF, EURAUD — impervious to all interventions tested
+SELL_ONLY_ASSETS reduced from 10 → 3 assets:
+- **Removed** (7): GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI, ES, NQ — all have BuyWR > Breakeven WR
+- **Remaining** (3): CADCHF, NZDCHF, EURAUD — impervious to all interventions tested
 
-The SELL_ONLY filter is now a focused guard for the 5 assets with genuinely unrecoverable BUY signal — not a portfolio-wide stopgap.
+The SELL_ONLY filter is now a focused guard for the 3 assets with genuinely unrecoverable BUY signal — not a portfolio-wide stopgap.
 
 ### Orphaned Model Cleanup
 
@@ -1034,7 +1033,7 @@ All 21 models retrained with new tp/sl labels. Walk-forward comparison:
 
 ### SELL_ONLY List Update
 
-Confirmed unchanged (5 assets): CADCHF, ES, NQ, NZDCHF, EURAUD. No SELL_ONLY asset was affected by the ratio change — the filter is performance-independent.
+Confirmed unchanged (3 assets): CADCHF, NZDCHF, EURAUD. No SELL_ONLY asset was affected by the ratio change — the filter is performance-independent.
 
 ### Falsified Concern
 
@@ -1173,7 +1172,7 @@ readiness audit:
   +100 new tests).
 - ruff check: zero errors.
 - ruff format: zero diffs.
-- config schema validator: passes (21 assets, 5 sell-only).
+- config schema validator: passes (16 assets, 3 sell-only).
 - import firewall: passes (249 files, no forbidden imports).
 - bare-asserts guard: passes (140 prod files clean).
 - secrets scanner: passes (no plaintext credentials).

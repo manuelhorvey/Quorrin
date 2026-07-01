@@ -18,7 +18,7 @@ Checks performed:
 2. **SELL_ONLY list consistency** — the hardcoded fallback
    ``SELL_ONLY_ASSETS`` in ``paper_trading/execution/gate_constants.py``
    matches the ``configs/paper_trading.yaml:defaults.sell_only_assets``
-   list AND the YAML version is a subset of the active 21-asset list.
+   list AND the YAML version is a subset of the active 16-asset list.
 
 3. **Phase-count consistency** — counts ``_phase_X_*`` methods in
    ``paper_trading/orchestrator/engine.py`` and asserts that the

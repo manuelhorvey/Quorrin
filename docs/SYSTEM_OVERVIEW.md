@@ -28,7 +28,7 @@ The repository intentionally treats trading infrastructure as a distributed stat
 
 # High-Level Architecture
 
-The engine runs a continuous 5-phase orchestrator cycle. Each tick (every 30s) executes the following loop:
+The engine runs a continuous 5-phase orchestrator cycle. Each tick (every 60s) executes the following loop:
 
 ```mermaid
 flowchart TD
@@ -236,28 +236,29 @@ The live engine executes every 60 seconds by default (configurable via `QUORRIN_
  13. FixedThresholdStrategy(0.45) → BUY/SELL/FLAT
  14. Archetype classification → TradeDecision
  15. Refresh MT5 spread for spread gate
-  16. Decision pipeline stages (21 stages, `DEFAULT_STAGES`):
+   16. Decision pipeline stages (22 stages, `DEFAULT_STAGES`):
       a. First-cycle suppression — suppress trading on cold-start cycle 1
       b. Bar-jump suppression — suppress 60min if bar count changed >100
       c. Store prediction metadata — record pre-decision signal state
       d. Update MAE/MFE — update max adverse/favorable excursion
       e. Resolve signal — map proba to BUY/SELL/FLAT via FixedThresholdStrategy(0.45)
       f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-      g. Sell-only filter — override BUY→FLAT for 5 inverted-BUY assets
-      h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles)
-      i. Session gate — block entry outside market session hours per asset-class tier
-      j. ADX entry gate — skip if ADX < threshold (observe-only, disabled by default)
-      k. Confidence gate — abort if net confidence below threshold
-      l. Signal hysteresis — 2-of-3 agreement before flip
-      m. Meta-label advisory — record meta-label recommendation (no enforcement)
-      n. Update regime bar counter — track bars since last regime shift
-      o. Conviction gate — flip gate based on regime conviction
-      p. **Kelly sizing (P2)** — scale position by Kelly criterion (config-gated, disabled by default)
-      q. Manage position — close/re-open with entry gate check (includes embedded profit lock)
-      r. Build entry artifacts — construct TradeDecision for execution
-      s. Route execution policy — direct to PaperBroker or MT5Broker
-      t. Poll deferred entries — execute pending deferred orders
-      u. Update prob history — record probability history for drift monitoring
+      g. VIX gate — suppress CL=F when VIX > 30; fail-open if VIX data missing or stale (>5 days old)
+      h. Sell-only filter — override BUY→FLAT for 3 inverted-BUY assets
+      i. Spread gate — block entry if spread > per-class threshold (observe 720 cycles)
+      j. Session gate — block entry outside market session hours per asset-class tier
+      k. ADX entry gate — skip if ADX < threshold (observe-only, disabled by default)
+      l. Confidence gate — abort if net confidence below threshold
+      m. Signal hysteresis — 2-of-3 agreement before flip
+      n. Meta-label advisory — record meta-label recommendation (no enforcement)
+      o. Update regime bar counter — track bars since last regime shift
+      p. Conviction gate — flip gate based on regime conviction
+      q. **Kelly sizing (P2)** — scale position by Kelly criterion (config-gated, disabled by default)
+      r. Manage position — close/re-open with entry gate check (includes embedded profit lock)
+      s. Build entry artifacts — construct TradeDecision for execution
+      t. Route execution policy — direct to PaperBroker or MT5Broker
+      u. Poll deferred entries — execute pending deferred orders
+      v. Update prob history — record probability history for drift monitoring
   17. Route through governance (15 layers + P3 factor model monitoring + HealthMonitor + VaR/CVaR + sizing guardrails)
   18. Entry price deviation gate (skip if price drifted > max_entry_slippage_pct)
   19. Position sizing chain (drawdown taper → position cap → risk cap → min viable gate)
@@ -282,7 +283,7 @@ Quorrin uses independently configurable governance layers with worst-wins aggreg
 | Macro narrative        | Global     | SL +10%, size −20%        |
 | Liquidity regime       | Per asset  | THIN: soft adjust, STRESSED: halt |
 | PSI drift              | Per asset  | Penalties + halt at 3+ SEVERE |
-| Sell-only filter       | Per asset  | Override BUY→FLAT for 5 inverted-BUY assets |
+| Sell-only filter       | Per asset  | Override BUY→FLAT for 3 inverted-BUY assets |
 | Calibration (P1)       | Per asset  | Remap raw p_long via BinnedCalibrator (config-gated, enabled) |
 | Kelly sizing (P2)      | Per asset  | Scale position by Kelly criterion (config-gated, disabled) |
 | Factor model (P3)      | Portfolio  | Factor exposure monitoring via 9 groups (monitoring only) |
@@ -308,7 +309,8 @@ Quorrin uses independently configurable governance layers with worst-wins aggreg
 | Update MAE/MFE | Update max adverse/favorable excursion |
 | Resolve signal | Map proba to BUY/SELL/FLAT |
 | Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 |
-| Sell-only filter | Override BUY→FLAT for 5 inverted-BUY assets |
+| VIX gate | Suppress CL=F when VIX > 30; fail-open if VIX data missing or stale (>5 days old) |
+| Sell-only filter | Override BUY→FLAT for 3 inverted-BUY assets |
 | Spread gate | Block entry if spread > per-class threshold (observe 720 cycles) |
 | Session gate | Block entry outside market session hours per asset-class tier |
 | ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) |
@@ -450,7 +452,7 @@ Converts calibrated probability + TP/SL barriers → position size multiplier. K
 
 **File:** `shared/factor_model.py`
 
-9 factor groups (USD, EUR, AUD, NZD, CHF, CAD, GBP, US_EQUITY, COMMODITY) covering all 21 assets. Factor exposures computed per-cycle in `engine_state_service.py`, exposed in `state.json`.
+9 factor groups (USD, EUR, AUD, NZD, CHF, CAD, GBP, US_EQUITY, COMMODITY) covering all 16 assets. Factor exposures computed per-cycle in `engine_state_service.py`, exposed in `state.json`.
 
 ## P4 — HRP Fix (2026-06-24)
 

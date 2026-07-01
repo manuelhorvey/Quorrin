@@ -34,7 +34,7 @@ Operational procedures for the paper trading system. This document is for the pe
 
 ### Assets
 
-**Core portfolio (21 assets promoted from walk-forward screening):**
+**Core portfolio (16 assets promoted from walk-forward screening):**
 
 Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_depth calibrated via walk-forward optimization.
 
@@ -45,30 +45,25 @@ Each asset uses risk-parity allocation with per-asset sl_mult, tp_mult, and max_
 **Removed 2026-06-20:** AUDNZD, EURUSD, AUDCHF, GBPNZD (directional instability failure mode). USDCAD and NZDUSD halved from 5%→2.5%.
 
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
-| USDCAD | USDCAD=X | 2.5% | 1.59 | 3.19 | 5 |
-| ES | ES=F | 7.0% | 2.00 | 5.50 | 2 |
-| NQ | NQ=F | 7.0% | 2.50 | 5.00 | 2 |
-| GBPCAD | GBPCAD=X | 5.0% | 1.77 | 3.54 | 2 |
-| NZDCAD | NZDCAD=X | 5.0% | 2.24 | 4.47 | 2 |
-| ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
-| NZDUSD | NZDUSD=X | 2.5% | 2.00 | 2.50 | 5 |
-| GBPAUD | GBPAUD=X | 5.0% | 1.50 | 2.00 | 3 |
+| USDCAD | USDCAD=X | 2.5% | 1.30 | 3.90 | 5 |
+| GBPCAD | GBPCAD=X | 5.0% | 1.45 | 4.34 | 2 |
+| NZDCAD | NZDCAD=X | 5.0% | 1.83 | 5.48 | 2 |
+| NZDUSD | NZDUSD=X | 2.5% | 1.29 | 3.87 | 5 |
+| GBPAUD | GBPAUD=X | 5.0% | 1.00 | 3.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
 | CADCHF | CADCHF=X | 5.0% | 1.00 | 4.00 | 2 |
-| AUDUSD | AUDUSD=X | 4.0% | 1.50 | 4.00 | 2 |
+| AUDUSD | AUDUSD=X | 4.0% | 1.41 | 4.24 | 2 |
 | EURCHF | EURCHF=X | 5.0% | 1.00 | 3.00 | 4 |
-| EURCAD | EURCAD=X | 2.0% | 0.87 | 1.73 | 3 |
-| EURNZD | EURNZD=X | 3.0% | 1.37 | 2.74 | 3 |
-| GBPCHF | GBPCHF=X | 3.0% | 1.00 | 2.00 | 2 |
+| EURCAD | EURCAD=X | 2.0% | 0.71 | 2.12 | 3 |
+| EURNZD | EURNZD=X | 3.0% | 1.12 | 3.36 | 3 |
+| GBPCHF | GBPCHF=X | 3.0% | 0.82 | 2.45 | 2 |
 | GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
-| USDJPY | USDJPY=X | 4.0% | 0.52 | 1.97 | 2 |
-| GBPJPY | GBPJPY=X | 3.0% | 0.50 | 2.22 | 2 |
 
-**Total allocation: ~0.90** (remaining capacity held as cash buffer).
+**Total allocation: varies** (factor_constrained_v2 adjusts dynamically)
 
 **Backtest performance (pre-leak-fix baseline, 5-year: 2021–2025):** PF 1.908, avgR +0.268, 2383 trades, 18 assets.
 > Note: These are the screening baseline. Current walk-forward diagnostics after look-ahead fixes
@@ -198,11 +193,11 @@ The script:
 3. Downloads macro data (DXY, VIX, SPX, WTI, TNX) via yfinance
 4. Computes alpha + regime + archetype features
 5. Runs inference on all assets (base model — ensemble disabled portfolio-wide)
-6. Applies decision pipeline stages (21 stages: first-cycle suppression → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → sell-only filter → spread gate → session gate → ADX entry gate → confidence gate → hysteresis → meta-label advisory → regime bar counter → conviction gate → kelly sizing → manage position [includes profit lock] → build artifacts → route execution → poll deferred → update prob history)
+6. Applies decision pipeline stages (22 stages: first-cycle suppression → bar-jump → store metadata → update MAE/MFE → resolve signal → risk-off → VIX gate → sell-only filter → spread gate → session gate → ADX entry gate → confidence gate → hysteresis → meta-label advisory → regime bar counter → conviction gate → kelly sizing → manage position [includes profit lock] → build artifacts → route execution → poll deferred → update prob history)
 7. Routes through 15 governance layers + HealthMonitor (circuit breaker, VaR/CVaR, equity cluster alarm) + RecoveryScheduler
 8. Opens/closes positions based on signal vs current position (MT5 bridge + paper)
 9. Serves dashboard on port 5000
-10. Repeats every refresh interval (default 30s, configurable via `QUORRIN_REFRESH_INTERVAL` env var)
+10. Repeats every refresh interval (default 60s, configurable via `QUORRIN_REFRESH_INTERVAL` env var)
 
 **Signal logging:** The `scripts/ops/monitor_paper_trading.py` script polls the dashboard every 6 hours
 and appends a CSV row to `data/monitoring/paper_trade_monitor.csv`. Use it for daily signal checks:
@@ -222,7 +217,7 @@ curl http://127.0.0.1:5000/ping
 **What to verify on the dashboard (use the anchor nav bar to jump between sections):**
 
 - Portfolio total value and daily return are updating (trend arrows on metric cards show direction)
-- All 21 assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
+- All 16 assets show a signal (BUY/SELL/FLAT) with confidence — click column headers in the Signals table to sort by confidence descending
 - Current price is within ~0.5% of market price
 - No asset is in halt (check asset cards for RED status)
 - Per-asset drawdown % is not approaching per-asset limits
@@ -230,7 +225,7 @@ curl http://127.0.0.1:5000/ping
 - After restart: cycle 1 shows `first-cycle suppression` in logs (normal), trades resume cycle 2+
 - After MT5 reconnect: check for `bar-jump suppression` log — suppresses ~60min if bar count changed >100 (normal after source switch)
 - Risk-off conditions: if VIX>0 & SPX<0, expect AUDUSD showing `risk-off suppression — holding flat` (validated behavior)
-- Sell-only filter: 5 SELL_ONLY assets (CADCHF, ES, NQ, NZDCHF, EURAUD) will show `sell-only filter — suppressing BUY signal` for BUY signals, holding flat instead
+- Sell-only filter: 3 SELL_ONLY assets (CADCHF, NZDCHF, EURAUD) will show `sell-only filter — suppressing BUY signal` for BUY signals, holding flat instead
 - Equity cluster alarm: if ES/NQ/^DJI all have open positions on the same side, expect `equity_cluster_all_LONG_ES_NQ_^DJI` or `equity_cluster_all_SHORT_ES_NQ_^DJI` recommendation logged by HealthMonitor
 - Spread gate observe mode: in first 720 cycles (~6h), check for `spread gate would block` logs; after observation window, `spread gate blocked entry` is expected for high-spread conditions
 - Market status badge shows **OPEN** (green) during trading hours, **CLSD** (yellow) on weekends
@@ -248,7 +243,7 @@ curl http://127.0.0.1:5000/ping
 
 ### Log Check
 
-After startup (Mon–Fri during market hours), verify log output shows signal lines for all 21 assets:
+After startup (Mon–Fri during market hours), verify log output shows signal lines for all 16 assets:
 ```
 GC: BUY conf=XX% @ $XX.XX
 USDCHF: BUY conf=XX% @ $XX.XX
@@ -302,7 +297,7 @@ for name, a in s['assets'].items():
 
 **Expectations:**
 
-All 21 assets should show a balanced BUY/SELL ratio (~1:1) with mean confidence in the 55-75% range. For the 5 SELL_ONLY assets, expect FLAT to dominate BUY (BUY signals are overridden to FLAT). Deviations warrant investigation of the specific asset's governance state and recent market conditions.
+All 16 assets should show a balanced BUY/SELL ratio (~1:1) with mean confidence in the 55-75% range. For the 3 SELL_ONLY assets, expect FLAT to dominate BUY (BUY signals are overridden to FLAT). Deviations warrant investigation of the specific asset's governance state and recent market conditions.
 
 ### Narrative Check (Monday Morning)
 
@@ -846,12 +841,12 @@ Before transitioning from paper to live, verify all checks below. 6/7 must pass 
 | # | Check | Target | Source | Criticality |
 |---|-------|--------|--------|-------------|
 | 1 | Gate override rate | <40% across all assets | `data/monitoring/paper_trade_monitor.csv` — column `gate_overrides` | Hard |
-| 2 | Mean confidence | >0.52 for ≥18/21 assets | Monitor CSV — column `mean_confidence` per snapshot | Hard |
-| 3 | Signal flips | ≤3/day for ≥18/21 assets | Monitor CSV — column `signal_flips` | Hard |
+| 2 | Mean confidence | >0.52 for ≥14/16 assets | Monitor CSV — column `mean_confidence` per snapshot | Hard |
+| 3 | Signal flips | ≤3/day for ≥14/16 assets | Monitor CSV — column `signal_flips` | Hard |
 | 4 | Cross-asset correlation | No unexplained >0.7 | `python scripts/diagnostics/signal_correlation_check.py` | Hard |
 | 5 | MT5 errors | Zero across all cycles | `grep ERROR /tmp/paper_trading.log` | Hard |
 | 6 | Trades executed | ≥10 across portfolio | MT5 terminal or dashboard trades panel | Hard |
-| 7 | SELL_ONLY filter | BUY→FLAT overrides active for 5 assets | `grep "sell-only filter" /tmp/paper_trading.log` | Hard |
+| 7 | SELL_ONLY filter | BUY→FLAT overrides active for 3 assets | `grep "sell-only filter" /tmp/paper_trading.log` | Hard |
 
 **Decision:** 6/7 pass → go live at 50% position size for 2 weeks, then full size if live Sharpe tracks within 0.2 of backtest Sharpe.
 

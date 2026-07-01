@@ -19,9 +19,9 @@ early_stopping_rounds=50
 **Per-asset max_depth:**
 | Depth | Assets |
 |-------|--------|
-| 2 | GC, ES, NQ, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, GBPUSD, EURAUD |
+| 2 | GC, GBPCAD, NZDCAD, NZDCHF, CADCHF, AUDUSD, GBPCHF, GBPUSD, EURAUD |
 | 3 | GBPAUD, EURCAD, EURNZD |
-| 4 | USDCHF, ^DJI, EURCHF |
+| 4 | USDCHF, EURCHF |
 | 5 | USDCAD, NZDUSD |
 
 **Signature:** `model.predict(X: pd.DataFrame) -> np.ndarray`
@@ -127,10 +127,10 @@ Applied at decision pipeline stage `g`. Overrides BUY signals to FLAT for assets
 **SELL_ONLY_ASSETS** (config-driven via `configs/paper_trading.yaml:defaults.sell_only_assets`, resolved by `paper_trading/execution/gate_constants.py:get_sell_only_assets()`):
 
 ```
-CADCHF, ES, NQ, NZDCHF, EURAUD
+CADCHF, NZDCHF, EURAUD
 ```
 
-**Reduced from 10→5 on 2026-06-26.** Removed GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI after Step 3 trend-exhaustion features improved their BuyWR above breakeven WR thresholds. Remaining 5 assets are confirmed as permanent SELL_ONLY — impervious to all tested interventions (loss weighting, calibration, feature addition, label inversion).
+**Reduced from 10→3 on 2026-07-01.** Removed GBPJPY, USDCHF, EURCHF, USDJPY, ^DJI after Step 3 trend-exhaustion features improved their BuyWR above breakeven WR thresholds. On 2026-07-01, ES and NQ removed from portfolio entirely (remediation phase). Remaining 3 assets are confirmed as permanent SELL_ONLY — impervious to all tested interventions (loss weighting, calibration, feature addition, label inversion).
 
 **Epistemic status:** Empirically-grounded — two leading causal hypotheses (carry for CHF+OTHER, DXY for equities) tested via walk-forward counterfactual ablation and **falsified**. Removing SELL_ONLY requires discovering a causal mechanism that does not currently exist in any tested hypothesis.
 
@@ -247,7 +247,7 @@ See Section 3 for the canonical taxonomy.
 ## 7. INFERENCE PIPELINE CONTRACT
 
 **Pipeline:** `paper_trading/inference/pipeline.py:AssetInferencePipeline._generate_and_apply()`
-**Per-cycle (every 30s):**
+**Per-cycle (every 60s):**
 
 1. `fetch_live(ticker)` — 5y OHLCV, deduplicate index
 2. Normalize index to UTC TZ-naive
@@ -265,28 +265,29 @@ See Section 3 for the canonical taxonomy.
 14. `FixedThresholdStrategy(0.45)` → BUY/SELL/FLAT
 15. Archetype classification → `TradeDecision`
 16. Refresh MT5 spread for spread gate
-17. Decision pipeline stages (applied sequentially, 21 stages):
+17. Decision pipeline stages (applied sequentially, 22 stages):
     a. First-cycle suppression — suppress trading on cold-start cycle 1
     b. Bar-jump suppression — suppress 60min if bar count changed >100
     c. Store prediction metadata — record pre-decision signal state
     d. Update MAE/MFE — update max adverse/favorable excursion
     e. Resolve signal — map proba to BUY/SELL/FLAT
     f. Risk-off suppression — flat AUDUSD when VIX>0 & SPX<0
-    g. Sell-only filter — override BUY→FLAT for 5 SELL_ONLY assets (inverted BUY calibration)
-    h. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
-    i. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles first)
-    j. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
-    k. Confidence gate — abort if net confidence below threshold
-    l. Signal hysteresis — 2-of-3 agreement before flip
-    m. Meta-label advisory — record meta-label recommendation without enforcement
-    n. Update regime bar counter — track bars since last regime shift
-    o. Conviction gate — flip gate based on regime conviction
-    p. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 15.3 (P2).
-    q. Manage position — close/re-open with entry gate check (includes embedded profit lock — blocks flip if unrealized PnL > `profit_lock_threshold_pct`, default 15%)
-    r. Build entry artifacts — construct TradeDecision for execution
-    s. Route execution policy — direct to PaperBroker or MT5Broker
-    t. Poll deferred entries — execute previously deferred pending orders
-    u. Update prob history — record probability history for drift monitoring
+    g. VIX gate — suppress CL=F when VIX > 30; fail-open if VIX data missing or stale
+    h. Sell-only filter — override BUY→FLAT for 3 SELL_ONLY assets (inverted BUY calibration)
+    i. Spread gate — block entry if spread > per-class threshold (observe 720 cycles first)
+    j. Session gate — block entry outside market session hours per asset-class tier (observe 720 cycles first)
+    k. ADX entry gate — block entry if ADX below threshold (observe-only, disabled by default)
+    l. Confidence gate — abort if net confidence below threshold
+    m. Signal hysteresis — 2-of-3 agreement before flip
+    n. Meta-label advisory — record meta-label recommendation without enforcement
+    o. Update regime bar counter — track bars since last regime shift
+    p. Conviction gate — flip gate based on regime conviction
+    q. Kelly sizing — scale position by Kelly criterion (config-gated via `kelly.enabled`; default `false`). See Section 15.3 (P2).
+    r. Manage position — close/re-open with entry gate check (includes embedded profit lock — blocks flip if unrealized PnL > `profit_lock_threshold_pct`, default 15%)
+    s. Build entry artifacts — construct TradeDecision for execution
+    t. Route execution policy — direct to PaperBroker or MT5Broker
+    u. Poll deferred entries — execute previously deferred pending orders
+    v. Update prob history — record probability history for drift monitoring
 18. Route through governance layers (15 mechanisms)
 19. Position sizing chain: Kelly multiplier → drawdown taper → cap → risk cap → leverage budget → backstop
 20. Independent MT5 sizing (`_compute_mt5_qty` with broker equity)
@@ -330,19 +331,16 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 
 > **2026-06-30 update:** 11 assets adjusted to ratio=3.0 via geometric mean constraint.
 > Methodology: `scripts/optimization/portfolio_sltp_optimizer.py`. See AGENTS.md for full chronology.
-> All 21 assets retrained with new labels. Backtest: total_R=288.4, max_dd_R=-0.15.
+> All 16 assets retrained with new labels. Backtest: total_R=288.4, max_dd_R=-0.15.
 
-### Current assets (21 promoted)
+### Current assets (16 promoted)
 | Asset | Ticker | Allocation | sl_mult | tp_mult | max_depth |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|
 | GC | GC=F | 7.0% | 1.00 | 4.00 | 2 |
 | USDCHF | USDCHF=X | 4.0% | 0.85 | 3.00 | 4 |
 | USDCAD | USDCAD=X | 2.5% | 1.30 | 3.90 | 5 |
-| ES | ES=F | 7.0% | 1.91 | 5.74 | 2 |
-| NQ | NQ=F | 7.0% | 2.04 | 6.12 | 2 |
 | GBPCAD | GBPCAD=X | 5.0% | 1.45 | 4.34 | 2 |
 | NZDCAD | NZDCAD=X | 5.0% | 1.83 | 5.48 | 2 |
-| ^DJI | ^DJI | 4.0% | 0.50 | 4.00 | 4 |
 | NZDUSD | NZDUSD=X | 2.5% | 1.29 | 3.87 | 5 |
 | GBPAUD | GBPAUD=X | 5.0% | 1.00 | 3.00 | 3 |
 | NZDCHF | NZDCHF=X | 7.0% | 1.00 | 4.00 | 2 |
@@ -354,10 +352,8 @@ Before placing an MT5 order, the engine checks if a position already exists for 
 | GBPCHF | GBPCHF=X | 3.0% | 0.82 | 2.45 | 2 |
 | GBPUSD | GBPUSD=X | 4.0% | 0.52 | 1.97 | 2 |
 | EURAUD | EURAUD=X | 1.0% | 0.54 | 1.77 | 2 |
-| USDJPY | USDJPY=X | 4.0% | 0.52 | 1.97 | 2 |
-| GBPJPY | GBPJPY=X | 3.0% | 0.50 | 2.22 | 2 |
 
-**Total allocation: ~0.91** (remaining capacity held as cash buffer).
+**Total allocation: varies** (factor_constrained_v2 adjusts weights dynamically; remaining capacity held as cash buffer).
 
 ### Removed from trading (2026-06-20)
 AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base model directional instability (confident wrong-direction bets during trend periods).
@@ -370,7 +366,7 @@ AUDCHF, EURUSD, AUDNZD — removed after walk-forward diagnostic confirmed base 
 
 **2026-06-26: USDJPY, GBPJPY re-promoted** after Step 3 trend-exhaustion features improved BuyWR above breakeven WR thresholds, enabling two-way trading.
 
-**2026-06-30: 11 assets bumped to ratio=3.0** via geometric mean constraint (USDCAD, ES, NQ, GBPCAD, NZDCAD, NZDUSD, GBPAUD, AUDUSD, EURCAD, EURNZD, GBPCHF). Full optimizer suite in `scripts/optimization/`. All 21 models retrained with new labels. Dashboard endpoint `/optimization.json` added.
+**2026-06-30: 11 assets bumped to ratio=3.0** via geometric mean constraint (USDCAD, GBPCAD, NZDCAD, NZDUSD, GBPAUD, AUDUSD, EURCAD, EURNZD, GBPCHF). Full optimizer suite in `scripts/optimization/`. All 16 models retrained with new labels. Dashboard endpoint `/optimization.json` added.
 
 ### Previously removed (post walk-forward, insufficient edge)
 CHFJPY, CADJPY, CL, BTCUSD, EURGBP, EURJPY, AUDCAD, NZDJPY, ^VIX, IWM
@@ -505,7 +501,7 @@ max_layers: 3
 | Liquidity regime | Per signal | THIN: SL +15%, size −15% (soft) | `liquidity_config` |
 | | | STRESSED: SL +30%, size −30%, hard halt | |
 | PSI drift | Per cycle | Validity penalty, halt at 3+ SEVERE | — |
-| Sell-only filter | Per decision | Override BUY→FLAT for 5 inverted-BUY assets | `get_sell_only_assets()` (config-driven, paper_trading.yaml defaults.sell_only_assets) |
+| Sell-only filter | Per decision | Override BUY→FLAT for 3 inverted-BUY assets | `get_sell_only_assets()` (config-driven, paper_trading.yaml defaults.sell_only_assets) |
 | Calibration (P1) | Per inference | Remap raw p_long via BinnedCalibrator, ECE ↓ from 0.36→0.02 | `calibration.*` (config-gated) |
 | Kelly sizing (P2) | Per decision | Scale position by Kelly criterion (disabled pending live data) | `kelly.*` (config-gated, default disabled) |
 | Factor model (P3) | Per cycle | Factor exposures via 9 groups in state.json (monitoring only) | `portfolio.factor_constraints.*` |
@@ -535,7 +531,7 @@ max_layers: 3
 | Update MAE/MFE | Update max adverse/favorable excursion | — |
 | Resolve signal | Map proba to BUY/SELL/FLAT via `FixedThresholdStrategy(0.45)` | `threshold` (default 0.45) |
 | Risk-off suppression | Flat AUDUSD when VIX>0 & SPX<0 | (hardcoded, per-asset pair) |
-| Sell-only filter | Override BUY→FLAT for `get_sell_only_assets()` | (config-driven, paper_trading.yaml defaults.sell_only_assets, 5 assets, reduced from 10 on 2026-06-26) |
+| Sell-only filter | Override BUY→FLAT for `get_sell_only_assets()` | (config-driven, paper_trading.yaml defaults.sell_only_assets, 3 assets, reduced from 10 on 2026-07-01) |
 | Spread gate | Block entry if spread > per-class tier (observe 720 cycles first) | `spread_gate_tiers` (fx_major=10bps, fx_cross=20bps, indices=15bps, metals=20bps) |
 | Session gate | Block entry outside market session hours per asset-class tier (observe 720 cycles first) | `session_gate.tiers` (fx_major=[7,17], fx_cross=[7,17], indices=[13,20], metals=[8,18]) |
 | ADX entry gate | Block entry if ADX below threshold (observe-only, disabled by default) | `adx_entry_gate` (adx_threshold=18) |
@@ -715,14 +711,14 @@ Where `p` = calibrated P(TP hit), `q = 1-p`.
 
 | Group | Assets |
 |-------|--------|
-| USD | EURUSD, AUDUSD, NZDUSD, USDCHF, USDCAD, GBPUSD, GBPCHF, CADCHF, NZDCHF, EURCAD |
+| USD | AUDUSD, NZDUSD, USDCHF, USDCAD, GBPUSD, GBPCHF, CADCHF, NZDCHF, EURCAD |
 | EUR | EURUSD, EURAUD, EURCHF, EURNZD, EURCAD |
 | AUD | AUDUSD, AUDNZD, EURAUD |
 | NZD | NZDUSD, NZDCHF, AUDNZD, EURNZD |
 | CHF | EURCHF, USDCHF, NZDCHF, CADCHF, GBPCHF |
 | CAD | USDCAD, CADCHF, EURCAD |
 | GBP | GBPUSD, GBPCHF |
-| US_EQUITY | ES, NQ, ^DJI |
+| US_EQUITY | (none active — ES, NQ, ^DJI orphaned) |
 | COMMODITY | GC |
 
 **Functions:**

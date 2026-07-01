@@ -140,7 +140,7 @@ class PositionManager:
         ):
             return ("breakeven", self._scale_out_breakeven)
 
-        sl = self.position.stop_loss
+        sl = self.position.effective_sl
         tp = self.position.take_profit
         side = self.position.side
         if pd.isna(sl) or pd.isna(tp) or pd.isna(current_price):

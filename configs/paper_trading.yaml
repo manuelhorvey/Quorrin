@@ -162,6 +162,13 @@ defaults:
     adx_threshold: 25
     size_cap: 1.0
     stack_max_risk_growth: 1.0
+  adaptive_exit:
+    enabled: true
+    be_lock_r: 0.5
+    trail_activation_r: 0.8
+    trail_retrace_pct: 0.50
+    max_hold_candles: 40
+    time_decay_start: 20
   portfolio_max_leverage: 2.0
   portfolio_leverage_tolerance: 0.001
   mt5_leverage_budget_enabled: false
@@ -275,6 +282,13 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 1.0
         min_rr_ratio: 2.0
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   USDCHF:
     ticker: USDCHF=X
     allocation: 0.04
@@ -305,6 +319,13 @@ assets:
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
 
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   USDCAD:
     ticker: USDCAD=X
     allocation: 0.025
@@ -334,6 +355,13 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   GBPCAD:
     ticker: GBPCAD=X
     allocation: 0.05
@@ -361,6 +389,13 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 1.5
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   # GBPNZD removed 2026-06-20 — tp/sl ratio 0.33 required 75% breakeven WR,
   # model achieved 72.3% — lost -37R total with -71R max drawdown
   NZDCAD:
@@ -391,6 +426,13 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   NZDUSD:
     ticker: NZDUSD=X
     allocation: 0.025
@@ -421,6 +463,13 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   GBPAUD:
     ticker: GBPAUD=X
     allocation: 0.05
@@ -449,6 +498,13 @@ assets:
         trailing_activation_mult: 1.5
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   NZDCHF:
     ticker: NZDCHF=X
     allocation: 0.07
@@ -477,6 +533,13 @@ assets:
         trailing_activation_mult: 0.8
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   CADCHF:
     ticker: CADCHF=X
     allocation: 0.05
@@ -505,6 +568,13 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   AUDUSD:
     ticker: AUDUSD=X
     allocation: 0.04
@@ -535,6 +605,13 @@ assets:
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
 
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   EURCHF:
     ticker: EURCHF=X
     allocation: 0.05
@@ -564,6 +641,13 @@ assets:
         trailing_activation_mult: 0.8
         trailing_distance_mult: 0.8
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   EURCAD:
     ticker: EURCAD=X
     allocation: 0.02
@@ -592,6 +676,13 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   EURNZD:
     ticker: EURNZD=X
     allocation: 0.03
@@ -620,6 +711,13 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 1.5
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   GBPCHF:
     ticker: GBPCHF=X
     allocation: 0.03
@@ -648,6 +746,13 @@ assets:
         trailing_activation_mult: 0.8
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   GBPUSD:
     ticker: GBPUSD=X
     allocation: 0.04
@@ -677,6 +782,13 @@ assets:
         trailing_activation_mult: 1.0
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.8
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20
   EURAUD:
     ticker: EURAUD=X
     allocation: 0.01
@@ -709,3 +821,10 @@ assets:
         trailing_distance_mult: 1.0
         min_rr_ratio: 1.5
 
+      adaptive_exit:
+        enabled: true
+        be_lock_r: 0.5
+        trail_activation_r: 0.5
+        trail_retrace_pct: 0.50
+        max_hold_candles: 40
+        time_decay_start: 20

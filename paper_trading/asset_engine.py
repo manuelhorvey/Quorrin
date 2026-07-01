@@ -29,6 +29,7 @@ from paper_trading.inference.pipeline import AssetInferencePipeline
 from paper_trading.inference.training import AssetTrainingPipeline
 from paper_trading.ops.data_fetcher import flatten
 from paper_trading.ops.tracer import trace_exit
+from paper_trading.performance.edge_health import get_monitor as _get_edge_monitor
 from paper_trading.position.dynamic_sltp import DynamicSLTPEngine, build_dynamic_sltp_from_config
 from paper_trading.position.manager import PositionManager
 from paper_trading.position.scale_out import build_scale_out_from_config
@@ -392,6 +393,9 @@ class AssetEngine:
         )
 
     def _close_position(self, exit_price, exit_date, reason) -> bool:
+        # Capture peak MFE before position is cleared by close_position
+        peak_mfe_r = self._capture_peak_mfe_r()
+
         mutations = self._position.close_position(
             exit_price,
             exit_date,
@@ -437,7 +441,38 @@ class AssetEngine:
             ),
             regime_features=self._last_regime_features,
         )
+        trade = mutations.get("trade", {})
+        if trade and "realized_r" in trade:
+            side = self.pos_mgr.current_side()  # still available before reset
+            _get_edge_monitor().record_trade(
+                asset=self.name,
+                side=str(side or ""),
+                entry_price=float(getattr(self, "_entry_price", 0) or 0),
+                exit_price=exit_price,
+                exit_reason=reason,
+                realized_r=float(trade.get("realized_r", 0)),
+                peak_mfe_r=peak_mfe_r,
+            )
         return True
+
+    def _capture_peak_mfe_r(self) -> float | None:
+        """Read peak MFE from adaptive exit engine before position close clears it."""
+        ae = getattr(self, "_adaptive_exit_engine", None)
+        if ae is None or ae._best_price is None:
+            return None
+        pos = self.pos_mgr.position
+        if pos is None:
+            return None
+        vol = getattr(self, "_entry_vol", None)
+        if vol is None or vol <= 0:
+            return None
+        try:
+            if pos.is_long:
+                return (ae._best_price - pos.entry_price) / (pos.entry_price * vol)
+            else:
+                return (pos.entry_price - ae._best_price) / (pos.entry_price * vol)
+        except (ZeroDivisionError, TypeError):
+            return None
 
     def _record_stop_out(self, side: str, exit_price: float) -> None:
         mutations = self._position.record_stop_out(

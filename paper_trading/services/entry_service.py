@@ -717,6 +717,7 @@ class EntryService:
         asset.pos_mgr.enforce_invariant(asset.name)
         asset._entry_vol = vol
         asset._bars_at_entry = 0
+        asset._adaptive_exit_reset = True
         asset._initial_sl = float(intent.stop_loss)
         asset._initial_tp = float(intent.take_profit)
         if asset.config.get("dynamic_sltp", {}).get("enabled", False) and asset._initial_sl is not None:

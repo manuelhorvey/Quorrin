@@ -12,6 +12,7 @@ from paper_trading.ops.tracer import (
     shadow_compare_sltp,
     trace_diagnostic_report,
 )
+from paper_trading.position.adaptive_exit import AdaptiveExitEngine
 from paper_trading.shadow.memory import store_event as _shadow_store
 
 logger = logging.getLogger("quorrin.pnl_controller")
@@ -71,6 +72,7 @@ class AssetPnlController:
         if self._check_sltp_hit(asset):
             return True
         self._apply_trailing_stop(asset)
+        self._apply_adaptive_exit(asset)
         return self._check_time_stop(asset, max_hold)
 
     def _tick_shadow_sltp(self, asset) -> None:
@@ -254,6 +256,40 @@ class AssetPnlController:
             )
 
         self._apply_post_entry_adjust(asset, data)
+
+    def _apply_adaptive_exit(self, asset) -> None:
+        cfg = asset.config.get("adaptive_exit", {})
+        if not cfg.get("enabled", False):
+            return
+        if asset._entry_vol is None or not asset.pos_mgr.has_position():
+            return
+
+        if not hasattr(asset, "_adaptive_exit_engine"):
+            asset._adaptive_exit_engine = AdaptiveExitEngine()
+        ae = asset._adaptive_exit_engine
+
+        if getattr(asset, "_adaptive_exit_reset", True):
+            ae.reset()
+            asset._adaptive_exit_reset = False
+
+        result = ae.compute(
+            side=asset.pos_mgr.position.side.value,
+            entry_price=asset.pos_mgr.position.entry_price,
+            current_price=asset.current_price,
+            current_sl=asset.pos_mgr.position.stop_loss,
+            vol_at_entry=asset._entry_vol,
+            bars_since_entry=getattr(asset, "_bars_at_entry", 0),
+            config=cfg,
+        )
+        if result.new_sl is not None and not pd.isna(result.new_sl):
+            asset.pos_mgr.update_stop_loss(float(result.new_sl))
+            _sync_broker_sltp(asset)
+            logger.info(
+                "%s: adaptive exit %s — SL moved to %.4f",
+                asset.name,
+                result.action,
+                result.new_sl,
+            )
 
     def _apply_post_entry_adjust(self, asset, data) -> None:
         asset._bars_at_entry += 1

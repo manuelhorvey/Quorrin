@@ -1112,8 +1112,7 @@ class EngineOrchestrator:
                 if missing_for >= self.MAX_STALE_TICKET_CYCLES:
                     # Grace period exhausted — close the paper position
                     logger.warning(
-                        "MT5_STALE_TICKET: %s ticket=%s missing for %d/%d cycles "
-                        "— closing paper position",
+                        "MT5_STALE_TICKET: %s ticket=%s missing for %d/%d cycles — closing paper position",
                         name,
                         mt5_ticket,
                         missing_for,
@@ -1131,8 +1130,7 @@ class EngineOrchestrator:
                             )
                         except Exception:
                             logger.exception(
-                                "MT5_STALE_TICKET: %s failed to close paper position "
-                                "— position may be a ghost",
+                                "MT5_STALE_TICKET: %s failed to close paper position — position may be a ghost",
                                 name,
                             )
                 elif missing_for >= self.STALE_TICKET_DEAL_CHECK_CYCLES:
@@ -1179,8 +1177,7 @@ class EngineOrchestrator:
                                 )
                             except Exception:
                                 logger.exception(
-                                    "MT5_ORDER_REJECTED: %s failed to close paper position "
-                                    "— position may be a ghost",
+                                    "MT5_ORDER_REJECTED: %s failed to close paper position — position may be a ghost",
                                     name,
                                 )
                 else:
@@ -1197,8 +1194,7 @@ class EngineOrchestrator:
                 # Ticket found in broker positions — recovered or normal
                 if ticket_key in self._stale_ticket_cycles:
                     logger.info(
-                        "MT5_STALE_TICKET_RECOVERED: %s ticket=%s reappeared "
-                        "after %d cycles — resetting grace counter",
+                        "MT5_STALE_TICKET_RECOVERED: %s ticket=%s reappeared after %d cycles — resetting grace counter",
                         name,
                         mt5_ticket,
                         self._stale_ticket_cycles[ticket_key],

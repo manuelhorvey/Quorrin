@@ -308,6 +308,16 @@ class EngineStateService:
             logger.debug("Failed to compute live Sharpe: %s", exc)
             state["portfolio"]["live_sharpe"] = {"available": False}
 
+        # Edge health from live trade tracker
+        try:
+            from paper_trading.performance.edge_health import get_monitor
+
+            monitor = get_monitor()
+            state["portfolio"]["edge_health"] = monitor.summary
+        except Exception as exc:
+            logger.debug("Failed to compute edge health: %s", exc)
+            state["portfolio"]["edge_health"] = {"available": False}
+
         # PEK state from orchestrator
         try:
             orch = getattr(engine, "_orchestrator", None)

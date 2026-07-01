@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
-import { X, TrendingUp, LayoutDashboard, Zap, BarChart3, Heart, Shield } from 'lucide-react'
+import { X, TrendingUp, LayoutDashboard, Zap, BarChart3, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useSidebarBadges, type EngineState } from '../../hooks/useSidebarBadges'
 import Divider from '../ui/Divider'
@@ -27,8 +27,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     title: 'Overview',
     icon: LayoutDashboard,
     items: [
-      { id: 'dashboard', to: '/', label: 'Dashboard', icon: LayoutDashboard, desc: 'System health + exception view' },
-      { id: 'engine', to: '/engine', label: 'Engine', icon: Heart, desc: 'Raw metrics + full data' },
+      { id: 'dashboard', to: '/', label: 'Dashboard', icon: LayoutDashboard, desc: 'Status, equity, positions' },
     ],
   },
   {

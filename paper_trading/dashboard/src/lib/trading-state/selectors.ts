@@ -250,10 +250,7 @@ export function toPortfolioTradingState(
   const slSyncIntegrity: "OK" | "WARNING" = slIntegrityOk ? "OK" : "WARNING"
 
   // ── Alpha ────────────────────────────────────────────────────
-  const portfolioEdgeHealth = (portfolio as any)?.edge_health as
-    | EdgeHealthSummary
-    | undefined
-    | null
+  const portfolioEdgeHealth = portfolio.edge_health ?? null
   const reversalRate: number | null = portfolioEdgeHealth?.reversal_rate ?? null
 
   let edgeTrend: EdgeTrend = "STABLE"

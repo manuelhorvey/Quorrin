@@ -313,10 +313,6 @@ export interface AssetState {
   total_exits: number
   sl_exits: number
   sl_hit_rate: number | null
-  last_regime_raw_probas: number[] | null
-  last_regime_features: Record<string, number> | null
-  gates_trace: Record<string, boolean> | null
-  calibration: { applied: boolean; registry_loaded: boolean }
 }
 
 export interface ExitReasons {

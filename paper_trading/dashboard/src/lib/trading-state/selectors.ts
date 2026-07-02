@@ -1,4 +1,4 @@
-import type { AssetState, Portfolio, PositionConcentration } from "../../types/portfolio"
+import type { AssetState, Portfolio, PositionConcentration, EdgeHealthSummary } from "../../types/portfolio"
 import type { SystemBundle } from "../../types/bundle"
 import type {
   AssetTradingState,
@@ -25,15 +25,6 @@ function efficiencyToNumeric(efficiency: AssetTradingState["pnl_state"]["efficie
 // ── Domain types ───────────────────────────────────────────────────
 
 export type SortKey = "name" | "risk" | "pnl" | "exit_phase"
-
-export interface EdgeHealthSummary {
-  reversal_rate: number | null
-  n_losers: number
-  n_trades: number
-  mean_mfe_r: number | null
-  median_mfe_r: number | null
-  alert: boolean
-}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface LiveBundle {

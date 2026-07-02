@@ -547,18 +547,11 @@ export const AssetStateSchema = z.object({
   stop_out_last_side: z.string().nullable(),
   stop_out_last_cycle: z.number().int().nullable(),
   last_regime_long_prob: z.number().nullable(),
-  last_regime_raw_probas: z.array(z.number()).length(2).nullable(),
   last_regime_label: z.string().nullable(),
-  last_regime_features: z.record(z.string(), z.number()).nullable(),
-  gates_trace: z.record(z.string(), z.boolean()).nullable(),
   sizing_chain: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).nullable(),
   total_exits: z.number().optional().default(0),
   sl_exits: z.number().optional().default(0),
   sl_hit_rate: z.number().nullable().optional().default(null),
-  calibration: z.object({
-    applied: z.boolean(),
-    registry_loaded: z.boolean(),
-  }).optional().default({ applied: false, registry_loaded: false }),
 })
 
 // ── Open position (per-asset with metadata) ───────────────────────

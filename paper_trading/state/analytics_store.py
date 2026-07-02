@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from datetime import datetime
 
@@ -24,6 +25,7 @@ class _AnalyticsStore:
         self._trade_outcomes_path = trade_outcomes_path
         self._analytics_snapshot_counter = 0
         self._analytics_snapshot_frequency = 5
+        self._analytics_lock = threading.Lock()
         self._trade_outcomes_cache: tuple[dict, float] | None = None
 
     def write_trade_outcomes_cache(self) -> None:
@@ -42,7 +44,9 @@ class _AnalyticsStore:
         try:
             with sqlite3.connect(self._db._db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                rows = conn.execute("SELECT * FROM trades").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM trades WHERE exit_date >= date('now', '-1 year') LIMIT 100000"
+                ).fetchall()
                 if not rows:
                     return None
                 df = pd.DataFrame([dict(r) for r in rows])
@@ -54,6 +58,7 @@ class _AnalyticsStore:
             if reason_col in df.columns:
                 df[reason_col] = (
                     df[reason_col]
+                    .fillna("")
                     .astype(str)
                     .str.upper()
                     .replace({"SL_HIT": "SL", "TP_HIT": "TP", "GATE_CLOSED": "FLIP"})
@@ -80,7 +85,11 @@ class _AnalyticsStore:
                         "signal_flip_rate": round(flip / n, 4) if n > 0 else 0.0,
                         "avg_r": round(avg_r, 4),
                         "win_rate": round(wins / n, 4) if n > 0 else 0.0,
-                        "profit_factor": round(total_profit / total_loss, 4) if total_loss > 0 else None,
+                        "profit_factor": (
+                            round(total_profit / total_loss, 4)
+                            if total_loss > 0
+                            else (float("inf") if total_profit > 0 else None)
+                        ),
                     }
                 )
 
@@ -100,7 +109,11 @@ class _AnalyticsStore:
                     "signal_flip_rate": round(flip_total / n_total, 4) if n_total > 0 else 0.0,
                     "avg_r": round(avg_r_total, 4),
                     "win_rate": round(wins_total / n_total, 4) if n_total > 0 else 0.0,
-                    "profit_factor": round(profit_total / loss_total, 4) if loss_total > 0 else None,
+                    "profit_factor": (
+                        round(profit_total / loss_total, 4)
+                        if loss_total > 0
+                        else (float("inf") if profit_total > 0 else None)
+                    ),
                 },
                 "by_asset": by_asset,
                 "updated_at": datetime.now(tz=ET).isoformat(),
@@ -125,9 +138,15 @@ class _AnalyticsStore:
             df = pd.DataFrame(attrs)
             arch_col = "pred_archetype_at_entry"
             regime_col = "pred_regime_at_entry"
-            reason_col = "exit_exit_reason"
+            reason_col = "exit_reason"
 
-            r_values = df.get("exit_realized_r", df.get("realized_r", 0))
+            if "exit_realized_r" in df.columns:
+                r_values = df["exit_realized_r"]
+            elif "realized_r" in df.columns:
+                r_values = df["realized_r"]
+            else:
+                r_values = pd.Series([0.0] * len(df))
+
             reason_series = df.get(reason_col) if reason_col in df.columns else pd.Series(dtype=object)
             has_reason = len(reason_series) > 0
             snapshot["overall"] = {

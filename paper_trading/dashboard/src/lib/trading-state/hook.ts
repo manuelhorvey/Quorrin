@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react"
 import { useSystemSnapshot } from "../../hooks/useSystemSnapshot"
-import { toAssetTradingState, toPortfolioTradingState } from "./selectors"
+import { toAssetTradingState, toPortfolioTradingState, type SortKey } from "./selectors"
 import type { SystemBundle } from "../../types/bundle"
 import type { AssetTradingState, PortfolioTradingState } from "./types"
-import type { SortKey } from "./selectors"
 
 export interface TradingStateResult {
   portfolio: PortfolioTradingState
@@ -60,7 +59,7 @@ export function useTradingState(): TradingStateResult {
     const portfolio = snapshot.portfolio
     const openPositions = snapshot.open_positions ?? {}
     const live = bundle.live
-    const edgeHealth = (portfolio as any)?.edge_health ?? null
+    const edgeHealth = portfolio?.edge_health ?? null
 
     // Transform each asset
     const assets: Record<string, AssetTradingState> = {}
@@ -87,8 +86,18 @@ export function useTradingState(): TradingStateResult {
 
   // If we have no data but aren't erroring, return loading state
   if (!result) {
+    const shimPortfolio: PortfolioTradingState = {
+      system_status: "SAFE",
+      pnl: { total: 0, efficiency: 0 },
+      risk: { drawdown: 0, net_exposure: 0, concentration_risk: "LOW" },
+      execution: { mt5_sync: "DEGRADED", sl_sync_integrity: "OK" },
+      alpha: { reversal_rate: null, edge_trend: "STABLE" },
+      alerts: [],
+      top_3_risks: [],
+      recent_events: [],
+    }
     return {
-      portfolio: null as any,
+      portfolio: shimPortfolio,
       assets: {},
       assetList: [],
       sortKey,

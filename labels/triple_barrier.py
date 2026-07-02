@@ -10,7 +10,7 @@ from shared.volatility import (
 
 def apply_triple_barrier(
     df: pd.DataFrame,
-    pt_sl: list = [1, 1],
+    pt_sl: list | None = None,
     target: pd.Series = None,
     vertical_barrier: int = 5,
     vol_primitive: VolatilityPrimitive | None = None,
@@ -28,6 +28,9 @@ def apply_triple_barrier(
     Vectorized implementation uses ``sliding_window_view`` to eliminate
     the O(N×V) Python loop, replacing it with O(N) numpy operations.
     """
+    if pt_sl is None:
+        pt_sl = [1, 1]
+
     if vol_primitive is not None:
         target = compute_atr_pct(df, period=vol_primitive.period)
         vol_method = f"atr_{vol_primitive.mode}"

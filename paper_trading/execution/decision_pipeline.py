@@ -27,6 +27,48 @@ from paper_trading.position.protection import PositionProtection
 logger = logging.getLogger("eigencapital.decision_pipeline")
 
 
+def _log_eager_import_failure(name: str, exc: BaseException) -> None:
+    """Module-level helpers imported lazily inside the pipeline.
+
+    ``build_entry_artifacts`` previously imported these inside the stage body.
+    If the import failed AFTER ``structure`` detection or after ``ctx.engine._structure``
+    had been written but BEFORE the function returned, the engine would be left
+    in a half-configured state for the next cycle. Hoisting them to module
+    scope turns import errors into hard ImportErrors at process start (or
+    captured import-time warnings if the symbols are not yet available).
+    """
+    logger.warning(
+        "decision_pipeline: eager import %s unavailable — %s",
+        name,
+        exc,
+    )
+
+
+# ── Eagerly hoist late imports (issue #3) ──────────────────────────────
+# ``build_entry_artifacts`` previously performed these imports after state
+# mutations. Hoist to module level so that import errors surface at process
+# start (or a logged warning + sentinel fallback) rather than mid-pipeline.
+try:
+    from paper_trading.governance.multipliers import compute_effective_multipliers
+except ImportError as _exc:
+    compute_effective_multipliers = None  # type: ignore[assignment]
+    _log_eager_import_failure("compute_effective_multipliers", _exc)
+
+
+try:
+    from paper_trading.entry.tp_compiler import compute_take_profit
+except ImportError as _exc:
+    compute_take_profit = None  # type: ignore[assignment]
+    _log_eager_import_failure("compute_take_profit", _exc)
+
+
+try:
+    from paper_trading.entry.deferred_entry import DeferredEntry
+except ImportError as _exc:
+    DeferredEntry = None  # type: ignore[assignment,misc]
+    _log_eager_import_failure("DeferredEntry", _exc)
+
+
 @dataclass
 class DecisionContext:
     """Mutable context passed through all pipeline stages.
@@ -356,10 +398,17 @@ def build_entry_artifacts(ctx: DecisionContext) -> None:
     if entry_action == EntryAction.ENTER:
         dynamic_sltp_enabled = engine.config.get("dynamic_sltp", {}).get("enabled", False)
         if not dynamic_sltp_enabled:
+            if compute_effective_multipliers is None or compute_take_profit is None:
+                logger.error(
+                    "%s: build_entry_artifacts aborted — required governance/tp_compiler imports missing "
+                    "at module load",
+                    engine.name,
+                )
+                ctx.new_side = None
+                return
+
             vol = engine._tb_vol(ctx.df["close"]) if hasattr(engine, "_tb_vol") else 0.01
             state = engine.validity_sm.current_state.value if engine.validity_sm else "YELLOW"
-
-            from paper_trading.governance.multipliers import compute_effective_multipliers
 
             curr_sl_mult, curr_tp_mult, _ = compute_effective_multipliers(
                 base_sl=engine.sl_mult,
@@ -373,8 +422,6 @@ def build_entry_artifacts(ctx: DecisionContext) -> None:
             )
             sl_dist = d.close_price * vol * curr_sl_mult
 
-            from paper_trading.entry.tp_compiler import compute_take_profit
-
             tp_geo = compute_take_profit(
                 d.close_price,
                 sl_dist,
@@ -384,8 +431,13 @@ def build_entry_artifacts(ctx: DecisionContext) -> None:
             )
 
     elif entry_action == EntryAction.DEFER:
-        from paper_trading.entry.deferred_entry import DeferredEntry
-
+        if DeferredEntry is None:
+            logger.error(
+                "%s: build_entry_artifacts aborted — DeferredEntry import missing at module load",
+                engine.name,
+            )
+            ctx.new_side = None
+            return
         deferred_entry = DeferredEntry.from_decision(d, max_bars=engine.config.get("entry_defer_max_bars", 5))
 
     # Store artifacts on context for next stage

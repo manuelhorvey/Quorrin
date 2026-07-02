@@ -229,6 +229,16 @@ export interface Portfolio {
   live_sharpe?: LiveSharpeData
   admission?: PortfolioAdmission
   pek?: PekData
+  edge_health?: EdgeHealthSummary
+}
+
+export interface EdgeHealthSummary {
+  reversal_rate: number | null
+  n_losers: number
+  n_trades: number
+  mean_mfe_r: number | null
+  median_mfe_r: number | null
+  alert: boolean
 }
 
 export interface FeatureStability {
@@ -303,6 +313,10 @@ export interface AssetState {
   total_exits: number
   sl_exits: number
   sl_hit_rate: number | null
+  last_regime_raw_probas: number[] | null
+  last_regime_features: Record<string, number> | null
+  gates_trace: Record<string, boolean> | null
+  calibration: { applied: boolean; registry_loaded: boolean }
 }
 
 export interface ExitReasons {

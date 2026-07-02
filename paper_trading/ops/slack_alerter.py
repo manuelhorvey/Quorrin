@@ -30,6 +30,7 @@ ENGINE_STALE_SECONDS = 120  # no WAL event in this window = engine likely down
 COOLDOWN_HALT = 300  # per-asset halt cooldown (5 min)
 COOLDOWN_EMERGENCY = 600  # emergency halt cooldown (10 min)
 DRAWDOWN_THRESHOLD = -0.10  # portfolio drawdown alert threshold (10%)
+DRAWDOWN_COOLDOWN = 3600  # minimum seconds between drawdown alerts
 CONCENTRATION_HEARTBEAT_INTERVAL = 3600  # heartbeat every hour when skew sustained
 
 
@@ -82,8 +83,8 @@ def _check_drawdown() -> float | None:
         peak = portfolio.get("peak_value")
         if pv is not None and peak and peak > 0:
             return (pv / peak) - 1
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to parse state.json for drawdown check: %s", exc)
     return None
 
 
@@ -240,16 +241,12 @@ class SlackAlerter:
                 f"(currently *{pct}%* {dominant_side})."
             )
 
+        fields = [{"type": "mrkdwn", "text": body}]
+        if dominant_side != "none":
+            fields.append({"type": "mrkdwn", "text": f"*Threshold:* {thresh_pct:.0f}%"})
         msg = {
             "text": title,
-            "blocks": _build_blocks(
-                header,
-                "⚠️",
-                [
-                    {"type": "mrkdwn", "text": body},
-                    {"type": "mrkdwn", "text": f"*Threshold:* {thresh_pct:.0f}%" if dominant_side != "none" else ""},
-                ],
-            ),
+            "blocks": _build_blocks(header, "⚠️", fields),
         }
         if _send_slack(self.webhook_url, msg):
             logger.info("Concentration %s alert sent (skew=%.1f%%)", alert_type, pct)
@@ -334,6 +331,9 @@ class SlackAlerter:
 
         prev = self.state.get("last_state_drawdown")
         if dd <= DRAWDOWN_THRESHOLD and (prev is None or dd < prev):
+            if now - self._last_drawdown_alert < DRAWDOWN_COOLDOWN:
+                return
+            self._last_drawdown_alert = now
             self.state["last_state_drawdown"] = dd
             _save_alert_state(self.state)
             self._send_drawdown_alert(dd)

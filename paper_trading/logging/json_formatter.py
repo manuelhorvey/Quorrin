@@ -87,7 +87,7 @@ class JsonFormatter(logging.Formatter):
             "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "msg": record.getMessage(),
+            "msg": self._safe_get_message(record),
         }
 
         if getattr(record, "correlation_id", None):
@@ -114,11 +114,28 @@ class JsonFormatter(logging.Formatter):
 
         return json.dumps(base, ensure_ascii=self._ensure_ascii, indent=self._indent)
 
+    @staticmethod
+    def _safe_get_message(record: logging.LogRecord) -> str:  # noqa: BLE001
+        """Return the formatted message, falling back to ``str(record.msg)`` on error.
+
+        ``record.getMessage()`` can raise when the format string + args are
+        malformed (e.g. unbalanced ``{`` / ``}`` placeholders for non-format
+        messages, or ``args`` of an unexpected type). We never want logging
+        itself to crash the caller.
+        """
+        try:
+            return record.getMessage()
+        except BaseException:  # noqa: BLE001 — safety net; logging must never crash
+            try:
+                return str(record.msg)
+            except BaseException:  # noqa: BLE001
+                return "<unrepresentable log message>"
+
 
 def install_json_logging(
     logger: logging.Logger | None = None,
     level: int = logging.INFO,
-    replace: bool = True,
+    replace: bool = False,
 ) -> logging.Handler:
     """Attach a JSON :class:`logging.StreamHandler` to *logger*.
 
@@ -127,8 +144,11 @@ def install_json_logging(
         from paper_trading.logging.json_formatter import install_json_logging
         install_json_logging(logging.getLogger("eigencapital"))
 
-    If *replace* is True (default), existing stream handlers are removed
-    so the JSON output is not interleaved with human-readable text.
+    If *replace* is True, existing stream handlers whose formatter is NOT
+    already a :class:`JsonFormatter` are removed so JSON output is not
+    interleaved with human-readable text. Handlers already emitting JSON are
+    kept to avoid duplicate log lines. Default behavior is non-replacing
+    (handlers are preserved) so this is safe to call multiple times.
     """
     logger = logger or logging.getLogger()
     handler = logging.StreamHandler()
@@ -137,8 +157,11 @@ def install_json_logging(
 
     if replace:
         for h in list(logger.handlers):
-            if isinstance(h, logging.StreamHandler):
-                logger.removeHandler(h)
+            if not isinstance(h, logging.StreamHandler):
+                continue
+            if isinstance(h.formatter, JsonFormatter):
+                continue
+            logger.removeHandler(h)
     logger.addHandler(handler)
 
     if logger.level == logging.NOTSET or logger.level > level:

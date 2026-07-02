@@ -38,6 +38,7 @@ def main():
 
     if not _shutdown.is_set():
         logger.info("Pulling live data from yfinance...")
+        engine.save_state()
         results = engine.run_once()
         engine.save_state()
         for name, r in results.items():
@@ -69,8 +70,8 @@ def main():
                 engine.run_once()
                 engine.save_state()
                 logger.info("Done.")
-            except Exception as e:
-                logger.error("Error: %s", e)
+            except Exception:
+                logger.exception("Error in refresh cycle")
     finally:
         engine.shutdown()
     server_thread.join(timeout=3)

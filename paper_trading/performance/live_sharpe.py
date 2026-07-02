@@ -58,6 +58,8 @@ class LiveSharpeTracker:
         self._base_dir = base_dir
         self._store = StateStore(base_dir=base_dir) if base_dir else None
         self._equity_history: list[dict] | None = None
+        self._trace_file_pos: int = 0
+        self._slippage_gaps: list[float] = []
 
     def load_history(self) -> list[dict]:
         if self._store is not None:
@@ -167,7 +169,7 @@ class LiveSharpeTracker:
         current_value = float(df["portfolio_value"].iloc[-1])
         initial_value = float(df["portfolio_value"].iloc[0])
         total_return_pct = (current_value / initial_value - 1.0) * 100
-        max_dd = float(df["drawdown"].min())
+        max_dd = float((df["portfolio_value"] / df["portfolio_value"].cummax() - 1).min() * 100)
 
         return {
             "available": True,
@@ -191,8 +193,10 @@ class LiveSharpeTracker:
     def compute_slippage_estimate(self) -> dict[str, Any]:
         """Estimate slippage from signal price vs current price gap in trace.jsonl.
 
-        Reads recent trace entries (max 1000), computes RMS gap between
+        Reads new trace entries since last call (max 2000 per invocation
+        in the initial catch-up pass), computes RMS gap between
         close_price (model input) and current_price (live market).
+        Accumulates samples across calls; capped at 50 000 to limit memory.
         """
         import json
         import os
@@ -202,9 +206,15 @@ class LiveSharpeTracker:
         if not os.path.exists(trace_path):
             return {"available": False, "reason": "no trace file"}
 
-        gaps: list[float] = []
         n_read = 0
         with open(trace_path) as f:
+            file_size = os.fstat(f.fileno()).st_size
+            if self._trace_file_pos < file_size:
+                f.seek(self._trace_file_pos)
+            else:
+                self._trace_file_pos = 0
+                self._slippage_gaps.clear()
+
             for line in f:
                 try:
                     entry = json.loads(line)
@@ -212,23 +222,29 @@ class LiveSharpeTracker:
                     mp = entry.get("current_price")
                     if cp and mp and cp > 0:
                         gap_pct = abs(mp - cp) / cp * 100
-                        gaps.append(gap_pct)
+                        self._slippage_gaps.append(gap_pct)
                     n_read += 1
                     if n_read >= 2000:
                         break
                 except (json.JSONDecodeError, KeyError):
                     continue
 
-        if not gaps:
+            self._trace_file_pos = f.tell()
+
+        # Cap accumulator to prevent unbounded memory growth
+        if len(self._slippage_gaps) > 50000:
+            self._slippage_gaps = self._slippage_gaps[-50000:]
+
+        if not self._slippage_gaps:
             return {"available": False, "reason": "no price data in trace"}
 
-        gaps_arr = np.array(gaps)
+        gaps_arr = np.array(self._slippage_gaps)
         return {
             "available": True,
-            "n_samples": len(gaps),
+            "n_samples": len(self._slippage_gaps),
             "mean_gap_pct": round(float(np.mean(gaps_arr)), 4),
             "median_gap_pct": round(float(np.median(gaps_arr)), 4),
-            "rms_gap_pct": round(float(np.sqrt(np.mean(gaps_arr**2))), 4),
+            "slippage_rms_pct": round(float(np.sqrt(np.mean(gaps_arr**2))), 4),
             "p90_gap_pct": round(float(np.percentile(gaps_arr, 90)), 4),
             "max_gap_pct": round(float(np.max(gaps_arr)), 4),
         }

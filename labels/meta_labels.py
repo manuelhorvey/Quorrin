@@ -153,6 +153,10 @@ class MetaLabelModel:
         if self.retain_meta_on_disk:
             with open(model_path, "wb") as f:
                 pickle.dump(self, f)
+            with open(model_path, "rb") as f:
+                sig = hashlib.sha256(f.read()).hexdigest()
+            with open(model_path + ".sig", "w") as sf:
+                sf.write(sig + "\n")
             logger.info(
                 "%s: meta model trained (pos_weight=%.2f, n=%d, threshold=%.2f)",
                 asset,
@@ -220,12 +224,14 @@ class MetaLabelModel:
             with open(path, "rb") as f:
                 content = f.read()
             sig_path = path + ".sig"
-            if os.path.exists(sig_path):
-                with open(sig_path) as sf:
-                    expected = sf.read().strip()
-                actual = hashlib.sha256(content).hexdigest()
-                if not hmac.compare_digest(expected, actual):
-                    raise ValueError(f"Model integrity check failed for {path}")
+            if not os.path.exists(sig_path):
+                logger.critical("Missing .sig file for %s — refusing to load untrusted model", path)
+                return
+            with open(sig_path) as sf:
+                expected = sf.read().strip()
+            actual = hashlib.sha256(content).hexdigest()
+            if not hmac.compare_digest(expected, actual):
+                raise ValueError(f"Model integrity check failed for {path}")
             obj = pickle.loads(content)
             self.model = obj.model
             self._feature_names = obj._feature_names

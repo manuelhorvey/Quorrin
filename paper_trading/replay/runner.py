@@ -87,7 +87,7 @@ class ReplayRunner:
         # Pass 1: record intermediate state snapshots
         reader2 = WalReader(
             self._get_base_dir(),
-            self._reader._path.split("/")[-1].replace(".jsonl", ""),
+            str(self._reader._path).split("/")[-1].replace(".jsonl", ""),
         )
         for event in reader2.read_from(from_sequence):
             if event.sequence % verify_every == 0:
@@ -277,7 +277,7 @@ class ReplayRunner:
 
     def _get_base_dir(self) -> str:
         """Extract base_dir from WAL path (hacky but practical)."""
-        parts = self._reader._path.split("/")
+        parts = str(self._reader._path).split("/")
         try:
             idx = parts.index("data")
             return "/".join(parts[:idx])

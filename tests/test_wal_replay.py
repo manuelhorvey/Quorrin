@@ -153,7 +153,7 @@ class TestWalReader:
     def test_read_from_sequence(self, writer: WalWriter, reader: WalReader):
         for i in range(10):
             writer.write("t", {"i": i})
-        events = reader.read_from(seq=7)
+        events = list(reader.read_from(seq=7))
         assert len(events) == 4  # sequences 7, 8, 9, 10
         assert events[0].sequence == 7
 
@@ -173,7 +173,7 @@ class TestWalReader:
 
     def test_read_empty_returns_empty_list(self, reader: WalReader):
         assert reader.read_all() == []
-        assert reader.read_from(0) == []
+        assert list(reader.read_from(0)) == []
         assert reader.count() == 0
 
 

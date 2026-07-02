@@ -37,12 +37,16 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 logger = logging.getLogger("eigencapital.replay.wal")
 
-WAL_DIR = "data/live/wal"
+
+DEFAULT_WAL_SUBDIR = "data/live/wal"
+DEFAULT_WAL_DIR = "data/live/wal"
 
 
 @dataclass
@@ -93,15 +97,66 @@ class WalWriter:
     Past events are never mutated (invariant I3).
     """
 
-    def __init__(self, base_dir: str, source: str = "engine", batch_size: int = 64):
-        self._base_dir = base_dir
+    def __init__(
+        self,
+        base_dir: str | Path,
+        source: str = "engine",
+        batch_size: int = 64,
+        wal_dir: str | Path | None = None,
+    ):
+        self._base_dir = Path(base_dir).resolve()
+        if wal_dir is not None:
+            self._wal_dir = Path(wal_dir).resolve()
+        else:
+            self._wal_dir = self._base_dir / DEFAULT_WAL_SUBDIR
         self._source = source
         self._batch_size = max(batch_size, 1)
-        self._seq = 0
         self._lock = threading.Lock()
         self._buffer: list[str] = []
-        self._path = os.path.join(base_dir, WAL_DIR, f"{source}.jsonl")
-        os.makedirs(os.path.dirname(self._path), exist_ok=True)
+        self._path = self._wal_dir / f"{source}.jsonl"
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._first_write = not self._path.exists()
+        self._seq = self._read_last_sequence()
+
+    def _read_last_sequence(self) -> int:
+        """Read the last sequence number from existing WAL file."""
+        if not self._path.exists():
+            return 0
+        try:
+            with open(self._path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                file_size = f.tell()
+                if file_size == 0:
+                    return 0
+
+                # Read backwards in chunks to find the last valid line
+                chunk_size = 8192
+                remaining = file_size
+                last_line = b""
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    remaining -= read_size
+                    f.seek(remaining)
+                    chunk = f.read(read_size)
+                    lines = (chunk + last_line).split(b"\n")
+                    last_line = lines[0]
+                    for line in reversed(lines[1:]):
+                        if line.strip():
+                            try:
+                                data = json.loads(line)
+                                return data.get("sequence", 0)
+                            except (json.JSONDecodeError, KeyError):
+                                continue
+                # Check the very first line if we haven't found one yet
+                if last_line.strip():
+                    try:
+                        data = json.loads(last_line)
+                        return data.get("sequence", 0)
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+        except OSError:
+            logger.exception("Failed to read last sequence from %s", self._path)
+        return 0
 
     def write(self, event_type: str, payload: dict) -> WalEvent:
         """Append a single event to the WAL buffer. Returns the created event.
@@ -128,9 +183,52 @@ class WalWriter:
             self._buffer.append(line)
             buf_size = len(self._buffer)
 
-        if buf_size >= self._batch_size:
-            self.flush()
+            if buf_size >= self._batch_size:
+                # Flush while still holding lock to avoid re-buffer race
+                lines = self._buffer
+                self._buffer = []
+            else:
+                lines = None
+
+        if lines is not None:
+            self._flush_lines(lines)
         return event
+
+    def _flush_lines(self, lines: list[str]) -> None:
+        """Append lines to WAL file with fsync for durability."""
+        if not lines:
+            return
+
+        # Ensure directory exists (may have been created after writer init)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Open in append mode for WAL semantics
+            with open(self._path, "a") as f:
+                f.writelines(lines)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Fsync directory to persist file creation metadata on first write
+            if self._first_write:
+                try:
+                    dir_fd = os.open(self._path.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(dir_fd)
+                    finally:
+                        os.close(dir_fd)
+                except OSError:
+                    logger.exception("WAL directory fsync failed for %s", self._source)
+                self._first_write = False
+
+        except OSError:
+            logger.exception(
+                "WAL batch write failed for %s — re-buffering %d events",
+                self._source,
+                len(lines),
+            )
+            # Clean up - no temp file to clean since we write directly
+            with self._lock:
+                self._buffer = lines + self._buffer
 
     def flush(self) -> None:
         """Flush buffered events to disk (write + fsync).
@@ -142,27 +240,9 @@ class WalWriter:
         with self._lock:
             lines = self._buffer
             self._buffer = []
-            if not lines:
-                return
 
-        seq_low = self._seq - len(lines) + 1  # approximate for logging
-        try:
-            with open(self._path, "a") as f:
-                f.writelines(lines)
-                f.flush()
-                try:
-                    os.fsync(f.fileno())
-                except OSError:
-                    logger.exception("WAL batch fsync failed for %s seq=%d", self._source, seq_low)
-        except OSError:
-            logger.exception(
-                "WAL batch write failed for %s seq=%d — re-buffering %d events",
-                self._source,
-                seq_low,
-                len(lines),
-            )
-            with self._lock:
-                self._buffer = lines + self._buffer
+        if lines:
+            self._flush_lines(lines)
 
     @property
     def current_sequence(self) -> int:
@@ -170,7 +250,7 @@ class WalWriter:
 
     @property
     def path(self) -> str:
-        return self._path
+        return str(self._path)
 
 
 # ── WAL Reader ──────────────────────────────────────────────────────────────
@@ -179,16 +259,31 @@ class WalWriter:
 class WalReader:
     """Read and iterate over WAL events. Supports replay from sequence offsets."""
 
-    def __init__(self, base_dir: str, source: str = "engine"):
-        self._path = os.path.join(base_dir, WAL_DIR, f"{source}.jsonl")
+    def __init__(self, base_dir: str | Path, source: str = "engine", wal_dir: str | Path | None = None):
+        self._base_dir = Path(base_dir).resolve()
+        if wal_dir is not None:
+            self._wal_dir = Path(wal_dir).resolve()
+        else:
+            self._wal_dir = self._base_dir / DEFAULT_WAL_SUBDIR
+        self._source = source
+        self._path = self._wal_dir / f"{source}.jsonl"
+        self._corrupt_lines = 0
+        self._expected_seq = 1
+
+    @property
+    def corrupt_lines(self) -> int:
+        """Number of corrupt lines encountered during reads."""
+        return self._corrupt_lines
 
     def read_all(self) -> list[WalEvent]:
         """Read all events from the WAL."""
         return list(self._iter_events())
 
-    def read_from(self, seq: int) -> list[WalEvent]:
-        """Read all events with sequence >= seq."""
-        return [e for e in self._iter_events() if e.sequence >= seq]
+    def read_from(self, seq: int) -> Iterator[WalEvent]:
+        """Iterate over events with sequence >= seq (lazy, memory-efficient)."""
+        for event in self._iter_events():
+            if event.sequence >= seq:
+                yield event
 
     def read_last(self, n: int = 10) -> list[WalEvent]:
         """Read the last N events."""
@@ -197,19 +292,41 @@ class WalReader:
 
     def count(self) -> int:
         """Return total event count (fast — reads line count only)."""
-        if not os.path.exists(self._path):
+        if not self._path.exists():
             return 0
         with open(self._path) as f:
             return sum(1 for _ in f)
 
-    def _iter_events(self):
-        if not os.path.exists(self._path):
+    def _iter_events(self) -> Iterator[WalEvent]:
+        if not self._path.exists():
             return
+        self._expected_seq = 1
+        first_gap_logged = False
         with open(self._path) as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
-                if line:
-                    try:
-                        yield WalEvent.from_dict(json.loads(line))
-                    except (json.JSONDecodeError, KeyError) as e:
-                        logger.warning("WAL parse error: %s", e)
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    event = WalEvent.from_dict(data)
+                    # Sequence validation
+                    if event.sequence != self._expected_seq and not first_gap_logged:
+                        logger.warning(
+                            "WAL sequence gap/duplicate for %s at line %d: expected %d, got %d",
+                            self._source,
+                            line_num,
+                            self._expected_seq,
+                            event.sequence,
+                        )
+                        first_gap_logged = True
+                    self._expected_seq = event.sequence + 1
+                    yield event
+                except (json.JSONDecodeError, KeyError) as e:
+                    self._corrupt_lines += 1
+                    logger.error(
+                        "WAL corrupt line %d in %s: %s",
+                        line_num,
+                        self._path,
+                        e,
+                    )

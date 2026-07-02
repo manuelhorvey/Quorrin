@@ -1,10 +1,19 @@
+"""Deprecated: use retrain_all_fixed.py instead."""
 import logging
 import os
 import sys
+import warnings
 
 import pandas as pd
 import xgboost as xgb
 import yfinance as yf
+
+warnings.warn(
+    "scripts/training/train_all_assets.py uses the legacy feature pipeline "
+    "(features.builder). Use retrain_all_fixed.py instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__))))
 from features.builder import compute_macro_derived, compute_training_data, model_path
@@ -161,4 +170,13 @@ def load_macro_data():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Legacy training script (deprecated)")
+    parser.add_argument("--allow-legacy", action="store_true", help="Run despite deprecation")
+    args = parser.parse_args()
+    if not args.allow_legacy:
+        sys.exit(
+            "This script is deprecated (uses legacy features.builder). "
+            "Use retrain_all_fixed.py instead, or pass --allow-legacy to force execution."
+        )
     main()

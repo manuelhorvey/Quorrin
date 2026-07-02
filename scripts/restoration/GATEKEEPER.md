@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The SELL_ONLY filter blocks BUY signals for 5 assets (CADCHF, ES, NQ, NZDCHF, EURAUD). ^DJI, USDCHF, and EURCHF were removed from SELL_ONLY on 2026-06-26 after trend-exhaustion features improved BuyWR above breakeven. This gate defines the evidence required to modify or remove it.
+The SELL_ONLY filter blocks BUY signals for 3 assets (CADCHF, NZDCHF, EURAUD). ^DJI, USDCHF, EURCHF, ES, NQ, GBPJPY, and USDJPY were removed from SELL_ONLY on 2026-06-26 — 2026-07-01 after trend-exhaustion features and portfolio remediation. This gate defines the evidence required to modify or remove it.
 
-## Current Status (2026-06-30 — 5 remaining SELL_ONLY assets)
+## Current Status (2026-07-01 — 3 remaining SELL_ONLY assets)
 
 **Structural asymmetry confirmed** — BUY direction is not recoverable for these assets through any tested transformation:
 

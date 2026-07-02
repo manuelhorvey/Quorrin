@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytz
 
-from paper_trading.governance.multipliers import compute_effective_multipliers
 from eigencapital.domain.value_objects.statistical_metrics import (
     _moments,
     confidence_reliability_score,
@@ -15,6 +14,7 @@ from eigencapital.domain.value_objects.statistical_metrics import (
     probabilistic_sharpe_ratio,
     sharpe_ratio,
 )
+from paper_trading.governance.multipliers import compute_effective_multipliers
 
 logger = logging.getLogger("eigencapital.metrics_service")
 

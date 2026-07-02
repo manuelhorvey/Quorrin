@@ -8,6 +8,7 @@ from datetime import datetime
 import pandas as pd
 import pytz
 
+from eigencapital.domain.entities.position import OrderType
 from features.archetypes import ArchetypeClassifier
 from features.market_structure import MarketStructureDetector
 from monitoring.importance_tracker import ImportanceStore
@@ -41,7 +42,6 @@ from paper_trading.services.position_service import PositionService
 from paper_trading.services.signal_service import SignalService
 from paper_trading.shadow.engine import ShadowSLTPEngine
 from paper_trading.state_store import _SKIP_JOURNAL
-from eigencapital.domain.entities.position import OrderType
 from shared.calibration.registry import CalibrationRegistry
 from shared.metrics_snapshot import MetricsSnapshot
 from shared.registry import StrategyRegistry

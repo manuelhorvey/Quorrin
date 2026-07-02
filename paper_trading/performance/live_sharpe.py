@@ -32,8 +32,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from paper_trading.state_store import StateStore
 from eigencapital.domain.value_objects.statistical_metrics import probabilistic_sharpe_ratio
+from paper_trading.state_store import StateStore
 
 logger = logging.getLogger("eigencapital.live_sharpe")
 

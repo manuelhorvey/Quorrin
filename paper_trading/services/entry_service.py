@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import pytz
 
+from eigencapital.domain.entities.position import OrderType, StackLayer
 from paper_trading.entry.decision import EntryAction, PositionIntent, PositionSide
 from paper_trading.entry.deferred_entry import DeferredEntryStatus
 from paper_trading.governance.multipliers import compute_effective_multipliers
-from eigencapital.domain.entities.position import OrderType, StackLayer
 from shared.sizing_chain import SizingChain, SizingInput, SizingResult
 from shared.volatility import estimate_ewm_vol
 

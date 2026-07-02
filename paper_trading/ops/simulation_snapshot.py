@@ -191,8 +191,8 @@ class SimulationStore:
                 )
                 existing = existing[mask]
                 df = pd.concat([existing, df], ignore_index=True)
-            except Exception:
-                pass
+            except (ValueError, TypeError, OSError, pd.errors.EmptyDataError):
+                logger.debug("snapshot dedup failed — starting fresh")
         df.to_parquet(self.snapshot_path)
         logger.debug("snapshot captured: %s, %d assets", ts, len(asset_snapshots))
 
@@ -202,7 +202,7 @@ class SimulationStore:
                 with open(self.cold_state_path, "w") as f:
                     json.dump(cold_state, f)
                 _write_checksum(self.cold_state_path)
-            except Exception as e:
+            except (OSError, TypeError, json.JSONDecodeError) as e:
                 logger.warning("failed to persist cold state: %s", e)
 
     def load_cold_state(self) -> dict | None:
@@ -212,7 +212,7 @@ class SimulationStore:
         try:
             with open(self.cold_state_path) as f:
                 return json.load(f)
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             logger.warning("failed to load cold state: %s", e)
             return None
 
@@ -222,7 +222,7 @@ class SimulationStore:
             return None
         try:
             df = pd.read_parquet(self.snapshot_path)
-        except Exception as e:
+        except (ValueError, TypeError, OSError, pd.errors.EmptyDataError) as e:
             logger.warning("failed to read snapshot history: %s", e)
             return None
 
@@ -285,7 +285,7 @@ class SimulationStore:
             return None
         try:
             df = pd.read_parquet(self.snapshot_path)
-        except Exception:
+        except (ValueError, TypeError, pd.errors.EmptyDataError):
             return None
 
         matching = df[df["timestamp"].str.startswith(date_str)]
@@ -304,7 +304,7 @@ class SimulationStore:
             if df.empty:
                 return []
             return sorted(df["timestamp"].unique())
-        except Exception:
+        except (ValueError, TypeError, pd.errors.EmptyDataError):
             return []
 
 

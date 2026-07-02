@@ -122,7 +122,7 @@ def analyze_feature_impact(
 
         impacts.sort(key=lambda x: abs(x["impact"]), reverse=True)
         return impacts[:5]
-    except Exception:
+    except (ValueError, TypeError, KeyError, AttributeError):
         return []
 
 
@@ -155,7 +155,7 @@ def analyze_regime_context(close: pd.Series) -> dict:
             "current_vol": round(float(recent_vol), 6),
             "vol_percentile": round(float(pct), 4),
         }
-    except Exception:
+    except (ValueError, TypeError, ZeroDivisionError):
         return {"volatility_regime": "unknown", "current_vol": 0.0, "vol_percentile": 0.0}
 
 

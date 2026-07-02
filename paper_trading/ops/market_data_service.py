@@ -74,10 +74,10 @@ class MarketDataService:
                         _cache_set(f"realtime:{t}", price, "realtime")
                         result[t] = price
                         continue
-                except Exception:
+                except (ValueError, TypeError, KeyError, AttributeError):
                     pass
                 result[t] = None
-        except Exception:
+        except (ValueError, TypeError, OSError, KeyError):
             logger.debug("batch realtime price fetch failed, falling back to individual")
 
         # Fallback for any remaining uncached tickers
